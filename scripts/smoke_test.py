@@ -157,9 +157,19 @@ def main() -> int:
     # ---- 7. EXPORT ONNX + ORT inference -------------------------------------
     try:
         best = RUNS / train_name / "weights" / "best.pt"
-        onnx_path = YOLO(str(best)).export(format="onnx", imgsz=IMGSZ)
-        pred = YOLO(onnx_path).predict(SAMPLE_IMAGE, imgsz=IMGSZ, verbose=False)
-        n_boxes = len(pred[0].obb) if pred[0].obb is not None else 0
+        # simplify=False: onnxslim 0.1.94 hard-crashes (0xC0000005) on this Windows box;
+        # Colab notebooks keep the default (slimming works on Linux).
+        # device="cpu": keeps ultralytics on the pinned CPU onnxruntime instead of
+        # auto-installing onnxruntime-gpu (whose current wheels fail DLL init here);
+        # matches how the HF Space CPU demo will run.
+        # opset=19: default (22) exceeds what the pinned ORT 1.20 loads, and torch 2.8's
+        # exporter only truly supports <=20 anyway
+        onnx_path = YOLO(str(best)).export(format="onnx", imgsz=IMGSZ, simplify=False, opset=19)
+        # task="obb" is required: without it the ONNX gets treated as plain detect and
+        # results[0].obb stays None
+        pred = YOLO(onnx_path, task="obb").predict(SAMPLE_IMAGE, imgsz=IMGSZ, device="cpu", verbose=False)
+        assert pred[0].obb is not None, "exported model lost the OBB head/task"
+        n_boxes = len(pred[0].obb)
         record("EXPORT", "OK", f"ONNX exported ({Path(onnx_path).name}), ORT inference ran, {n_boxes} boxes")
     except Exception as e:
         traceback.print_exc()

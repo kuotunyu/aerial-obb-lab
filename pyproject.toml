@@ -15,9 +15,12 @@ dependencies = [
     "huggingface_hub>=0.30",
     "shapely>=2.0",
     # ONNX export/inference (pre-installed so ultralytics doesn't shell out to pip inside the uv venv)
+    # onnxruntime pinned to 1.20.x: 1.23+ wheels fail DLL init on this box's MSVC runtime
+    # 14.44 (same family as the torch<2.9 pin; updating VC++ redist needs admin rights).
+    # 1.20.1 verified importable on this machine.
     "onnx>=1.16",
     "onnxslim",
-    "onnxruntime>=1.20",
+    "onnxruntime>=1.20,<1.21",
 ]
 
 [dependency-groups]
