@@ -1,0 +1,237 @@
+{
+  "inflation": {
+    "plane": {
+      "n": 2531,
+      "mean": 1.4155522211903273,
+      "median": 1.235763759817833,
+      "p90": 2.0,
+      "max": 2.222995614194477
+    },
+    "ship": {
+      "n": 8960,
+      "mean": 1.9535154150224177,
+      "median": 2.0701294731372215,
+      "p90": 2.694635878489724,
+      "max": 6.654974137056937
+    },
+    "storage tank": {
+      "n": 2888,
+      "mean": 1.0002656604987825,
+      "median": 1.0,
+      "p90": 1.0000000000016547,
+      "max": 1.2823076471641215
+    },
+    "baseball diamond": {
+      "n": 214,
+      "mean": 1.5047598697946896,
+      "median": 1.471741736511238,
+      "p90": 1.9929327506784116,
+      "max": 2.03390474873099
+    },
+    "tennis court": {
+      "n": 760,
+      "mean": 1.521261930521294,
+      "median": 1.3235249462430987,
+      "p90": 2.2725927544254256,
+      "max": 2.6100496662127872
+    },
+    "basketball court": {
+      "n": 132,
+      "mean": 1.5057891254613731,
+      "median": 1.4892610956330037,
+      "p90": 2.0819420026925424,
+      "max": 2.167178856791653
+    },
+    "ground track field": {
+      "n": 144,
+      "mean": 1.6206109112419786,
+      "median": 1.6002541532573717,
+      "p90": 2.177627726666149,
+      "max": 6.147305325019087
+    },
+    "harbor": {
+      "n": 2090,
+      "mean": 2.1527525931512335,
+      "median": 1.8009021541755803,
+      "p90": 3.6615638336415084,
+      "max": 26.67841698381972
+    },
+    "bridge": {
+      "n": 464,
+      "mean": 2.4311912992862177,
+      "median": 1.8970997512806513,
+      "p90": 3.709948652639407,
+      "max": 21.090173772342286
+    },
+    "large vehicle": {
+      "n": 4387,
+      "mean": 2.1374474709196956,
+      "median": 2.125403029901678,
+      "p90": 3.212706004017337,
+      "max": 5.352845161586981
+    },
+    "small vehicle": {
+      "n": 5438,
+      "mean": 1.6142454693111736,
+      "median": 1.5026089029751275,
+      "p90": 2.306189106014609,
+      "max": 3.1506659126355236
+    },
+    "helicopter": {
+      "n": 73,
+      "mean": 1.396538279186113,
+      "median": 1.2073683543712674,
+      "p90": 1.999999999999949,
+      "max": 2.1443370365026473
+    },
+    "roundabout": {
+      "n": 179,
+      "mean": 1.0155479621694734,
+      "median": 1.0,
+      "p90": 1.0000000000003757,
+      "max": 2.0253324091004252
+    },
+    "soccer ball field": {
+      "n": 153,
+      "mean": 1.4708064841635613,
+      "median": 1.3543711349337149,
+      "p90": 2.07192239592857,
+      "max": 2.4435372317403847
+    },
+    "swimming pool": {
+      "n": 440,
+      "mean": 1.5154985460355022,
+      "median": 1.4161006097656395,
+      "p90": 2.0573601618924777,
+      "max": 2.5262458248940596
+    }
+  },
+  "overlap": {
+    "plane": {
+      "touching_pairs": 1367,
+      "hbb_iou>=0.1": 299,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 203,
+      "hbb_iou>=0.3": 1,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "ship": {
+      "touching_pairs": 6457,
+      "hbb_iou>=0.1": 4226,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 4218,
+      "hbb_iou>=0.3": 736,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 732,
+      "hbb_iou>=0.5": 33,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 33
+    },
+    "storage tank": {
+      "touching_pairs": 219,
+      "hbb_iou>=0.1": 9,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "baseball diamond": {
+      "touching_pairs": 14,
+      "hbb_iou>=0.1": 1,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 1,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "tennis court": {
+      "touching_pairs": 257,
+      "hbb_iou>=0.1": 138,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 138,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "basketball court": {
+      "touching_pairs": 49,
+      "hbb_iou>=0.1": 20,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 20,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "ground track field": {
+      "touching_pairs": 1,
+      "hbb_iou>=0.1": 0,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "harbor": {
+      "touching_pairs": 509,
+      "hbb_iou>=0.1": 230,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 227,
+      "hbb_iou>=0.3": 43,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 42,
+      "hbb_iou>=0.5": 1,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 1
+    },
+    "bridge": {
+      "touching_pairs": 44,
+      "hbb_iou>=0.1": 31,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 31,
+      "hbb_iou>=0.3": 12,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 12,
+      "hbb_iou>=0.5": 4,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 4
+    },
+    "large vehicle": {
+      "touching_pairs": 3688,
+      "hbb_iou>=0.1": 2065,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 2065,
+      "hbb_iou>=0.3": 810,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 810,
+      "hbb_iou>=0.5": 26,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 26
+    },
+    "small vehicle": {
+      "touching_pairs": 2341,
+      "hbb_iou>=0.1": 896,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 893,
+      "hbb_iou>=0.3": 42,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 39,
+      "hbb_iou>=0.5": 3,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "helicopter": {
+      "touching_pairs": 18,
+      "hbb_iou>=0.1": 7,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 5,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "soccer ball field": {
+      "touching_pairs": 18,
+      "hbb_iou>=0.1": 3,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 3,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    },
+    "swimming pool": {
+      "touching_pairs": 15,
+      "hbb_iou>=0.1": 0,
+      "hbb_iou>=0.1_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.3": 0,
+      "hbb_iou>=0.3_but_obb_iou<0.1": 0,
+      "hbb_iou>=0.5": 0,
+      "hbb_iou>=0.5_but_obb_iou<0.1": 0
+    }
+  }
+}
