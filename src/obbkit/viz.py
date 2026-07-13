@@ -14,6 +14,22 @@ OBB_COLOR = (80, 200, 60)  # BGR green
 BAR_H = 44
 
 
+def _imread_unicode(path: str | Path) -> np.ndarray | None:
+    """cv2.imread mangles non-ASCII Windows paths silently; read bytes ourselves."""
+    data = np.fromfile(str(path), dtype=np.uint8)
+    if data.size == 0:
+        return None
+    return cv2.imdecode(data, cv2.IMREAD_COLOR)
+
+
+def _imwrite_unicode(path: str | Path, img: np.ndarray, quality: int = 92) -> None:
+    """cv2.imwrite has the same non-ASCII path problem; encode and write bytes ourselves."""
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    if not ok:
+        raise RuntimeError(f"cv2.imencode failed for {path}")
+    buf.tofile(str(path))
+
+
 def _crop_region(objects: list[ObbObject], img_w: int, img_h: int, max_side: int = 1400,
                  margin: int = 60) -> tuple[int, int, int, int]:
     """Tight region around the given objects, padded, clipped to image bounds."""
@@ -47,7 +63,7 @@ def render_hbb_vs_obb(image_path: str | Path, objects: list[ObbObject], out_path
         out_path: output jpg path.
         focus: objects defining the crop region (defaults to all objects).
     """
-    img = cv2.imread(str(image_path))
+    img = _imread_unicode(image_path)
     if img is None:
         raise FileNotFoundError(image_path)
     h, w = img.shape[:2]
@@ -77,5 +93,5 @@ def render_hbb_vs_obb(image_path: str | Path, objects: list[ObbObject], out_path
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(out_path), out, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    _imwrite_unicode(out_path, out)
     return out_path

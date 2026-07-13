@@ -8,7 +8,8 @@
 
 **實測環境（與手冊假設不同，已與使用者確認的調整）：**
 - 本機是 Windows 10 + **RTX 2070 8GB**（非 4090），驅動 551.23 偏舊（最高支援 CUDA 12.4）
-- C 槽只剩 27GB → **專案搬到 `D:\portfolio\yolo26-dota-obb`**（D 槽 104GB 可用；同時避開中文路徑對 OpenCV 的風險）；資料集與 HF 快取也放 D 槽
+- C 槽只剩 27GB → 專案搬到 D 槽（D 槽 104GB 可用）；資料集與 HF 快取也放 D 槽
+- **專案最終位置：`D:\CC_F5_專案\YOLO_OBB專案\1_YOLO26 OBB 旋轉框偵測：訓練到部署`**（2026-07-13 從 `D:\portfolio\yolo26-dota-obb` 再搬一次，統一到使用者慣用的 `D:\CC_F5_專案` 結構；含中文與空格 —— 已把 `src/obbkit/viz.py` 的 cv2 讀寫改成 `np.fromfile`+`imdecode` / `imencode`+`tofile` 位元組流方式，避開 OpenCV 對非 ASCII 路徑的靜默失敗風險，已在此路徑下驗證通過）
 - **部署 benchmark（ONNX / TensorRT）改在 Colab GPU 上做**（使用者已選定），本機只負責開發、smoke test、Gradio demo
 - **暫不推 GitHub**（使用者之後自行處理）：git 只做本機 init + 每階段 commit；Colab notebook 設計成自包含、由使用者手動上傳到 Colab
 - 全域 CLAUDE.md 使用者自理，不在本專案處理

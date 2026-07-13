@@ -43,6 +43,12 @@
 - 解法：`uv cache clean onnxruntime` 強制重新下載 + 設 `UV_LINK_MODE=copy` 杜絕再發
 - 教訓：uv 管理的 venv 裡混用 pip 有風險；ONNX 推論驗證固定 `device="cpu"` 讓 ultralytics 不觸發 `onnxruntime-gpu` 自動安裝
 
+### T4. 中文路徑下 OpenCV 讀寫圖片會靜默失敗（2026-07-13）
+- 背景：專案最終路徑含中文與空格（`D:\CC_F5_專案\...\1_YOLO26 OBB 旋轉框偵測：訓練到部署`），是 Phase 0 原本刻意要避開的風險，後來使用者要求統一搬到這個慣用路徑下
+- 症狀：`cv2.imread(path)` / `cv2.imwrite(path, img)` 在非 ASCII 路徑下不會拋例外，而是**靜默回傳 None / 寫入失敗**（OpenCV 底層用 ANSI codepage API 開檔）——比崩潰更危險，容易誤判「跑完了但其實沒寫到檔案」
+- 解法：`src/obbkit/viz.py` 改用 `np.fromfile(path) + cv2.imdecode(...)` 讀、`cv2.imencode(...) + buf.tofile(path)` 寫，繞過 OpenCV 的路徑開檔，改用 Python/numpy 自己的檔案 I/O（原生支援 Unicode）。已在中文路徑下實測驗證通過
+- 面試可講：這是「知道某函式庫在特定平台/編碼下有隱性限制」的經驗，以及用位元組流隔離掉外部 C 函式庫的路徑編碼問題是通用解法（不只 OpenCV，很多用 C/C++ 底層做檔案 I/O 的函式庫在 Windows 上都有同樣問題）
+
 ## 面試 Q&A（Phase 7 收斂）
 
 （草稿隨各 Phase 累積）
