@@ -20,6 +20,7 @@ datasets/
 *.mlpackage
 
 # Data / cache
+/boats.jpg
 *.zip
 *.tar
 *.tar.gz

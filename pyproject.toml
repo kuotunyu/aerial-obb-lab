@@ -7,7 +7,10 @@ requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
 dependencies = [
     "ultralytics==8.4.93",
-    "torch>=2.6",
+    # torch pinned <2.9: 2.9+ needs MSVC redist >=14.50 which requires admin rights to
+    # install on this Win10 box (WinError 1114, pytorch/pytorch#169429). Colab notebooks
+    # don't use this file and run the latest torch.
+    "torch>=2.6,<2.9",
     "torchvision",
     "huggingface_hub>=0.30",
     "shapely>=2.0",
@@ -20,6 +23,9 @@ dependencies = [
 [dependency-groups]
 demo = [
     "gradio>=5.0",
+]
+dev = [
+    "jupytext>=1.19.4",
 ]
 
 [tool.uv]
