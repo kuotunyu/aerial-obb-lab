@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Ultralytics / training artifacts (weights & datasets stay out of git)
+runs/
+datasets/
+*.pt
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+*.mlpackage
+
+# Data / cache
+*.zip
+*.tar
+*.tar.gz
+wandb/
+
+# Secrets & local config
+.env
+*.token
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
