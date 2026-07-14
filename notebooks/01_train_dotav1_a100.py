@@ -6,7 +6,7 @@
 # ## 使用步驟
 # 1. 執行階段 → 變更執行階段類型 → **A100 GPU**（搶不到就改用 T4，並把下方 `PRESET` 改成 `"T4"`）
 # 2. 左側 🔑 **Secrets**：新增 `HF_TOKEN`（Hugging Face **write** token），並開啟「筆記本存取權」
-# 3. 執行階段 → **全部執行**，掛機等完成（A100 多尺度約 4–6 小時；`SPLIT_RATES=[1.0]` 約可減半）
+# 3. 執行階段 → **全部執行**，掛機等完成（兩尺度 `SPLIT_RATES=[0.8, 1.2]`、`EPOCHS=30` 估計 14.5 小時內；實際時間看下方第 1 格印出的 CPU 核數與訓練時第一個 epoch 的 it/s 再抓感覺）
 # 4. 跑完把最後一格的 `=== PASTE BACK ===` 區塊貼回 Claude Code session
 # 5. **記得**：執行階段 → 中斷連線並刪除執行階段
 #
@@ -18,16 +18,27 @@
 # ## 0. 設定
 
 # %%
+import os
+
 PRESET = "A100"  # "A100" 或 "T4"
 
 MODEL = "yolo26m-obb.pt"   # DOTAv1 官方預訓練 OBB 權重（fine-tune 起點）
-EPOCHS = 60
+EPOCHS = 30                # ~12 小時預算的基礎上稍微拉高（最壞情況約 14.5 小時）
 IMGSZ = 1024
-PATIENCE = 15              # 早停：val 指標 15 epochs 無進步就停
+PATIENCE = 15              # 早停：val 指標 15 epochs 無進步就停（= EPOCHS 一半，維持早停有實際觸發機會的比例）
 PUSH_EVERY = 2             # 每 N epochs push checkpoint 到 HF
 
-# split_dota 官方多尺度切圖設定；改成 [1.0] 可讓資料量與訓練時間約減半
-SPLIT_RATES = [0.5, 1.0, 1.5]
+# 2026-07-13 實測與決策過程（完整版見 docs/DESIGN_NOTES.md）：
+# 三尺度 [0.5,1,1.5] 在 A100(40GB) 上 GPU_mem 滿但只有 ~1.8it/s,一個 epoch ~74 分鐘,
+# 60 epoch 換算 70+ 小時——瓶頸是 CPU 端 dataloader/OBB 標註增強跟不上,不是算力/VRAM。
+# split_dota 的 rates 其實吃任意浮點數（非只能 0.5/1/1.5）：crop window = 1024/r,
+# r 越大 window 越小、tiles 數量越多,粗估 tiles(r) ≈ tiles(r=1.0) × r²。
+# 試過單一尺度[1.0]（~15分/epoch,但完全沒有多尺度增益）、兩尺度[1.0,1.5]（發現 1.5
+# 這個尺度單獨就佔掉原三尺度資料量六成以上,~48分/epoch,並不比三尺度省多少）。
+# 最後選窄範圍兩尺度 [0.8, 1.2]：比 0.5/1.5 溫和,但仍同時保留「縮小看大範圍」（有利
+# bridge/harbor 這類大型旋轉物件)與「放大看細節」（有利小物件)兩個方向的尺度增益,
+# 資料量預估 ~5.95 萬張/epoch、~29 分鐘/epoch,EPOCHS=30 抓在 ~14.5 小時預算內。
+SPLIT_RATES = [0.8, 1.2]
 SPLIT_GAP = 500
 
 RUN_NAME = "yolo26m-obb-dotav1"
@@ -36,7 +47,8 @@ HF_DATASET_CACHE_NAME = "dotav1-split-cache"   # 切好的 tiles 快取（privat
 CACHE_MAX_GB = 30                              # tar 超過此大小就不上傳快取
 
 PRESETS = {
-    "A100": dict(batch=16, workers=8),
+    "A100": dict(batch=16, workers=8),        # A100 40GB：batch=16 實測 VRAM 用量 ~31/40GB，留安全餘裕
+    "A100-80GB": dict(batch=36, workers=8),   # A100 80GB：實測 batch=32 用 ~62/80GB(77%)，36 抓約 87%，留緩衝防 OOM
     "T4": dict(batch=4, workers=2),
 }
 
@@ -64,10 +76,25 @@ import torch
 assert torch.cuda.is_available(), "沒有 GPU！請確認執行階段類型"
 gpu = torch.cuda.get_device_name(0)
 vram = torch.cuda.get_device_properties(0).total_memory / 1e9
-print(f"GPU: {gpu} ({vram:.0f} GB)")
+n_cpu = os.cpu_count()
+print(f"GPU: {gpu} ({vram:.0f} GB) | CPU cores: {n_cpu}")
 if "T4" in gpu and PRESET == "A100":
     print("⚠️ 偵測到 T4 但 PRESET=A100 —— 自動改用 T4 參數")
     PRESET = "T4"
+elif PRESET == "A100" and vram > 60:
+    print(f"✅ 偵測到 {vram:.0f}GB VRAM（A100 80GB）—— 自動切換 A100-80GB 設定（batch={PRESETS['A100-80GB']['batch']}）善用顯存")
+    PRESET = "A100-80GB"
+
+# 只是把同一批圖分組變大，並不會減少每張圖要做的 CPU 增強/GPU 運算量：
+# 如果瓶頸其實在 dataloader（GPU 使用率上不去、VRAM 卻很滿），加大 batch 不會變快，
+# 這種情況該調的是下面的 workers 或改善 I/O，不是繼續加 batch。
+# 建議訓練開始後看一下 Colab 資源面板的 GPU 使用率驗證是哪種情況。
+
+# workers 不超過實際 CPU 核數，避免 dataloader worker 互搶資源反而拖慢速度
+_preset_workers = PRESETS[PRESET]["workers"]
+if n_cpu and n_cpu < _preset_workers:
+    print(f"⚠️ 只有 {n_cpu} 個 CPU 核心，workers 從 {_preset_workers} 降到 {n_cpu}")
+    PRESETS[PRESET]["workers"] = n_cpu
 
 # %% [markdown]
 # ## 2. 資料準備：DOTAv1 下載 → split_dota 切圖（含 HF 快取）

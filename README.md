@@ -10,13 +10,37 @@ train on Colab A100 → evaluate against the official baseline → quantify *why
 | Phase | What | Where | Status |
 |---|---|---|---|
 | 0 | Scaffold & environment | local | ✅ |
-| 1 | DOTA8 smoke test (train→val→predict→resume→HF push→ONNX) | local (RTX 2070) | ⬜ |
-| 2 | Full fine-tune on DOTAv1 | Colab A100 | ⬜ |
-| 3 | Evaluation vs. official baseline | Colab + local | ⬜ |
-| 4 | "Why OBB" quantitative analysis | local | ⬜ |
+| 1 | DOTA8 smoke test (train→val→predict→resume→HF push→ONNX) | local (RTX 2070) | ✅ |
+| 2 | Full fine-tune on DOTAv1 | Colab A100 | ✅ |
+| 3 | Evaluation vs. official baseline | Colab + local | ✅ |
+| 4 | "Why OBB" quantitative analysis | local | ✅ |
 | 5 | ONNX / TensorRT export + benchmark | Colab GPU | ⬜ |
 | 6 | Gradio demo + HF Space (CPU) | local + HF | ⬜ |
 | 7 | Docs, model card, wrap-up | — | ⬜ |
+
+## Evaluation: Fine-tuned vs. Official Baseline
+
+Fine-tuned `yolo26m-obb.pt` on a re-split DOTAv1 (Colab A100, `split_dota` rates `[0.8, 1.2]`,
+28/30 epochs, early-stopped on `patience=15`). Full per-class breakdown, training-curve
+analysis, and confusion-matrix findings in
+[docs/training_results.md](docs/training_results.md).
+
+| model | split | mAP50 | mAP50-95 |
+|---|---|---:|---:|
+| yolo26m-obb.pt (official, published) | DOTAv1 test | 81.0 | 55.3 |
+| yolo26m-obb.pt (official, our reproduction) | DOTAv1 val (ours) | 78.2 | 63.3 |
+| fine-tuned `best.pt` | DOTAv1 val (ours) | 78.2 | 63.1 |
+
+Only the bottom two rows are directly comparable — same val split, same tiling, same eval
+conditions. The top row uses DOTA's own test-split evaluation pipeline and is shown for
+context, not comparison (see [docs/training_results.md](docs/training_results.md) for why the
+test/val gap runs in an unexpected direction on mAP50 vs mAP50-95).
+
+Under matched conditions, fine-tuning moved the needle by essentially nothing (Δ mAP50
+-0.05pt, Δ mAP50-95 -0.13pt). That's expected, not a failure: `yolo26m-obb.pt` is already the
+official DOTAv1-trained checkpoint, so this quantifies the ceiling of continuing to fine-tune
+an already-converged model on a re-tiled version of the same dataset, rather than demonstrating
+a big lift.
 
 ## Why Oriented Bounding Boxes? (quantified, not hand-waved)
 
@@ -62,4 +86,4 @@ overlap (and the NMS decision) reflect reality.
 - Code: **AGPL-3.0** (required by [Ultralytics](https://github.com/ultralytics/ultralytics) AGPL-3.0; fine-tuned weights are derivative and carry the same license)
 - Dataset: **DOTA** is released for **academic use only — commercial use is prohibited**
 
-*(Full README with results tables, benchmark numbers, HBB-vs-OBB analysis, and reproduction steps lands in Phase 7. 中文版見 README.zh-TW.md)*
+*(Benchmark numbers, demo GIF, and reproduction steps land in later phases. 中文版見 README.zh-TW.md)*
