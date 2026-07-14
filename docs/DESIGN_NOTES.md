@@ -86,6 +86,25 @@ epoch 要 ~74 分鐘、60 epoch 換算 70+ 小時，不可行。診斷與調整�
   加大 batch/VRAM 解決慢的問題，但診斷後發現那個方向完全沒用，真正有效的槓桿是資料量與
   CPU 資源分配
 
+### T6. `uv run` 在中文路徑下重寫 editable-install `.pth` 檔，讓整個 venv 開不了機（2026-07-14）
+- 症狀：`uv run --group demo python demo/app.py` 炸 `Fatal Python error: init_import_site`
+  → `UnicodeDecodeError: 'cp950' codec can't decode byte 0x88`，而且**炸完之後連原本能跑的
+  `.venv/Scripts/python.exe` 直接執行都一起壞掉**——不是單一指令失敗，是整個 venv 被寫壞了
+- 原因鏈：`uv run` 每次執行前會重新同步 editable install，重寫
+  `site-packages/_editable_impl_yolo26_dota_obb.pth`（內容是本專案的絕對路徑，含中文字，
+  UTF-8 編碼寫入）→ Python 內建 `site.py` 處理 `.pth` 檔案時用系統預設 codepage
+  （這台機器是 cp950 繁體中文）解碼，不是 UTF-8 → 路徑裡的中文字節在 cp950 下不是合法序列
+  → 直接讓 Python **啟動階段**（比使用者程式碼還早）就死掉，任何後續用同一個 venv 啟動的
+  Python 都會炸，不限於觸發的那個指令
+- 解法：刪掉那個壞掉的 `.pth` 檔案（本專案沒有任何程式碼真的依賴 editable install，
+  `demo/app.py`、`scripts/*.py` 都自己手動 `sys.path.insert` 加 `src/`），之後**不要用
+  `uv run`**、改直接呼叫 `.venv/Scripts/python.exe` 啟動（`.claude/launch.json` 已改成
+  這樣），繞開會重寫 `.pth` 的路徑
+- 面試可講：這是 T4（OpenCV 中文路徑靜默失敗）的姊妹踩坑，但更嚴重——不是單一函式庫的
+  問題，是 **Python 直譯器啟動流程本身**在中文/非 ASCII 路徑下會炸，而且是「一次寫壞、
+  之後每次啟動都壞」的延遲效應，比當下就報錯更難追（一開始以為是 `uv` 的問題，實際上是
+  它間接觸發了 CPython `site.py` 的既有限制）
+
 ## 面試 Q&A（Phase 7 收斂）
 
 （草稿隨各 Phase 累積）
