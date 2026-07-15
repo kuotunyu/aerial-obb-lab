@@ -10,7 +10,8 @@ Validates the whole pipeline at tiny scale before any Colab spend:
                (SKIP if not logged in to Hugging Face)
   7. EXPORT   - ONNX export + inference through YOLO("*.onnx") yields OBBs
 
-Run:  uv run python scripts/smoke_test.py
+Run:  .venv/Scripts/python.exe scripts/smoke_test.py   (Windows; .venv/bin/python on Linux/Mac)
+Don't use `uv run` on a non-ASCII repo path -- see docs/DESIGN_NOTES.md T6.
 """
 
 from __future__ import annotations
@@ -152,7 +153,7 @@ def main() -> int:
         except Exception as e:
             record("HF_PUSH", "FAIL", str(e))
     else:
-        record("HF_PUSH", "SKIP", "not logged in to Hugging Face (run: uv run hf auth login)")
+        record("HF_PUSH", "SKIP", "not logged in to Hugging Face (run: .venv/Scripts/hf.exe auth login)")
 
     # ---- 7. EXPORT ONNX + ORT inference -------------------------------------
     try:

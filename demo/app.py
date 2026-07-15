@@ -5,7 +5,8 @@ Weights resolution order:
 2. local runs/… best.pt if present
 3. official pretrained yolo26m-obb.pt (so the demo works before training finishes)
 
-Run:  uv run --group demo python demo/app.py
+Run:  .venv/Scripts/python.exe demo/app.py   (Windows; .venv/bin/python on Linux/Mac)
+Don't use `uv run` on a non-ASCII repo path -- see docs/DESIGN_NOTES.md T6.
 """
 
 from __future__ import annotations

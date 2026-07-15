@@ -1,6 +1,6 @@
 # YOLO26 OBB × DOTA：航拍旋轉框偵測，從訓練到部署
 
-> 🚧 進行中 — 完整計畫見 [docs/PLAN.md](docs/PLAN.md)。
+> ✅ 已完成（Phase 0–7）— 完整計畫見 [docs/PLAN.md](docs/PLAN.md)。
 
 以 **YOLO26-OBB**（旋轉框）在 **DOTAv1** 航拍資料集上 fine-tune，展示完整生命週期：
 Colab A100 訓練 → 與官方 baseline 對照評估 → 用數據回答「為什麼航拍場景需要 OBB」→ ONNX / TensorRT FP16 匯出與三框架 latency benchmark → Gradio demo + Hugging Face Space。
@@ -19,7 +19,7 @@ Colab A100 訓練 → 與官方 baseline 對照評估 → 用數據回答「為�
 | 4 | 「為什麼需要 OBB」量化分析 | 本機 | ✅ |
 | 5 | ONNX / TensorRT 匯出與 benchmark | Colab GPU | ✅ |
 | 6 | Gradio demo + HF Space（CPU） | 本機 + HF | ✅ |
-| 7 | 文件、model card、收尾 | — | ⬜ |
+| 7 | 文件、model card、收尾 | — | ✅ |
 
 ## 評估：Fine-tuned vs 官方 Baseline
 
@@ -98,8 +98,9 @@ ONNX 0.9950、TensorRT 0.9950——三者沒有精度損失，符合這個專案
 
 **TensorRT FP16 比原生 PyTorch 快約 3.5 倍**，檔案也最小。**ONNX Runtime GPU 反而比原生
 PyTorch 略慢**——沒有 TensorRT 這種圖編譯後端加持的話，ONNX Runtime 的 GPU 執行不一定會贏
-PyTorch 自己的 cuDNN kernel；會保留這個後端是因為 Phase 6 的免費版 HF Space demo 是用它跑
-CPU 推論，不是因為它是 GPU 上最快的選項。
+PyTorch 自己的 cuDNN kernel。會保留這個後端是因為 ONNX 匯出是下面兩種部署路線共同的起點
+（`demo/space/` 的伺服器端 ONNX Runtime CPU、以及實際部署的 `demo/space-static/` 用瀏覽器端
+ONNX Runtime **Web**）——不是因為 GPU 版 ONNX Runtime 本身是最快的選項。
 
 拿到這組數字的過程踩了好幾輪 Colab 環境的坑，都不是這個專案自己程式碼的問題：`torch._dynamo`
 內部版本兜不起來、HF 檔案 CDN 間歇性回傳簽章失效的下載連結、ONNX Runtime 的 CUDA 執行
@@ -151,4 +152,4 @@ JS 之前，先把輸入輸出格式（letterbox 前處理、`[N,7]` 輸出解�
 - 程式碼：**AGPL-3.0**（[Ultralytics](https://github.com/ultralytics/ultralytics) 為 AGPL-3.0，fine-tune 權重屬衍生物、同授權）
 - 資料集：**DOTA 限學術用途，禁止商業使用**
 
-*（Demo GIF 於 Phase 7 收尾補齊。English version: README.md）*
+*（English version: README.md）*

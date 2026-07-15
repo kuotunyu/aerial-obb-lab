@@ -1,6 +1,6 @@
 # YOLO26 OBB on DOTA: Aerial Oriented Object Detection, Training to Deployment
 
-> 🚧 Work in progress — see [docs/PLAN.md](docs/PLAN.md) for the full project plan.
+> ✅ Complete (Phase 0–7) — see [docs/PLAN.md](docs/PLAN.md) for the full project plan.
 
 Fine-tuning **YOLO26-OBB** (oriented bounding boxes) on the **DOTAv1** aerial dataset, with a full lifecycle:
 train on Colab A100 → evaluate against the official baseline → quantify *why OBB beats horizontal boxes* on aerial imagery → export ONNX / TensorRT FP16 with a 3-framework latency benchmark → Gradio demo + Hugging Face Space.
@@ -19,7 +19,7 @@ train on Colab A100 → evaluate against the official baseline → quantify *why
 | 4 | "Why OBB" quantitative analysis | local | ✅ |
 | 5 | ONNX / TensorRT export + benchmark | Colab GPU | ✅ |
 | 6 | Gradio demo + HF Space (CPU) | local + HF | ✅ |
-| 7 | Docs, model card, wrap-up | — | ⬜ |
+| 7 | Docs, model card, wrap-up | — | ✅ |
 
 ## Evaluation: Fine-tuned vs. Official Baseline
 
@@ -107,8 +107,10 @@ mAP50=0.9950, ONNX 0.9950, TensorRT 0.9950 — no accuracy loss from either expo
 **TensorRT FP16 is ~3.5× faster than eager PyTorch** and comes in at the smallest file size.
 **ONNX Runtime GPU is actually slightly slower than native PyTorch here** — without a
 graph-compilation backend like TensorRT behind it, ONNX Runtime's GPU execution provider doesn't
-automatically beat PyTorch's own cuDNN kernels; it's included because it's the backend the free-tier
-HF Space demo runs on CPU (Phase 6), not because it's the fastest GPU option.
+automatically beat PyTorch's own cuDNN kernels. It's included for completeness and because the
+ONNX export is the common ancestor of both deployment paths below (server-side ONNX Runtime CPU
+in `demo/space/`, and ONNX Runtime **Web** running client-side in the actually-deployed
+`demo/space-static/`) — not because GPU ONNX Runtime itself is the fastest option here.
 
 Getting these numbers took several rounds of environment debugging on Colab's side, none of it
 this project's own code: a broken `torch._dynamo` build, HF's file CDN intermittently returning
@@ -163,4 +165,4 @@ JS — see [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) for the full story.
 - Code: **AGPL-3.0** (required by [Ultralytics](https://github.com/ultralytics/ultralytics) AGPL-3.0; fine-tuned weights are derivative and carry the same license)
 - Dataset: **DOTA** is released for **academic use only — commercial use is prohibited**
 
-*(Demo GIF lands in Phase 7 wrap-up. 中文版見 README.zh-TW.md)*
+*(中文版見 README.zh-TW.md)*

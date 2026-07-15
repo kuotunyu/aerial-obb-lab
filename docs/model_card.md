@@ -25,7 +25,9 @@ pipeline_tag: object-detection
 Fine-tuned [`yolo26m-obb`](https://docs.ultralytics.com/) (oriented bounding box detection) on
 a re-split of the [DOTAv1](https://captain-whu.github.io/DOTA/) aerial imagery dataset. Part of
 a training-to-deployment portfolio project — full writeup, HBB-vs-OBB analysis, and
-ONNX/TensorRT benchmarks in the project repo (GitHub link to be added once published).
+ONNX/TensorRT benchmarks alongside the training/eval code and notebooks (source repo not yet
+public). Try the live browser-side demo:
+https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
 
 ## Model description
 

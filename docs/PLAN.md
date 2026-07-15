@@ -35,8 +35,8 @@ D:\portfolio\yolo26-dota-obb\
 ├── src\obbkit\            # 可重用程式碼（分析、繪圖、HF 上傳 callback）
 ├── scripts\               # smoke_test、資料準備、匯出、分析入口
 ├── notebooks\             # 01_train_dotav1_a100.ipynb、02_benchmark_colab.ipynb
-├── configs\               # 訓練參數 yaml（A100 / T4 兩組 preset）
-├── demo\                  # app.py（本機 Gradio）；space\（HF Space CPU 版）
+├── demo\                  # app.py（本機 Gradio）；space\（HF Space CPU 版，未部署）；
+│                          # space-static\（實際部署的版本，瀏覽器端 ONNX Runtime Web）
 ├── assets\                # README 用圖（HBB vs OBB 對照、demo 截圖、訓練曲線）
 ├── docs\                  # PLAN.md（本檔）、DESIGN_NOTES.md
 ├── README.md / README.zh-TW.md / LICENSE(AGPL-3.0) / .gitignore

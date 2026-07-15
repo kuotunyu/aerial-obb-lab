@@ -5,7 +5,8 @@
 - Renders 5 side-by-side HBB vs OBB comparison crops into assets/
 - Writes docs/analysis_results.md with ready-to-paste markdown tables
 
-Run:  uv run python scripts/obb_analysis.py
+Run:  .venv/Scripts/python.exe scripts/obb_analysis.py   (Windows; .venv/bin/python on Linux/Mac)
+Don't use `uv run` on a non-ASCII repo path -- see docs/DESIGN_NOTES.md T6.
 """
 
 from __future__ import annotations
