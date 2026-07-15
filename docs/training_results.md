@@ -2,8 +2,9 @@
 
 `yolo26m-obb.pt` fine-tuned on a DOTAv1 re-split (`split_dota` rates `[0.8, 1.2]`, gap 500,
 62,030 train / 21,271 val tiles at 1024px) on a Colab A100, evaluated against the same
-official checkpoint on the identical val split. Full run config in `args.yaml` (archived to
-the private HF model repo); training/eval scripts in `notebooks/01_train_dotav1_a100.ipynb`.
+official checkpoint on the identical val split. Full run config in `args.yaml` (archived to the
+HF model repo, [steven0226/yolo26m-obb-dota](https://huggingface.co/steven0226/yolo26m-obb-dota));
+training/eval scripts in `notebooks/01_train_dotav1_a100.ipynb`.
 
 ## Aggregate comparison
 

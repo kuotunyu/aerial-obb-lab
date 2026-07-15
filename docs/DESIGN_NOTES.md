@@ -105,6 +105,64 @@ epoch 要 ~74 分鐘、60 epoch 換算 70+ 小時，不可行。診斷與調整�
   之後每次啟動都壞」的延遲效應，比當下就報錯更難追（一開始以為是 `uv` 的問題，實際上是
   它間接觸發了 CPython `site.py` 的既有限制）
 
+### T7. Colab 預裝 torch 內部版本兜不起來（2026-07-14）
+- 症狀：`model.val()` 觸發 `torch._dynamo.config` 被 import，`TypeError: Config() got an
+  unexpected keyword argument 'deprecated'`——torch 自己的 `_dynamo/config.py` 呼叫
+  `Config(deprecated=True,...)`，但它引用的 `Config` 類別定義不支援這個參數
+- 這是 torch 這個 package 自己兩個內部檔案版本兜不起來，不是我們的程式碼或 ultralytics 的
+  問題；Phase 2 訓練那次用同一台 Colab 沒遇到，研判是 Colab base image 之後悄悄換了一個
+  有問題的 torch build
+- 解法：安裝 ultralytics 之前先 `%pip install -q -U torch` 明確重裝一個乾淨穩定版
+- 面試可講：不要預設「雲端環境每次都一樣」——Colab 的預裝套件版本會隨時間變動，
+  可重現的 notebook 應該明確控管關鍵依賴版本，而不是依賴當下環境剛好是什麼
+
+### T8. HF Hub 檔案下載連結的 CDN 簽章間歇性失效（2026-07-14）
+- 症狀：`hf_hub_download` 下載 `best.pt` 連續 6 次（換過有無 `local_dir`、換過重試邏輯）都
+  撞到同一個 `403 Forbidden ... SignatureError: invalid key pair id`，卡在同一個
+  `us.gcp.cdn.hf.co/xet-bridge-us/...` 網址——是 HF 那個檔案在 Xet CDN 儲存後端的簽章
+  基礎設施出問題，不是下載程式碼寫錯（也曾遇過另一種症狀：進度卡在 97% 不動，同一個根因）
+- 這種問題從客戶端角度沒辦法修：換下載函式的參數（`local_dir` 有無）、重試、關閉 Xet
+  加速通道都試過，都是同一個網址、同一個簽章錯誤
+- 解法：不依賴會出問題的雲端下載，改成**手動把本機已有的檔案上傳進 Colab**（用 Colab 檔案
+  總管拖曳），notebook 邏輯改成「本機檔案優先，找不到才嘗試 HF 下載」
+- 面試可講：當一個外部服務的失敗模式在你這端完全無法透過改寫用戶端程式碼修復時（同樣輸入、
+  同樣錯誤、換了兩種完全不同的程式碼路徑結果一樣），要有判斷力儘早放棄在同一個依賴上重試，
+  改找繞過整個依賴的替代路徑，而不是無止盡地嘗試各種客戶端參數組合
+
+### T9. ONNX Runtime 的 CUDA 執行 provider 原生崩潰，拖垮整個 Colab 執行階段（2026-07-14）
+- 症狀：log 印到 `Using ONNX Runtime ... with CUDAExecutionProvider` 後，沒有任何 Python
+  traceback，Colab 直接斷線——這是 C++ 層級的原生崩潰（很可能是這個環境 CUDA 13 跟
+  onnxruntime-gpu/TensorRT 的版本沒有完全兜好），`try/except` 完全接不住，因為死掉的是
+  整個 process，不是拋出一個可以攔截的例外
+- 解法：把 ONNX / TensorRT 的推論（parity 檢查跟 benchmark 都要）丟到**獨立子行程**執行
+  （`subprocess.run` 呼叫一個獨立的 worker script），子行程崩潰只會讓那次 `subprocess.run`
+  回傳非 0 或逾時，可以在主行程裡偵測到、標記那個後端「crashed」、繼續完成其他後端的量測，
+  不會讓整個 notebook 跟 Colab 執行階段一起死掉
+- 順便處理了「訓練套件安裝過程要求重啟執行階段，把 Python 變數清空但磁碟檔案還在」的狀況：
+  把 `best.pt`/`best.onnx`/`best.engine` 三個匯出步驟都改成「產出檔案已存在就跳過」，讓
+  「全部執行」不管重跑幾次都安全、不會重做已完成的工作，也不用整個刪除執行階段重來
+- 面試可講：這是「防禦不可信賴的原生依賴」的標準模式——當一個函式庫可能整個拖垮 process
+  （而不是丟出可攔截的例外）時，唯一可靠的隔離手段是行程邊界（subprocess/多行程），
+  Python 語言層級的 `try/except` 對這類失敗是無效的；另外也是「讓長流程可以安全重跑」
+  （idempotent pipeline）的實例——用「產出物已存在就跳過」取代「假設每次都從零開始」，
+  讓不穩定的雲端環境下的長流程變得可以放心重試
+
+### T10. 測試 `demo/space/app.py` 時誤判「卡住」——其實是自己把 Gradio 伺服器啟動了（2026-07-15）
+- 症狀：用 `import app` 直接呼叫函式測試（跟測 `demo/app.py` 一樣的手法），process 一直沒
+  反應，看起來像卡死；用工作管理員查發現該 process 累積 CPU 時間極低（跑了好幾分鐘只有
+  ~11 秒 CPU time），代表它不是在算東西、是在等待
+- 原因：`demo/space/app.py` 最後一行 `demo.launch()`**沒有包在** `if __name__ == "__main__":`
+  裡面（`demo/app.py` 有包）——這是刻意的正確設計，因為 HF Space 部署時就是直接執行這支
+  script，不是被 import。但這代表本機用 `import app` 的方式測試，import 這個動作本身就會
+  觸發 `launch()`，啟動一個會一直跑下去等 HTTP 請求的 Gradio 伺服器，不會「執行完畢返回」
+- 解法：測試前先把 `gr.Blocks.launch` monkey-patch 成空函式再 import，讓 import 能正常
+  跑完不觸發真的啟動伺服器，之後就能直接呼叫 `detect()` 驗證邏輯；另外也直接開瀏覽器連
+  到那個意外啟動的伺服器確認 UI 渲染正常，兩種驗證方式都做了
+- 面試可講：診斷「這個 process 是真的卡住還是在正常等待」，看累積 CPU 時間比看「還在跑」
+  更準——卡死或死鎖通常伴隨接近 0 的 CPU 使用率或忽然衝到 100%，正常等待 I/O（像這裡等
+  HTTP 請求）CPU 時間會維持極低但穩定；另外也是「兩個檔案表面相似但關鍵一行差異」會造成
+  完全不同行為的例子，測試前該先看程式碼而不是照搬另一支腳本的測試手法
+
 ## 面試 Q&A（Phase 7 收斂）
 
 （草稿隨各 Phase 累積）
@@ -120,3 +178,16 @@ epoch 要 ~74 分鐘、60 epoch 換算 70+ 小時，不可行。診斷與調整�
   A: `split_dota` 的做法是把裁切視窗大小設成 `crop_size/r`，r 越大視窗越小，同一張大圖
   需要切的視窗數量跟 r² 成正比。所以 `1.5` 這種放大尺度切出的 tiles 遠多於 `0.5` 這種縮小
   尺度，資料量不是跟你選了幾個尺度線性相關，而是被最大的那個尺度主導。
+- **Q: ONNX Runtime GPU 為什麼比原生 PyTorch 慢？TensorRT 又為什麼快這麼多？**
+  A: ONNX Runtime 的 CUDA 執行 provider 基本上是逐算子（op-by-op）呼叫 cuDNN/cuBLAS，
+  跟 PyTorch eager mode 做的事情差不多，沒有本質上的優勢，遇到某些算子排程/記憶體配置沒
+  PyTorch 調得好時甚至會更慢。TensorRT 的優勢是做**圖編譯**：把整個計算圖攤開、做算子融合
+  （operator fusion）、選擇針對這張 GPU 實測最快的 kernel、轉 FP16，這些是 ONNX Runtime
+  單純換個 runtime 執行不會做的最佳化，所以 TensorRT 才會有數倍差距，不是「換個 runtime
+  就變快」這麼簡單。
+- **Q: 遇到一個會讓整個 process 崩潰、`try/except` 接不住的依賴，你怎麼處理？**
+  A: 語言層級的例外處理只能接住「拋出例外」這種失敗模式，接不住原生崩潰（segfault、C++
+  層級的 fatal error）這種會直接終止整個 process 的失敗。唯一可靠的隔離手段是**行程邊界**
+  ——把不信任的程式碼丟到子行程執行，父行程只需要檢查子行程的 exit code 跟輸出，子行程死
+  掉不會連累父行程。這次拿 ONNX Runtime GPU 在 Colab 上的原生崩潰當例子，實作了一個最小
+  的 subprocess worker 模式來隔離它。

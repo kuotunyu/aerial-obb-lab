@@ -14,8 +14,8 @@ train on Colab A100 → evaluate against the official baseline → quantify *why
 | 2 | Full fine-tune on DOTAv1 | Colab A100 | ✅ |
 | 3 | Evaluation vs. official baseline | Colab + local | ✅ |
 | 4 | "Why OBB" quantitative analysis | local | ✅ |
-| 5 | ONNX / TensorRT export + benchmark | Colab GPU | ⬜ |
-| 6 | Gradio demo + HF Space (CPU) | local + HF | ⬜ |
+| 5 | ONNX / TensorRT export + benchmark | Colab GPU | ✅ |
+| 6 | Gradio demo + HF Space (CPU) | local + HF | ✅ |
 | 7 | Docs, model card, wrap-up | — | ⬜ |
 
 ## Evaluation: Fine-tuned vs. Official Baseline
@@ -81,9 +81,41 @@ overlap (and the NMS decision) reflect reality.
 
 ![HBB vs OBB, 535 ships in a marina](assets/hbb_vs_obb_1_P0706_ship.jpg)
 
+## Deployment Benchmark: PyTorch vs. ONNX Runtime vs. TensorRT FP16
+
+Exported the fine-tuned `best.pt` to ONNX and a TensorRT FP16 engine on a Colab **Tesla T4**
+(`notebooks/02_benchmark_colab.ipynb`, reproducible standalone — original plan was to build the
+TensorRT engine on a local RTX 4090; actual local hardware is an RTX 2070 8GB, so this moved to
+Colab, which doubles as the workaround for TensorRT's rough Windows install story). Batch=1,
+imgsz=1024, 20 warmup + 100 timed runs per backend, engine build tied to this exact GPU model
+and TensorRT version.
+
+**Export accuracy check first** (dota8 val, same tool/conditions across backends): PyTorch
+mAP50=0.9950, ONNX 0.9950, TensorRT 0.9950 — no accuracy loss from either export, clears the
+<1pt tolerance this project set going in given YOLO26's known end-to-end export issues
+(ultralytics#23397 et al.).
+
+| backend | size (MB) | mean latency | p50 | p95 | FPS |
+|---|---:|---:|---:|---:|---:|
+| PyTorch (FP32) | 48.7 | 71.54 ms | 71.49 ms | 74.08 ms | 14.0 |
+| ONNX Runtime GPU | 85.3 | 79.09 ms | 79.67 ms | 81.43 ms | 12.6 |
+| TensorRT FP16 | 45.0 | 20.22 ms | 20.14 ms | 21.09 ms | 49.4 |
+
+**TensorRT FP16 is ~3.5× faster than eager PyTorch** and comes in at the smallest file size.
+**ONNX Runtime GPU is actually slightly slower than native PyTorch here** — without a
+graph-compilation backend like TensorRT behind it, ONNX Runtime's GPU execution provider doesn't
+automatically beat PyTorch's own cuDNN kernels; it's included because it's the backend the free-tier
+HF Space demo runs on CPU (Phase 6), not because it's the fastest GPU option.
+
+Getting these numbers took several rounds of environment debugging on Colab's side, none of it
+this project's own code: a broken `torch._dynamo` build, HF's file CDN intermittently returning
+signed URLs with an invalid key, and ONNX Runtime's CUDA execution provider crashing the whole
+Colab runtime outright (worked around by running that inference in an isolated subprocess). Full
+writeup in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
+
 ## Licensing
 
 - Code: **AGPL-3.0** (required by [Ultralytics](https://github.com/ultralytics/ultralytics) AGPL-3.0; fine-tuned weights are derivative and carry the same license)
 - Dataset: **DOTA** is released for **academic use only — commercial use is prohibited**
 
-*(Benchmark numbers, demo GIF, and reproduction steps land in later phases. 中文版見 README.zh-TW.md)*
+*(Demo GIF and reproduction steps land in later phases. 中文版見 README.zh-TW.md)*
