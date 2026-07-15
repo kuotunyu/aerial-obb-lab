@@ -5,6 +5,9 @@
 以 **YOLO26-OBB**（旋轉框）在 **DOTAv1** 航拍資料集上 fine-tune，展示完整生命週期：
 Colab A100 訓練 → 與官方 baseline 對照評估 → 用數據回答「為什麼航拍場景需要 OBB」→ ONNX / TensorRT FP16 匯出與三框架 latency benchmark → Gradio demo + Hugging Face Space。
 
+**🚀 線上 demo（100% 瀏覽器端運算，無伺服器）：https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
+**Model card：https://huggingface.co/steven0226/yolo26m-obb-dota**
+
 ## 進度
 
 | Phase | 內容 | 位置 | 狀態 |
@@ -103,9 +106,49 @@ CPU 推論，不是因為它是 GPU 上最快的選項。
 provider 會讓整個 Colab 執行階段原生崩潰（後來改用獨立子行程隔離跑推論解決）。完整過程寫在
 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md)。
 
+## 重現步驟
+
+**本機（Windows，RTX 2070 等級以上 GPU）**
+```bash
+uv sync                          # 建立 .venv，安裝鎖定版本的依賴（見 pyproject.toml）
+# 在 .env 放 HF_TOKEN=hf_xxx（write 權限，HF 上傳/下載會用到）
+.venv/Scripts/python.exe scripts/smoke_test.py     # DOTA8 train/val/predict/resume/HF push/ONNX 全綠檢查
+.venv/Scripts/python.exe scripts/obb_analysis.py   # 重新產生 docs/analysis_results.md + assets/
+.venv/Scripts/python.exe demo/app.py               # 本機 Gradio demo（還沒有 fine-tuned best.pt 時會 fallback 用官方權重）
+```
+**不要用 `uv run`**——這個專案路徑含中文字，`uv run` 每次都會重寫一個 editable-install
+指標檔，CPython 內建的 `site.py` 有機會解碼失敗，把整個 venv 弄壞到要手動刪掉那個檔案才能
+修復（細節見 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6）。改直接呼叫
+`.venv/Scripts/python.exe`。
+
+**Colab（訓練 + benchmark）**——兩份 notebook 都是自包含的，不需要 clone 這個 repo：
+1. 上傳 [notebooks/01_train_dotav1_a100.ipynb](notebooks/01_train_dotav1_a100.ipynb) →
+   執行階段 → A100 GPU → 左側 🔑 Secrets 加 `HF_TOKEN`（write 權限）→ 全部執行。會自動下載
+   DOTAv1、切圖、fine-tune，訓練過程中持續把 checkpoint push 到你的 HF model repo（斷線也
+   不怕，重新打開同一份 notebook 再執行會自動接續）
+2. 上傳 [notebooks/02_benchmark_colab.ipynb](notebooks/02_benchmark_colab.ipynb) → T4 GPU
+   → 同一個 `HF_TOKEN` secret → 全部執行。會匯出 ONNX + TensorRT FP16、驗證匯出精度、
+   benchmark 三種後端
+3. 把每份 notebook 最後印出的 `=== PASTE BACK ===` 區塊複製下來記錄
+
+**HF Space（線上 demo）**：把 `demo/space-static/` 資料夾內容推到一個新的 **static** SDK
+Space（兩個資料夾裡的 `README.md` 都已經是 Space 需要的設定檔頭）。實際部署的是這個版本，
+原因見下方。`demo/space/`（Gradio SDK、伺服器端 ONNX Runtime CPU）保留在 repo 裡當作本機驗證
+過能跑的參考實作，但沒有真的部署成 Space。
+
+**為什麼會有兩份實作**：HF 現在即使是免費的 `cpu-basic` 層，要掛 Gradio/Docker 類型的 Space
+也需要 PRO 訂閱（`Static Spaces are free for everyone, but hosting Gradio and Docker Spaces on
+free cpu-basic requires a PRO subscription`——這是實際開發時撞到的 API 回應，不是猜的）。沒有
+PRO 的情況下，唯一能做到「永久、隨時可用、免費」的公開 demo 路線，是用 **static** Space +
+瀏覽器端推論。`demo/space-static/` 把同一套偵測流程用純 JavaScript +
+[ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）重新實作一遍——模型
+只下載一次（~10MB），之後每次推論都在訪客的瀏覽器裡跑完，完全不經過任何伺服器。開始寫
+JS 之前，先把輸入輸出格式（letterbox 前處理、`[N,7]` 輸出解碼）拿 Python 端結果反推驗證過，
+完整過程見 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md)。
+
 ## 授權
 
 - 程式碼：**AGPL-3.0**（[Ultralytics](https://github.com/ultralytics/ultralytics) 為 AGPL-3.0，fine-tune 權重屬衍生物、同授權）
 - 資料集：**DOTA 限學術用途，禁止商業使用**
 
-*（Demo GIF 與重現步驟於後續 Phase 補齊。English version: README.md）*
+*（Demo GIF 於 Phase 7 收尾補齊。English version: README.md）*

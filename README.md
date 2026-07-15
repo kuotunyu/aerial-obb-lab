@@ -5,6 +5,9 @@
 Fine-tuning **YOLO26-OBB** (oriented bounding boxes) on the **DOTAv1** aerial dataset, with a full lifecycle:
 train on Colab A100 → evaluate against the official baseline → quantify *why OBB beats horizontal boxes* on aerial imagery → export ONNX / TensorRT FP16 with a 3-framework latency benchmark → Gradio demo + Hugging Face Space.
 
+**🚀 Live demo (100% browser-side, no server): https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
+**Model card: https://huggingface.co/steven0226/yolo26m-obb-dota**
+
 ## Status
 
 | Phase | What | Where | Status |
@@ -113,9 +116,51 @@ signed URLs with an invalid key, and ONNX Runtime's CUDA execution provider cras
 Colab runtime outright (worked around by running that inference in an isolated subprocess). Full
 writeup in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
 
+## Reproduction
+
+**Local (Windows, RTX 2070–class GPU or better)**
+```bash
+uv sync                          # creates .venv, installs pinned deps (see pyproject.toml)
+# put HF_TOKEN=hf_xxx in .env (write-scoped token; needed for HF pull/push)
+.venv/Scripts/python.exe scripts/smoke_test.py     # DOTA8 train/val/predict/resume/HF-push/ONNX, all-green check
+.venv/Scripts/python.exe scripts/obb_analysis.py   # regenerates docs/analysis_results.md + assets/
+.venv/Scripts/python.exe demo/app.py               # local Gradio demo (falls back to official weights if no fine-tuned best.pt yet)
+```
+Don't use `uv run` on a path with non-ASCII characters — it rewrites an editable-install
+pointer file that CPython's `site.py` can fail to decode, corrupting the whole venv until the
+`.pth` file is removed (see [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6). Call
+`.venv/Scripts/python.exe` directly instead.
+
+**Colab (training + benchmark)** — both notebooks are self-contained, no repo clone needed:
+1. Upload [notebooks/01_train_dotav1_a100.ipynb](notebooks/01_train_dotav1_a100.ipynb) →
+   Runtime → A100 GPU → add `HF_TOKEN` (write scope) under 🔑 Secrets → Run all. Downloads
+   DOTAv1, tiles it, fine-tunes, and pushes checkpoints to your HF model repo as it goes
+   (survives disconnects — rerunning the same notebook auto-resumes).
+2. Upload [notebooks/02_benchmark_colab.ipynb](notebooks/02_benchmark_colab.ipynb) → T4 GPU →
+   same `HF_TOKEN` secret → Run all. Exports ONNX + TensorRT FP16, checks export parity, and
+   benchmarks all three backends.
+3. Copy each notebook's final `=== PASTE BACK ===` block to wherever you're tracking results.
+
+**HF Space (live demo)**: push the contents of `demo/space-static/` to a new Space with the
+**static** SDK (each folder's `README.md` is already the Space's config frontmatter). This is
+what's actually deployed — see below for why. `demo/space/` (Gradio SDK, server-side ONNX
+Runtime CPU) is kept in the repo as a working, locally-tested reference implementation, but was
+never deployed as a Space.
+
+**Why two implementations exist**: HF now requires a PRO subscription to host Gradio/Docker
+Spaces even on the free `cpu-basic` tier (`Static Spaces are free for everyone, but hosting
+Gradio and Docker Spaces on free cpu-basic requires a PRO subscription` — a real API response
+hit while building this). Without PRO, the only route to a permanent, always-on, free public
+demo is a **static** Space with inference running client-side. `demo/space-static/` reimplements
+the same detection pipeline as vanilla JS + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)
+(WASM) — the model downloads once (~10MB) and every prediction runs entirely in the visitor's
+browser, no server involved at all. I/O format (letterbox preprocessing, `[N,7]` output decoding)
+was reverse-engineered and verified against the Python reference before writing a single line of
+JS — see [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) for the full story.
+
 ## Licensing
 
 - Code: **AGPL-3.0** (required by [Ultralytics](https://github.com/ultralytics/ultralytics) AGPL-3.0; fine-tuned weights are derivative and carry the same license)
 - Dataset: **DOTA** is released for **academic use only — commercial use is prohibited**
 
-*(Demo GIF and reproduction steps land in later phases. 中文版見 README.zh-TW.md)*
+*(Demo GIF lands in Phase 7 wrap-up. 中文版見 README.zh-TW.md)*

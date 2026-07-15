@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["demo/app.py"],
       "port": 7860
+    },
+    {
+      "name": "static-space",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "demo/space-static"],
+      "port": 8765
     }
   ]
 }

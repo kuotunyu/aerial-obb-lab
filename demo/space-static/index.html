@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>YOLO26-OBB Aerial Detection (browser-side, no server)</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+</head>
+<body>
+<main>
+  <h1>🛰️ YOLO26n-OBB — Oriented Object Detection on Aerial Images</h1>
+  <p class="sub">
+    Runs entirely in your browser via <a href="https://onnxruntime.ai/docs/tutorials/web/" target="_blank" rel="noopener">ONNX Runtime Web</a> —
+    no server, no GPU, nothing sent anywhere. Upload an aerial/satellite image to get
+    <strong>rotated</strong> bounding boxes for 15 DOTA classes.
+    Part of a <a href="https://huggingface.co/steven0226/yolo26m-obb-dota" target="_blank" rel="noopener">training-to-deployment portfolio project</a>.
+  </p>
+
+  <div class="panel">
+    <div class="controls">
+      <label class="file-drop" id="fileDrop">
+        <input type="file" id="fileInput" accept="image/*" />
+        <span id="fileLabel">拖放圖片至此處，或點擊上傳<br/>drop an image, or click to upload</span>
+      </label>
+
+      <label>
+        Confidence: <span id="confVal">0.25</span>
+        <input type="range" id="confSlider" min="0.05" max="0.9" step="0.05" value="0.25" />
+      </label>
+
+      <fieldset id="classFilter">
+        <legend>Class filter (none checked = all)</legend>
+        <div id="classList" class="class-list"></div>
+      </fieldset>
+
+      <button id="detectBtn" disabled>Detect</button>
+      <p id="status" class="status"></p>
+    </div>
+
+    <div class="result">
+      <canvas id="canvas"></canvas>
+      <table id="resultsTable">
+        <thead>
+          <tr><th>class</th><th>conf</th><th>w(px)</th><th>h(px)</th><th>angle(°)</th></tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="footer">
+    Model: <code>yolo26n-obb</code> exported to ONNX (opset 19, no simplify) · License: DOTA
+    dataset academic-use-only, code AGPL-3.0 (Ultralytics)
+  </p>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

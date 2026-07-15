@@ -1,0 +1,128 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --bg: #ffffff;
+  --muted: #666;
+  --border: #ddd;
+  --accent: #2563eb;
+  --panel: #f7f7f8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8e8;
+    --bg: #121212;
+    --muted: #999;
+    --border: #333;
+    --accent: #60a5fa;
+    --panel: #1c1c1e;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  margin: 0;
+  padding: 24px;
+}
+
+main { max-width: 1100px; margin: 0 auto; }
+
+h1 { font-size: 1.4rem; margin-bottom: 4px; }
+.sub { color: var(--muted); font-size: 0.92rem; margin-top: 0; }
+.sub a { color: var(--accent); }
+
+.panel {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  margin-top: 20px;
+}
+@media (max-width: 800px) {
+  .panel { grid-template-columns: 1fr; }
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.file-drop {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 24px 12px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.file-drop.dragover { border-color: var(--accent); color: var(--accent); }
+.file-drop input { display: none; }
+
+label { font-size: 0.85rem; color: var(--muted); }
+input[type="range"] { width: 100%; }
+
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+legend { font-size: 0.8rem; color: var(--muted); padding: 0 4px; }
+.class-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.class-list label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg);
+  font-size: 0.82rem;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.status { font-size: 0.82rem; color: var(--muted); min-height: 1.2em; }
+
+.result { min-width: 0; }
+canvas {
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  display: block;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 0.82rem;
+}
+th, td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+th { color: var(--muted); font-weight: 600; }
+
+.footer {
+  margin-top: 28px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
