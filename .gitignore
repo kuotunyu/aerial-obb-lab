@@ -32,6 +32,7 @@ wandb/
 # Secrets & local config
 .env
 *.token
+notes.private.md
 
 # OS / editor
 Thumbs.db

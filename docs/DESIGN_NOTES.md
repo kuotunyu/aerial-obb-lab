@@ -1,17 +1,18 @@
 # DESIGN_NOTES — 技術決策、踩坑記錄、面試 Q&A
 
-> 隨實作進度持續補充。面試 Q&A 已在 Phase 7 收斂成 10 題精選。
+> Phase 0–7 完成後的歷史技術紀錄。硬體與套件限制描述的是當時環境，不是目前的安裝需求；
+> 現行重現方式請以根目錄 README 為準。
 
 ## 決策記錄
 
 ### D1. 模型選 yolo26m-obb（2026-07-13）
 - 官方 DOTAv1 test 指標（imgsz 1024）：n=78.9/52.4、s=80.9/54.8、**m=81.0/55.3**、l=81.6/56.2、x=81.7/56.7（mAP50/mAP50-95）
-- 選 m：A100 40GB 以 imgsz 1024 訓練綽綽有餘；比 l/x 輕，Colab T4 benchmark 與本機 RTX 2070 8GB demo 都跑得動；比 s 的 mAP50-95 高 0.5
+- 選 m：A100 40GB 以 imgsz 1024 訓練綽綽有餘；比 l/x 輕，Colab T4 benchmark 與原始開發工作站的本機 demo 都跑得動；比 s 的 mAP50-95 高 0.5
 - 被淘汰的替代：l/x（部署端太重、對作品集敘事無增益）、s（保留為 VRAM/時間爆炸時的退路）
-- YOLO26 vs YOLO11：YOLO26 是當前最新一代，end-to-end NMS-free、去 DFL、MuSGD optimizer，官方宣稱 DOTA OBB 比 YOLO11 高最多 +3.4 mAP
+- YOLO26 vs YOLO11：專案開始時（2026-07-13）YOLO26 是最新一代，end-to-end NMS-free、去 DFL、MuSGD optimizer，官方宣稱 DOTA OBB 比 YOLO11 高最多 +3.4 mAP
 
 ### D2. 訓練上 Colab A100、benchmark 上 Colab T4（2026-07-13）
-- 本機實際是 RTX 2070 8GB（手冊假設 4090 不符）、Windows 10、驅動 551.23
+- 原始開發工作站是 RTX 2070 8GB、Windows 10、驅動 551.23；這是歷史背景，不是公開 repo 的現行硬體需求
 - TensorRT engine build 與三框架 benchmark 改在 Colab（Linux 上 TensorRT 以 pip 安裝順暢；T4 同為 Turing 世代、官方 speed 基準也用 T4）
 - 這同時就是「TensorRT 在 Windows 卡關」的替代方案：交付可重現的 Colab notebook 而非綁死本機環境
 
@@ -43,7 +44,7 @@ epoch 要 ~74 分鐘、60 epoch 換算 70+ 小時，不可行。診斷與調整�
   但完整跑完 28 epoch 沒有 OOM，等於意外驗證了 `batch=40` 在這個資料量下是安全的
 
 ### D6. Resume/checkpoint 設計：用 HF Hub 當斷線安全網（2026-07-13）
-- 背景：Colab 免費/Pro 層都有連線時數上限（12–24 小時），`/content` 是這次執行階段專屬的
+- 背景：Colab runtime 是可能中斷的暫時性環境，`/content` 是這次執行階段專屬的
   暫存空間，執行階段一斷、沒存到別處的東西全部消失；DOTAv1 正式訓練一輪要跑數小時到十幾
   小時，中途斷線幾乎是必然會遇到的事，不是邊角案例
 - 設計：`src/obbkit/hf_checkpoint.py`（本機與 Colab notebook 共用同一份邏輯）掛兩個
@@ -74,12 +75,12 @@ OBB」這個問題的兩個不同層面：
 - 兩個指標合起來才是完整故事：第一個指標說明「差多少」，第二個指標說明「差了會怎樣」，
   單獨一個都不夠完整
 
-### D8. HF Space 免費層政策變了，改走純瀏覽器端推論（2026-07-15）
+### D8. 部署當時的 HF Space 限制促使改走純瀏覽器端推論（2026-07-15）
 - 意外發現：原計畫 `demo/space/`（Gradio SDK + onnxruntime CPU）要建立 Space 時，HF API
   直接回 `402 Payment Required`：「Static Spaces are free for everyone, but hosting Gradio
-  and Docker Spaces on free cpu-basic requires a PRO subscription」——免費層現在只剩
-  **static**（純靜態網頁）類型完全免費，Gradio/Docker 這種需要跑 Python 後端的 Space 型態
-  即使選 CPU 也要 PRO 訂閱。這是規劃階段沒有預期到的政策現實，不是我們能控制的變數
+  and Docker Spaces on free cpu-basic requires a PRO subscription」——當時 API 回應顯示
+  **static**（純靜態網頁）不需付費後端，而 Gradio/Docker 類型需要 PRO。這是規劃階段沒有
+  預期到的外部限制；平台政策日後可能再變動
 - 決策：不訂閱 PRO，改把偵測邏輯整個搬到瀏覽器端，用純 JavaScript + **ONNX Runtime Web**
   （WASM 執行）跑推論，模型下載一次後完全在訪客瀏覽器裡運算，符合 static Space 的免費條件。
   `demo/space/`（Gradio 版）保留在 repo 當本機驗證過的參考實作，沒有實際部署
@@ -91,21 +92,49 @@ OBB」這個問題的兩個不同層面：
   170 個偵測 vs. Python 端參考 172 個，數字對得上），才正式部署上 HF
 - 面試可講：這是「原計畫撞到外部政策變動」的真實案例，展示的不是「怎麼避免計畫外狀況」
   （避不掉），而是「撞到之後怎麼在限制下找到真正可行、而且更好的替代方案」——瀏覽器端推論
-  某種意義上比原本的 Gradio 方案更值得講：零伺服器成本、零延遲（不用等網路來回）、天生就
+  某種意義上比原本的 Gradio 方案更值得講：零伺服器成本、沒有伺服器網路往返延遲、天生就
   對隱私友善（圖片不會離開使用者的裝置）。另外也是「先驗證格式再寫程式碼」的具體實例——
   用 Python 端已知正確的結果反推 ONNX 輸出格式，而不是直接憑猜測寫 JS 再除錯，省下大量
   來回試錯的時間
+
+### D9. 三類缺失 AP 已用完整 validation 補回，不從既有圖表反推（2026-07-15）
+- 原 Colab session 結束前只保存了 12/15 類 fine-tuned AP；`plane`、`ship`、`storage tank`
+  只有 baseline。`results.csv` 是逐 epoch 聚合指標，confusion matrix 是固定門檻下的分類計數，
+  兩者都沒有重建每類 precision-recall curve 所需的完整預測排序，因此不能準確反推出 AP
+- 補值必須用同一個 `best.pt`、完整 15 類 val split、同版 `ultralytics==8.4.93` 重跑一次
+  validation；不能用 `classes=` 只評三類後假裝與原表相同。完成後才從
+  `ap_class_index` 對應的 `ap50` / `ap` 擷取三列
+- [03 recovery notebook](../notebooks/03_recover_per_class_metrics_colab.ipynb) 固定 checkpoint
+  SHA-256、Ultralytics 版本、固定 DOTAv1 release、split rates/gap 與 raw/split 圖片數；由於原
+  private cache 沒有可驗證的固定 revision/雜湊，補值流程一律重建並記錄 val 檔名、圖片大小與
+  label 內容 manifest；重建前還會核對實際下載的 1.99 GB ZIP 完整 SHA-256，不把可變 cache
+  或張數剛好相同的既有資料當成「完全相同」的證據。整體歷史 mAP 與已保存 12 類是一致性
+  閘門；只有全部在容許誤差內才可回填，否則保留輸出診斷、不改正式結果
+- 2026-07-15 已完成 A100 validation-only run（`ultralytics==8.4.93`），結果為 `plane`
+  0.952147 / 0.862352、`ship` 0.909448 / 0.762681、`storage tank` 0.850699 / 0.716696
+  （mAP50 / mAP50-95），aggregate 為 0.781614 / 0.631422。checkpoint SHA-256 是
+  `59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188`，原始 DOTAv1 ZIP 是
+  `59e84c52a8e7ee0ba89ee0679dc2a95833d6a11d0debba20ca01cbb11d58b816`，val manifest 是
+  `a44000fea30d6e69e12f3124565633d9ed35581b02a12f93f5c8617f5aa74867`。完整輸出收錄在
+  [CSV](per_class_metrics.csv) 與 [JSON](per_class_metrics.json)
+- 第一次 summary 顯示的 `FAIL` 是 integrity gate 的 false negative，不是結果失效：舊條件要求
+  raw label 行數與 loader 處理後的 `metrics.nt_per_class` 完全相等，但 Ultralytics 8.4.93 會先
+  移除重複標註列並驗證標註，因此有效 instances 合理地可能少於 raw lines。這次保存的 bundle
+  沒有包含 `val.cache`，事後審核改以 `0 < 有效 instances <= raw label lines` 並記錄差值；notebook
+  也已補強，未來執行會再把 `metrics.nt_per_class` / `metrics.nt_per_image` 與 loader 驗證後的 cache
+  做精確比對，raw lines 僅作上限診斷。其餘權重、資料、split、class order、aggregate 與歷史 12 類
+  閘門原本就全部通過。正式審核結論為 **PASS**，三類結果接受且不用重跑
 
 ## 踩坑記錄
 
 ### T1. torch ≥2.9 在 Windows 上 `WinError 1114`（c10.dll 初始化失敗）（2026-07-13）
 - 症狀：`import torch` 直接炸 `OSError: [WinError 1114]`，逐一 ctypes 載入定位到 `c10.dll` 本身 init 失敗（相依 DLL 都正常）
 - 原因：torch 2.9.0 起 Windows wheel 需要較新的 MSVC++ Redistributable（≥14.50；本機是 14.44）— [pytorch/pytorch#169429](https://github.com/pytorch/pytorch/issues/169429)
-- 更新 VC++ redist 需要管理員權限（winget 卡 UAC），改走免權限路線：**本機 torch pin `>=2.6,<2.9`**（2.8.x + cu128 在 Win10 正常）；Colab 端不受影響用最新
+- 原始工作站更新 VC++ redist 需要管理員權限（winget 卡 UAC），改走免權限路線：當時的選配 local-ML 環境 pin `torch>=2.6,<2.9`；Colab 端由 notebook 管理自己的 GPU stack
 - 面試可講：診斷手法（逐 DLL ctypes 載入縮小範圍）+ 環境隔離決策（本機開發環境 vs 雲端訓練環境各自鎖版本）
 
 ### T2. onnxruntime 1.23+ 同樣 DLL init 失敗、onnxslim 原生崩潰（2026-07-13）
-- 症狀一：`import onnxruntime`（1.27、1.23.2 都試過）→ `DLL load failed while importing onnxruntime_pybind11_state`（同 T1 的 MSVC 執行階段太舊家族）；**1.20.1 驗證可用** → pin `>=1.20,<1.21`
+- 症狀一：原始工作站 `import onnxruntime`（1.27、1.23.2 都試過）→ `DLL load failed while importing onnxruntime_pybind11_state`（同 T1 的 MSVC 執行階段問題）；**1.20.1 驗證可用** → 選配 local-ML 群組 pin `>=1.20,<1.21`
 - 症狀二：ultralytics 匯出 ONNX 時 onnxslim 0.1.94 直接 access violation（0xC0000005）讓 Python 整個死掉（exit code -1073741819）→ 本機匯出一律 `simplify=False`；Colab（Linux）維持預設 slimming
 - 附帶發現：ultralytics 匯出時會自動安裝 `onnxruntime-gpu`，與 CPU 版並存可能引發 DLL 衝突，uv sync 會把它清掉（venv 由 uv 管理的好處）
 - 根治方式：更新 MSVC++ Redistributable 到 14.50+（需管理員權限）後即可解除所有 pin；目前的 pin 是「無管理員權限也能完整跑通」的工程取捨
@@ -117,7 +146,7 @@ OBB」這個問題的兩個不同層面：
 - 教訓：uv 管理的 venv 裡混用 pip 有風險；ONNX 推論驗證固定 `device="cpu"` 讓 ultralytics 不觸發 `onnxruntime-gpu` 自動安裝
 
 ### T4. 中文路徑下 OpenCV 讀寫圖片會靜默失敗（2026-07-13）
-- 背景：專案最終路徑含中文與空格（`D:\CC_F5_專案\...\1_YOLO26 OBB 旋轉框偵測：訓練到部署`），是 Phase 0 原本刻意要避開的風險，後來使用者要求統一搬到這個慣用路徑下
+- 背景：專案曾在 `<project-root>\含中文與空格的路徑` 下開發，用來驗證 Windows 非 ASCII 路徑的相容性
 - 症狀：`cv2.imread(path)` / `cv2.imwrite(path, img)` 在非 ASCII 路徑下不會拋例外，而是**靜默回傳 None / 寫入失敗**（OpenCV 底層用 ANSI codepage API 開檔）——比崩潰更危險，容易誤判「跑完了但其實沒寫到檔案」
 - 解法：`src/obbkit/viz.py` 改用 `np.fromfile(path) + cv2.imdecode(...)` 讀、`cv2.imencode(...) + buf.tofile(path)` 寫，繞過 OpenCV 的路徑開檔，改用 Python/numpy 自己的檔案 I/O（原生支援 Unicode）。已在中文路徑下實測驗證通過
 - 面試可講：這是「知道某函式庫在特定平台/編碼下有隱性限制」的經驗，以及用位元組流隔離掉外部 C 函式庫的路徑編碼問題是通用解法（不只 OpenCV，很多用 C/C++ 底層做檔案 I/O 的函式庫在 Windows 上都有同樣問題）
@@ -153,7 +182,7 @@ OBB」這個問題的兩個不同層面：
 - 解法：刪掉那個壞掉的 `.pth` 檔案（本專案沒有任何程式碼真的依賴 editable install，
   `demo/app.py`、`scripts/*.py` 都自己手動 `sys.path.insert` 加 `src/`），之後**不要用
   `uv run`**、改直接呼叫 `.venv/Scripts/python.exe` 啟動（`.claude/launch.json` 已改成
-  這樣），繞開會重寫 `.pth` 的路徑
+  這樣），本機啟動設定也直接呼叫 venv Python，繞開會重寫 `.pth` 的路徑
 - 面試可講：這是 T4（OpenCV 中文路徑靜默失敗）的姊妹踩坑，但更嚴重——不是單一函式庫的
   問題，是 **Python 直譯器啟動流程本身**在中文/非 ASCII 路徑下會炸，而且是「一次寫壞、
   之後每次啟動都壞」的延遲效應，比當下就報錯更難追（一開始以為是 `uv` 的問題，實際上是
@@ -230,7 +259,7 @@ OBB」這個問題的兩個不同層面：
 
 - **Q: 為什麼選 yolo26m，不是 s/l/x？**
   A: m 跟 s 的官方 mAP50 只差 0.1，但 mAP50-95 高 0.5；跟 l/x 比輕很多，A100 40GB 訓練、
-  T4 benchmark、本機 RTX 2070 demo 三個環境都跑得動,不用為了不同階段換不同模型。l/x
+  T4 benchmark、原始工作站的本機 demo 三個環境都跑得動，不用為了不同階段換不同模型。l/x
   對這個作品集的敘事（訓練到部署全流程）沒有額外增益，只會讓部署端更重，s 留著當 VRAM/
   時間爆炸時的退路（實際上沒用到）。選型是綜合考慮訓練/部署/demo 三個環境的最大公約數，
   不是單看一個 mAP 數字。

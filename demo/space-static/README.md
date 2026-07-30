@@ -18,9 +18,11 @@ server, no GPU, nothing uploaded anywhere.
 
 - Model: `yolo26n-obb` exported to ONNX, running client-side (~10MB model, downloaded once and
   cached by the browser)
+- This live demo does not run the fine-tuned `yolo26m-obb` checkpoint; that model is published
+  separately for evaluation and deployment experiments
 - Adjustable confidence threshold and per-class filtering; the table reports each detection's
   rotation angle
-- Built as a **static Space** specifically to avoid needing a paid backend tier — the whole
+- Built as a **static Space** that requires no hosted compute tier — the whole
   demo is HTML/CSS/JS plus the ONNX file, no Python runtime involved
 - Part of a full training-to-deployment portfolio project (fine-tuning YOLO26m-OBB on DOTAv1,
   ONNX/TensorRT benchmarks, HBB-vs-OBB analysis) — see

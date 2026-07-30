@@ -8,24 +8,47 @@ train on Colab A100 → evaluate against the official baseline → quantify *why
 **🚀 Live demo (100% browser-side, no server): https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
 **Model card: https://huggingface.co/steven0226/yolo26m-obb-dota**
 
+> The live Space deliberately uses the lightweight official `yolo26n-obb` ONNX model so it can
+> run for free in a browser. The fine-tuned `yolo26m-obb` artifacts evaluated and benchmarked in
+> this project are published in the model repository above and power the optional local demo.
+
+## Project Flow
+
+```mermaid
+flowchart LR
+    A["1 · Prepare data<br/>tile DOTAv1"] --> B["2 · Train<br/>A100 + resumable checkpoints"]
+    B --> C["3 · Evaluate<br/>matched official baseline"]
+    C --> D["4 · Explain OBB<br/>quantitative geometry evidence"]
+    D --> E["5 · Deploy<br/>ONNX · TensorRT · demos"]
+```
+
+Detailed training, evaluation, analysis, and deployment branches are documented below.
+The public browser demo is intentionally a separate lightweight
+path; it does not represent the fine-tuned medium checkpoint's measured accuracy or T4 latency.
+
 ## Status
 
 | Phase | What | Where | Status |
 |---|---|---|---|
 | 0 | Scaffold & environment | local | ✅ |
-| 1 | DOTA8 smoke test (train→val→predict→resume→HF push→ONNX) | local (RTX 2070) | ✅ |
+| 1 | DOTA8 smoke test (train→val→predict→resume→HF push→ONNX) | original local workstation | ✅ |
 | 2 | Full fine-tune on DOTAv1 | Colab A100 | ✅ |
 | 3 | Evaluation vs. official baseline | Colab + local | ✅ |
 | 4 | "Why OBB" quantitative analysis | local | ✅ |
 | 5 | ONNX / TensorRT export + benchmark | Colab GPU | ✅ |
-| 6 | Gradio demo + HF Space (CPU) | local + HF | ✅ |
+| 6 | Local Gradio reference + static browser HF Space | local + HF | ✅ |
 | 7 | Docs, model card, wrap-up | — | ✅ |
 
 ## Evaluation: Fine-tuned vs. Official Baseline
 
 Fine-tuned `yolo26m-obb.pt` on a re-split DOTAv1 (Colab A100, `split_dota` rates `[0.8, 1.2]`,
-28/30 epochs, early-stopped on `patience=15`). Full per-class breakdown, training-curve
-analysis, and confusion-matrix findings in
+28/30 epochs, early-stopped on `patience=15`). A checksum- and provenance-gated validation-only
+run completed on 2026-07-15 and restored the three per-class rows that the original session had
+not preserved: `plane` 0.952147 / 0.862352, `ship` 0.909448 / 0.762681, and `storage tank`
+0.850699 / 0.716696 (mAP50 / mAP50-95). The complete 15-class result is available as
+[CSV](docs/per_class_metrics.csv) and [JSON](docs/per_class_metrics.json); the reproducibility
+notebook is [notebooks/03_recover_per_class_metrics_colab.ipynb](notebooks/03_recover_per_class_metrics_colab.ipynb).
+The comparison, recovery review, training-curve analysis, and confusion-matrix findings are in
 [docs/training_results.md](docs/training_results.md).
 
 | model | split | mAP50 | mAP50-95 |
@@ -87,9 +110,8 @@ overlap (and the NMS decision) reflect reality.
 ## Deployment Benchmark: PyTorch vs. ONNX Runtime vs. TensorRT FP16
 
 Exported the fine-tuned `best.pt` to ONNX and a TensorRT FP16 engine on a Colab **Tesla T4**
-(`notebooks/02_benchmark_colab.ipynb`, reproducible standalone — original plan was to build the
-TensorRT engine on a local RTX 4090; actual local hardware is an RTX 2070 8GB, so this moved to
-Colab, which doubles as the workaround for TensorRT's rough Windows install story). Batch=1,
+(`notebooks/02_benchmark_colab.ipynb`, reproducible standalone). Export and benchmarking run in
+Colab rather than depending on a contributor's local GPU or Windows TensorRT setup. Batch=1,
 imgsz=1024, 20 warmup + 100 timed runs per backend, engine build tied to this exact GPU model
 and TensorRT version.
 
@@ -108,7 +130,7 @@ mAP50=0.9950, ONNX 0.9950, TensorRT 0.9950 — no accuracy loss from either expo
 **ONNX Runtime GPU is actually slightly slower than native PyTorch here** — without a
 graph-compilation backend like TensorRT behind it, ONNX Runtime's GPU execution provider doesn't
 automatically beat PyTorch's own cuDNN kernels. It's included for completeness and because the
-ONNX export is the common ancestor of both deployment paths below (server-side ONNX Runtime CPU
+ONNX export is the common ancestor of both implementation paths below (server-side ONNX Runtime CPU
 in `demo/space/`, and ONNX Runtime **Web** running client-side in the actually-deployed
 `demo/space-static/`) — not because GPU ONNX Runtime itself is the fastest option here.
 
@@ -120,20 +142,47 @@ writeup in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
 
 ## Reproduction
 
-**Local (Windows, RTX 2070–class GPU or better)**
-```bash
-uv sync                          # creates .venv, installs pinned deps (see pyproject.toml)
-# put HF_TOKEN=hf_xxx in .env (write-scoped token; needed for HF pull/push)
-.venv/Scripts/python.exe scripts/smoke_test.py     # DOTA8 train/val/predict/resume/HF-push/ONNX, all-green check
-.venv/Scripts/python.exe scripts/obb_analysis.py   # regenerates docs/analysis_results.md + assets/
-.venv/Scripts/python.exe demo/app.py               # local Gradio demo (falls back to official weights if no fine-tuned best.pt yet)
-```
-Don't use `uv run` on a path with non-ASCII characters — it rewrites an editable-install
-pointer file that CPython's `site.py` can fail to decode, corrupting the whole venv until the
-`.pth` file is removed (see [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6). Call
-`.venv/Scripts/python.exe` directly instead.
+**Local development (CPU-only; no training or model inference required)**
 
-**Colab (training + benchmark)** — both notebooks are self-contained, no repo clone needed:
+The repository pins Python 3.11 in `.python-version`. Virtual environments are machine-local:
+never copy `.venv` from another computer.
+
+```powershell
+uv python install 3.11
+uv venv --python 3.11
+uv sync --locked --no-install-project
+.venv/Scripts/python.exe scripts/repo_check.py
+.venv/Scripts/python.exe -m pytest
+.venv/Scripts/python.exe -m http.server 8765 --directory demo/space-static
+```
+
+Open `http://localhost:8765` for the browser-only demo. The default sync installs analysis and
+development dependencies, but deliberately excludes Torch, CUDA, Ultralytics, ONNX Runtime, and
+Gradio. `tool.uv.link-mode = "copy"` also keeps the environment isolated from uv's package cache.
+If `.venv` was copied from another computer or uses the wrong interpreter, rebuild it once with
+`uv venv --clear --python 3.11`. On Linux/macOS, use `.venv/bin/python` in place of the Windows
+interpreter path shown above.
+
+`--no-install-project` avoids an editable-install `.pth` pointer, which can break CPython startup
+when a Windows checkout path contains non-ASCII characters (see
+[docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6). Call `.venv/Scripts/python.exe` directly instead
+of `uv run` for the same reason.
+
+**Optional local ML / Gradio**
+
+```powershell
+uv sync --locked --no-install-project --group demo
+# HF_MODEL_REPO is optional; without it the app uses local best.pt, then official weights
+.venv/Scripts/python.exe demo/app.py
+```
+
+The optional group is for convenience only and deliberately uses CPU-only PyTorch wheels. GPU
+training, full evaluation, export, and benchmark remain Colab workflows; use a separate matching
+PyTorch environment if you intentionally want local GPU inference. `HF_TOKEN` is needed only for
+Hub upload/download operations, not for the default checks or static demo.
+
+**Colab (training + evaluation recovery + benchmark)** — all three notebooks are
+self-contained; no repo clone is needed:
 1. Upload [notebooks/01_train_dotav1_a100.ipynb](notebooks/01_train_dotav1_a100.ipynb) →
    Runtime → A100 GPU → add `HF_TOKEN` (write scope) under 🔑 Secrets → Run all. Downloads
    DOTAv1, tiles it, fine-tunes, and pushes checkpoints to your HF model repo as it goes
@@ -141,7 +190,18 @@ pointer file that CPython's `site.py` can fail to decode, corrupting the whole v
 2. Upload [notebooks/02_benchmark_colab.ipynb](notebooks/02_benchmark_colab.ipynb) → T4 GPU →
    same `HF_TOKEN` secret → Run all. Exports ONNX + TensorRT FP16, checks export parity, and
    benchmarks all three backends.
-3. Copy each notebook's final `=== PASTE BACK ===` block to wherever you're tracking results.
+3. To reproduce and verify the three recovered per-class rows without retraining, upload
+   [notebooks/03_recover_per_class_metrics_colab.ipynb](notebooks/03_recover_per_class_metrics_colab.ipynb)
+   → Colab GPU (A100 recommended) → Run all. It needs no token: it verifies the public checkpoint
+   from a fixed revision, verifies the exact DOTAv1 ZIP SHA-256, rebuilds the original tiling
+   settings, and records a val manifest. If automatic weight download fails, download `best.pt`
+   from the [pinned model revision](https://huggingface.co/steven0226/yolo26m-obb-dota/blob/3f5705719a6e161fd105118fa8ba80b9a6cb1536/best.pt)
+   and upload it as `/content/best.pt`; the project owner can alternatively use the ignored local
+   `runs/yolo26m-obb-dotav1/weights/best.pt`. It exports a complete 15-class CSV/JSON and verifies
+   the recovered rows against the historical aggregate and 12 previously preserved classes. The
+   accepted run is already recorded in [docs/training_results.md](docs/training_results.md); no
+   rerun is required unless you want to reproduce that evidence independently.
+4. Copy each notebook's final `=== PASTE BACK ===` block to wherever you're tracking results.
 
 **HF Space (live demo)**: push the contents of `demo/space-static/` to a new Space with the
 **static** SDK (each folder's `README.md` is already the Space's config frontmatter). This is
@@ -149,11 +209,11 @@ what's actually deployed — see below for why. `demo/space/` (Gradio SDK, serve
 Runtime CPU) is kept in the repo as a working, locally-tested reference implementation, but was
 never deployed as a Space.
 
-**Why two implementations exist**: HF now requires a PRO subscription to host Gradio/Docker
-Spaces even on the free `cpu-basic` tier (`Static Spaces are free for everyone, but hosting
-Gradio and Docker Spaces on free cpu-basic requires a PRO subscription` — a real API response
-hit while building this). Without PRO, the only route to a permanent, always-on, free public
-demo is a **static** Space with inference running client-side. `demo/space-static/` reimplements
+**Why two implementations exist**: at implementation time (2026-07-15), the HF API required a
+PRO subscription to host Gradio/Docker Spaces on `cpu-basic` (`Static Spaces are free for
+everyone, but hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription`).
+Given that constraint, the no-cost public route was a **static** Space with inference running
+client-side. `demo/space-static/` reimplements
 the same detection pipeline as vanilla JS + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)
 (WASM) — the model downloads once (~10MB) and every prediction runs entirely in the visitor's
 browser, no server involved at all. I/O format (letterbox preprocessing, `[N,7]` output decoding)

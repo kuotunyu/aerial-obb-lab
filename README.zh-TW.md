@@ -8,24 +8,46 @@ Colab A100 訓練 → 與官方 baseline 對照評估 → 用數據回答「為�
 **🚀 線上 demo（100% 瀏覽器端運算，無伺服器）：https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
 **Model card：https://huggingface.co/steven0226/yolo26m-obb-dota**
 
+> 線上 Space 為了能免費在瀏覽器內執行，刻意使用輕量的官方 `yolo26n-obb` ONNX 模型；本專案
+> 評估與 benchmark 的 fine-tuned `yolo26m-obb` 成果放在上方 model repo，並供選配的本機 demo 使用。
+
+## 專案流程
+
+```mermaid
+flowchart LR
+    A["1 · 資料準備<br/>DOTAv1 切圖"] --> B["2 · 模型訓練<br/>A100 + 可續跑 checkpoint"]
+    B --> C["3 · 公平評估<br/>同條件官方 baseline"]
+    C --> D["4 · 解釋 OBB<br/>量化幾何證據"]
+    D --> E["5 · 模型部署<br/>ONNX · TensorRT · demos"]
+```
+
+更細的訓練、評估、分析與部署分支收錄在下方各節。公開瀏覽器
+demo 是刻意分開的輕量部署路線，不能代表 fine-tuned medium checkpoint 的實測準確度或 T4 latency。
+
 ## 進度
 
 | Phase | 內容 | 位置 | 狀態 |
 |---|---|---|---|
 | 0 | 環境與骨架 | 本機 | ✅ |
-| 1 | DOTA8 smoke test | 本機（RTX 2070） | ✅ |
+| 1 | DOTA8 smoke test | 原開發電腦 | ✅ |
 | 2 | DOTAv1 正式 fine-tune | Colab A100 | ✅ |
 | 3 | 對照官方 baseline 評估 | Colab + 本機 | ✅ |
 | 4 | 「為什麼需要 OBB」量化分析 | 本機 | ✅ |
 | 5 | ONNX / TensorRT 匯出與 benchmark | Colab GPU | ✅ |
-| 6 | Gradio demo + HF Space（CPU） | 本機 + HF | ✅ |
+| 6 | 本機 Gradio 參考版 + 瀏覽器 static HF Space | 本機 + HF | ✅ |
 | 7 | 文件、model card、收尾 | — | ✅ |
 
 ## 評估：Fine-tuned vs 官方 Baseline
 
 在 Colab A100 上用重新切過的 DOTAv1（`split_dota` 尺度 `[0.8, 1.2]`）fine-tune
-`yolo26m-obb.pt`，跑了 28/30 個 epoch、由 `patience=15` 觸發提早停止。完整逐類別對照、
-訓練曲線分析與混淆矩陣發現見 [docs/training_results.md](docs/training_results.md)。
+`yolo26m-obb.pt`，跑了 28/30 個 epoch、由 `patience=15` 觸發提早停止。2026-07-15 已完成有
+checksum 與來源證據閘門的 validation-only 補值，補回原 session 未保存的三類：`plane`
+0.952147 / 0.862352、`ship` 0.909448 / 0.762681、`storage tank` 0.850699 / 0.716696
+（mAP50 / mAP50-95）。完整 15 類結果可查閱 [CSV](docs/per_class_metrics.csv) 與
+[JSON](docs/per_class_metrics.json)，重現流程在
+[notebooks/03_recover_per_class_metrics_colab.ipynb](notebooks/03_recover_per_class_metrics_colab.ipynb)。
+逐類別對照、補值審核、訓練曲線分析與混淆矩陣發現見
+[docs/training_results.md](docs/training_results.md)。
 
 | 模型 | split | mAP50 | mAP50-95 |
 |---|---|---:|---:|
@@ -81,9 +103,8 @@ Colab A100 訓練 → 與官方 baseline 對照評估 → 用數據回答「為�
 ## 部署 Benchmark：PyTorch vs ONNX Runtime vs TensorRT FP16
 
 在 Colab **Tesla T4** 上把 fine-tuned `best.pt` 匯出成 ONNX 跟 TensorRT FP16 engine
-（[notebooks/02_benchmark_colab.ipynb](notebooks/02_benchmark_colab.ipynb)，可獨立重現——
-原計畫在本機 RTX 4090 build engine，實際本機硬體是 RTX 2070 8GB，因此改到 Colab 上做，
-這同時也是「TensorRT 在 Windows 上安裝卡關」的替代方案）。batch=1、imgsz=1024，每個後端
+（[notebooks/02_benchmark_colab.ipynb](notebooks/02_benchmark_colab.ipynb)，可獨立重現）。匯出
+與 benchmark 固定在 Colab 執行，不綁定貢獻者自己的 GPU 或 Windows TensorRT 環境。batch=1、imgsz=1024，每個後端
 20 次 warmup + 100 次計時取平均，engine 綁定這次 build 用的 GPU 型號與 TensorRT 版本。
 
 **先做匯出精度驗證**（dota8 val，同工具同條件比較三個後端）：PyTorch mAP50=0.9950、
@@ -109,20 +130,46 @@ provider 會讓整個 Colab 執行階段原生崩潰（後來改用獨立子行�
 
 ## 重現步驟
 
-**本機（Windows，RTX 2070 等級以上 GPU）**
-```bash
-uv sync                          # 建立 .venv，安裝鎖定版本的依賴（見 pyproject.toml）
-# 在 .env 放 HF_TOKEN=hf_xxx（write 權限，HF 上傳/下載會用到）
-.venv/Scripts/python.exe scripts/smoke_test.py     # DOTA8 train/val/predict/resume/HF push/ONNX 全綠檢查
-.venv/Scripts/python.exe scripts/obb_analysis.py   # 重新產生 docs/analysis_results.md + assets/
-.venv/Scripts/python.exe demo/app.py               # 本機 Gradio demo（還沒有 fine-tuned best.pt 時會 fallback 用官方權重）
-```
-**不要用 `uv run`**——這個專案路徑含中文字，`uv run` 每次都會重寫一個 editable-install
-指標檔，CPython 內建的 `site.py` 有機會解碼失敗，把整個 venv 弄壞到要手動刪掉那個檔案才能
-修復（細節見 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6）。改直接呼叫
-`.venv/Scripts/python.exe`。
+**本機開發（CPU-only，不需訓練或模型推論）**
 
-**Colab（訓練 + benchmark）**——兩份 notebook 都是自包含的，不需要 clone 這個 repo：
+專案以 `.python-version` 固定 Python 3.11。虛擬環境只屬於建立它的那台電腦，請勿從其他電腦
+複製 `.venv`。
+
+```powershell
+uv python install 3.11
+uv venv --python 3.11
+uv sync --locked --no-install-project
+.venv/Scripts/python.exe scripts/repo_check.py
+.venv/Scripts/python.exe -m pytest
+.venv/Scripts/python.exe -m http.server 8765 --directory demo/space-static
+```
+
+開啟 `http://localhost:8765` 即可使用純瀏覽器 demo。預設安裝只含分析與開發工具，刻意不安裝
+Torch、CUDA、Ultralytics、ONNX Runtime 或 Gradio；`tool.uv.link-mode = "copy"` 也會避免環境
+與 uv 套件快取彼此污染。
+如果 `.venv` 是從其他電腦複製過來或用了錯誤直譯器，請先用
+`uv venv --clear --python 3.11` 重建一次。Linux/macOS 請把上方 Windows 路徑改成
+`.venv/bin/python`。
+
+`--no-install-project` 會避開 editable-install 的 `.pth` 指標檔；Windows checkout 路徑含非 ASCII
+字元時，該檔可能讓 CPython 啟動失敗（細節見 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6）。
+基於同一原因，請直接呼叫 `.venv/Scripts/python.exe`，不要用 `uv run`。
+
+**選配：本機 ML／Gradio**
+
+```powershell
+uv sync --locked --no-install-project --group demo
+# HF_MODEL_REPO 可省略；未設定時會依序使用本機 best.pt、官方權重
+.venv/Scripts/python.exe demo/app.py
+```
+
+此群組只為方便本機展示，並刻意使用 CPU-only PyTorch wheel。GPU 訓練、完整評估、匯出與
+benchmark 仍固定使用 Colab；若真的要使用本機 GPU 推論，請另建符合自己 GPU 的 PyTorch
+環境。只有 Hub 上傳／下載需要
+`HF_TOKEN`，預設檢查與 static demo 都不需要。
+
+**Colab（訓練 + 評估補值 + benchmark）**——三份 notebook 都是自包含的，不需要 clone
+這個 repo：
 1. 上傳 [notebooks/01_train_dotav1_a100.ipynb](notebooks/01_train_dotav1_a100.ipynb) →
    執行階段 → A100 GPU → 左側 🔑 Secrets 加 `HF_TOKEN`（write 權限）→ 全部執行。會自動下載
    DOTAv1、切圖、fine-tune，訓練過程中持續把 checkpoint push 到你的 HF model repo（斷線也
@@ -130,17 +177,26 @@ uv sync                          # 建立 .venv，安裝鎖定版本的依賴（
 2. 上傳 [notebooks/02_benchmark_colab.ipynb](notebooks/02_benchmark_colab.ipynb) → T4 GPU
    → 同一個 `HF_TOKEN` secret → 全部執行。會匯出 ONNX + TensorRT FP16、驗證匯出精度、
    benchmark 三種後端
-3. 把每份 notebook 最後印出的 `=== PASTE BACK ===` 區塊複製下來記錄
+3. 若要免重訓重現並驗證已補回的三類指標，上傳
+   [notebooks/03_recover_per_class_metrics_colab.ipynb](notebooks/03_recover_per_class_metrics_colab.ipynb)
+   → Colab GPU（建議 A100）→ 全部執行，不需要 token。它會核對固定 revision 的公開權重，
+   核對 DOTAv1 ZIP 的完整 SHA-256，再依原參數重切並記錄 val manifest；若權重自動下載失敗，
+   可從[固定 model revision](https://huggingface.co/steven0226/yolo26m-obb-dota/blob/3f5705719a6e161fd105118fa8ba80b9a6cb1536/best.pt)
+   下載後上傳成 `/content/best.pt`。專案擁有者也可使用未納入 Git 的本機
+   `runs/yolo26m-obb-dotav1/weights/best.pt`。它會匯出完整 15 類 CSV/JSON，並用歷史 aggregate
+   與原先保存的 12 類驗證補值。通過審核的結果已記錄在
+   [docs/training_results.md](docs/training_results.md)；除非要獨立重現證據，否則不需要再跑一次
+4. 把每份 notebook 最後印出的 `=== PASTE BACK ===` 區塊複製下來記錄
 
 **HF Space（線上 demo）**：把 `demo/space-static/` 資料夾內容推到一個新的 **static** SDK
 Space（兩個資料夾裡的 `README.md` 都已經是 Space 需要的設定檔頭）。實際部署的是這個版本，
 原因見下方。`demo/space/`（Gradio SDK、伺服器端 ONNX Runtime CPU）保留在 repo 裡當作本機驗證
 過能跑的參考實作，但沒有真的部署成 Space。
 
-**為什麼會有兩份實作**：HF 現在即使是免費的 `cpu-basic` 層，要掛 Gradio/Docker 類型的 Space
-也需要 PRO 訂閱（`Static Spaces are free for everyone, but hosting Gradio and Docker Spaces on
-free cpu-basic requires a PRO subscription`——這是實際開發時撞到的 API 回應，不是猜的）。沒有
-PRO 的情況下，唯一能做到「永久、隨時可用、免費」的公開 demo 路線，是用 **static** Space +
+**為什麼會有兩份實作**：本專案部署當時（2026-07-15），HF API 回應顯示 `cpu-basic` 上的
+Gradio/Docker Space 需要 PRO 訂閱（`Static Spaces are free for everyone, but hosting Gradio
+and Docker Spaces on free cpu-basic requires a PRO subscription`）。在這個限制下，不需付費後端的
+公開 demo 路線是 **static** Space +
 瀏覽器端推論。`demo/space-static/` 把同一套偵測流程用純 JavaScript +
 [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）重新實作一遍——模型
 只下載一次（~10MB），之後每次推論都在訪客的瀏覽器裡跑完，完全不經過任何伺服器。開始寫
