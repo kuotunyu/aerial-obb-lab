@@ -4,7 +4,9 @@
 62,030 train / 21,271 val tiles at 1024px) on a Colab A100, evaluated against the same
 official checkpoint on the identical val split. Full run config in `args.yaml` (archived to the
 HF model repo, [steven0226/yolo26m-obb-dota](https://huggingface.co/steven0226/yolo26m-obb-dota));
-training/eval scripts in `notebooks/01_train_dotav1_a100.ipynb`.
+training/eval scripts in `notebooks/01_train_dotav1_a100.ipynb`. The completed validation-only
+recovery workflow is `notebooks/03_recover_per_class_metrics_colab.ipynb`; its accepted full
+15-class output is also stored as [CSV](per_class_metrics.csv) and [JSON](per_class_metrics.json).
 
 ## Aggregate comparison
 
@@ -36,8 +38,10 @@ of this run is demonstrating (and quantifying) that ceiling, not chasing a score
 
 ## Per-class comparison (fine-tuned − baseline)
 
-12 of 15 classes below; `plane` / `ship` / `storage tank` fine-tuned per-class numbers weren't
-captured before the Colab session ended (baseline-only for those three).
+All 15 fine-tuned classes are recorded below. The original Colab session preserved 12 rows;
+`plane`, `ship`, and `storage tank` were recovered by the reviewed validation-only run completed
+on 2026-07-15. Exact machine-readable values and validation instance accounting are in
+[per_class_metrics.csv](per_class_metrics.csv) and [per_class_metrics.json](per_class_metrics.json).
 
 | class | baseline mAP50 | fine-tuned mAP50 | Δ mAP50 | baseline mAP50-95 | fine-tuned mAP50-95 | Δ mAP50-95 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -53,9 +57,35 @@ captured before the Colab session ended (baseline-only for those three).
 | roundabout | 0.689 | 0.668 | -0.021 | 0.531 | 0.528 | -0.003 |
 | harbor | 0.876 | 0.848 | -0.028 | 0.637 | 0.591 | -0.046 |
 | basketball court | 0.716 | 0.641 | -0.075 | 0.660 | 0.587 | -0.073 |
-| plane | 0.953 | — | — | 0.863 | — | — |
-| ship | 0.900 | — | — | 0.754 | — | — |
-| storage tank | 0.833 | — | — | 0.705 | — | — |
+| plane | 0.953 | 0.952 | -0.001 | 0.863 | 0.862 | -0.001 |
+| ship | 0.900 | 0.909 | +0.009 | 0.754 | 0.763 | +0.009 |
+| storage tank | 0.833 | 0.851 | +0.018 | 0.705 | 0.717 | +0.012 |
+
+### Validation recovery provenance (completed 2026-07-15)
+
+[`03_recover_per_class_metrics_colab.ipynb`](../notebooks/03_recover_per_class_metrics_colab.ipynb)
+does not train. It evaluates all 15 classes at 1024px after rebuilding `[0.8, 1.2]`, gap 500 with
+`ultralytics==8.4.93`. The reviewed run passed the model, dataset, split, class-order, aggregate,
+and 12 historical per-class consistency checks:
+
+- checkpoint SHA-256: `59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188`
+- raw DOTAv1 ZIP SHA-256: `59e84c52a8e7ee0ba89ee0679dc2a95833d6a11d0debba20ca01cbb11d58b816`
+- validation manifest SHA-256: `a44000fea30d6e69e12f3124565633d9ed35581b02a12f93f5c8617f5aa74867`
+- rebuilt split: 62,030 train / 21,271 val tiles; recovered aggregate: mAP50 `0.781614`,
+  mAP50-95 `0.631422`
+
+The notebook's first summary printed `FAIL`, but review showed this was a **false negative in the
+gate**, not a metric or provenance failure. That gate required raw `.txt` label-line counts to
+equal `metrics.nt_per_class` exactly. Ultralytics 8.4.93 removes duplicate label rows and validates
+labels in the data loader before `metrics.nt_per_class` is counted, so processed valid instances
+may legitimately be fewer than raw lines. For the saved bundle, the corrected post-review
+accounting requires each validator count to be positive and no greater than its raw-line count,
+while reporting the difference explicitly. The bundle did not include `val.cache`, so the notebook
+has also been strengthened for future runs to compare `metrics.nt_per_class` and
+`metrics.nt_per_image` exactly against the loader-validated cache, with raw-line counts retained
+only as an upper-bound diagnostic. The reviewed run is **PASS**, the three rows above are formally
+accepted, and no Colab rerun is required. No metric was inferred from `results.csv` or the
+confusion matrix.
 
 **Note on scale-choice hypothesis**: `SPLIT_RATES=[0.8, 1.2]` was chosen expecting the `0.8`
 (downscale) rate to help large/elongated classes (bridge, harbor, large vehicle — the ones

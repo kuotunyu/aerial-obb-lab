@@ -24,9 +24,8 @@ pipeline_tag: object-detection
 
 Fine-tuned [`yolo26m-obb`](https://docs.ultralytics.com/) (oriented bounding box detection) on
 a re-split of the [DOTAv1](https://captain-whu.github.io/DOTA/) aerial imagery dataset. Part of
-a training-to-deployment portfolio project — full writeup, HBB-vs-OBB analysis, and
-ONNX/TensorRT benchmarks alongside the training/eval code and notebooks (source repo not yet
-public). Try the live browser-side demo:
+a companion training-to-deployment source project containing the notebooks, HBB-vs-OBB
+analysis, deployment code, and ONNX/TensorRT benchmarks. Try the live browser-side demo:
 https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
 
 ## Model description
@@ -58,8 +57,14 @@ comparison (not the officially published test-split numbers — see caveat below
 
 Fine-tuning moved the needle by essentially nothing under matched conditions (Δ mAP50 -0.05pt,
 Δ mAP50-95 -0.13pt) — expected, since the base checkpoint was already DOTAv1-converged; this
-run quantifies that ceiling rather than claiming a large improvement. Full per-class breakdown
-and training-curve analysis in the project repo's `docs/training_results.md`.
+run quantifies that ceiling rather than claiming a large improvement. A checksum-, manifest-, and
+historical-consistency-gated validation-only run completed on 2026-07-15 and restored the three
+rows not preserved by the original session: `plane` 0.952147 / 0.862352, `ship` 0.909448 /
+0.762681, and `storage tank` 0.850699 / 0.716696 (mAP50 / mAP50-95). The reviewed run is accepted
+as **PASS** and does not need to be rerun. The complete machine-readable breakdown is in
+[`docs/per_class_metrics.csv`](per_class_metrics.csv) and
+[`docs/per_class_metrics.json`](per_class_metrics.json); methodology and training-curve analysis
+are in [`docs/training_results.md`](training_results.md).
 
 **Caveat**: the top row uses DOTA's own test-split evaluation pipeline (full-image stitching);
 the bottom two rows use this repo's own val-split tiling and `ultralytics` evaluation — not
@@ -67,11 +72,12 @@ directly comparable to the top row, only to each other.
 
 ## Deployment
 
-Also exported to ONNX and a TensorRT FP16 engine (Tesla T4), see `results.png` /
-`confusion_matrix_normalized.png` / `results.csv` in this repo's file list and the project
-README's benchmark table for latency/FPS numbers.
+Also exported to ONNX and a TensorRT FP16 engine (Tesla T4). The Hugging Face model repository
+contains `results.png`, `confusion_matrix_normalized.png`, and `results.csv`; the source project
+README contains the latency/FPS benchmark table.
 
-**Live demo** (nano variant, 100% browser-side via ONNX Runtime Web, no server):
+**Live demo** (official `yolo26n-obb`, not the fine-tuned `yolo26m-obb` checkpoint described on
+this card; 100% browser-side via ONNX Runtime Web, no server):
 https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
 
 ## Intended use & limitations
@@ -85,10 +91,14 @@ https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
 
 ## Usage
 
+Install `ultralytics==8.4.93` and `huggingface_hub>=0.30`, then download the published checkpoint:
+
 ```python
+from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
 
-model = YOLO("best.pt")  # this repo's fine-tuned checkpoint
+weights = hf_hub_download("steven0226/yolo26m-obb-dota", "best.pt")
+model = YOLO(weights)
 results = model.predict("aerial_image.jpg", imgsz=1024)
 results[0].show()  # draws rotated boxes
 ```

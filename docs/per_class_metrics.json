@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-15T13:48:38.515220+00:00",
+  "reviewed_on": "2026-07-15",
+  "provenance": {
+    "model": {
+      "repository": "steven0226/yolo26m-obb-dota",
+      "revision": "3f5705719a6e161fd105118fa8ba80b9a6cb1536",
+      "weights_file": "best.pt",
+      "weights_sha256": "59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188"
+    },
+    "environment": {
+      "gpu": "NVIDIA A100-SXM4-40GB",
+      "python": "3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0]",
+      "torch": "2.11.0+cu128",
+      "cuda": "12.8",
+      "ultralytics": "8.4.93"
+    },
+    "dataset": {
+      "name": "DOTAv1",
+      "source": "rebuilt_from_sha256_verified_archive",
+      "raw_data_url": "https://github.com/ultralytics/assets/releases/download/v0.0.0/DOTAv1.zip",
+      "raw_release_api_url": "https://api.github.com/repos/ultralytics/assets/releases/tags/v0.0.0",
+      "raw_asset_id": 178787576,
+      "raw_asset_size_bytes": 1988510024,
+      "raw_asset_updated_at": "2024-07-10T14:47:04Z",
+      "raw_archive_sha256": "59e84c52a8e7ee0ba89ee0679dc2a95833d6a11d0debba20ca01cbb11d58b816"
+    },
+    "validation": {
+      "imgsz": 1024,
+      "split_rates": [
+        0.8,
+        1.2
+      ],
+      "split_gap": 500,
+      "train_tiles": 62030,
+      "val_tiles": 21271,
+      "val_manifest_sha256": "a44000fea30d6e69e12f3124565633d9ed35581b02a12f93f5c8617f5aa74867"
+    }
+  },
+  "review": {
+    "status": "PASS",
+    "initial_bundle_status": "FAIL",
+    "initial_failure_was_false_negative": true,
+    "initial_failure_cause": "The original integrity gate required raw label-row counts to equal validator instance counts. Ultralytics 8.4.93 removes duplicate label rows during image/label verification before metrics.nt_per_class is computed, so the equality requirement was invalid.",
+    "revised_instance_accounting": "For every class in the saved bundle, 0 < validator instances <= raw label lines. The difference is recorded as deduplicated_or_filtered_lines; raw-to-validator equality is informational only.",
+    "saved_bundle_limit": "The returned bundle did not include labels/val.cache or scan warnings, so the raw-to-validator difference cannot be uniquely split into duplicate-row removals versus other loader validation filtering. This does not affect the computed AP values.",
+    "future_notebook_gate": "The corrected recovery notebook additionally requires metrics.nt_per_class and metrics.nt_per_image to match exact counts derived from the loader-validated val.cache; raw label lines remain an upper-bound diagnostic.",
+    "ultralytics_source": "https://github.com/ultralytics/ultralytics/blob/v8.4.93/ultralytics/data/utils.py",
+    "checks": {
+      "weights_sha256_ok": true,
+      "raw_archive_sha256_ok": true,
+      "split_structure_ok": true,
+      "split_counts_ok": true,
+      "split_provenance_ok": true,
+      "class_order_ok": true,
+      "metric_instances_within_raw_label_lines": true,
+      "raw_label_lines_equal_validator_instances": false,
+      "aggregate_ok": true,
+      "captured_12_classes_ok": true,
+      "targets_present": true
+    },
+    "aggregate_tolerance": 0.0015,
+    "per_class_tolerance": 0.0015
+  },
+  "aggregate": {
+    "mAP50": 0.7816142568252565,
+    "mAP50-95": 0.6314216725888359
+  },
+  "aggregate_reference": {
+    "standalone_reported_3dp": {
+      "mAP50": 0.782,
+      "mAP50-95": 0.631
+    },
+    "public_results_csv_epoch13_trainer_validation": {
+      "mAP50": 0.7815,
+      "mAP50-95": 0.63112
+    }
+  },
+  "per_class": [
+    {
+      "class_id": 0,
+      "class": "plane",
+      "images": 2430,
+      "instances": 16625,
+      "raw_label_lines": 16642,
+      "deduplicated_or_filtered_lines": 17,
+      "precision": 0.9474650608227715,
+      "recall": 0.9220877278553002,
+      "f1": 0.934604158221275,
+      "mAP50": 0.9521473094544077,
+      "mAP50-95": 0.8623519396846154
+    },
+    {
+      "class_id": 1,
+      "class": "ship",
+      "images": 2016,
+      "instances": 56002,
+      "raw_label_lines": 59565,
+      "deduplicated_or_filtered_lines": 3563,
+      "precision": 0.9117895429074984,
+      "recall": 0.8869683225599085,
+      "f1": 0.8992076776161106,
+      "mAP50": 0.9094483549065466,
+      "mAP50-95": 0.7626811846734778
+    },
+    {
+      "class_id": 2,
+      "class": "storage tank",
+      "images": 1119,
+      "instances": 20472,
+      "raw_label_lines": 20472,
+      "deduplicated_or_filtered_lines": 0,
+      "precision": 0.9219695047292228,
+      "recall": 0.745683329648517,
+      "f1": 0.8245088857207029,
+      "mAP50": 0.8506994253670539,
+      "mAP50-95": 0.7166956140619187
+    },
+    {
+      "class_id": 3,
+      "class": "baseball diamond",
+      "images": 657,
+      "instances": 1264,
+      "raw_label_lines": 1264,
+      "deduplicated_or_filtered_lines": 0,
+      "precision": 0.8273197674250306,
+      "recall": 0.8180379746835443,
+      "f1": 0.8226526908278567,
+      "mAP50": 0.8157653813070572,
+      "mAP50-95": 0.6031274784414006
+    },
+    {
+      "class_id": 4,
+      "class": "tennis court",
+      "images": 554,
+      "instances": 2983,
+      "raw_label_lines": 3000,
+      "deduplicated_or_filtered_lines": 17,
+      "precision": 0.9493431462823324,
+      "recall": 0.8921134896771253,
+      "f1": 0.9198390128689834,
+      "mAP50": 0.9181832459153556,
+      "mAP50-95": 0.890444987100272
+    },
+    {
+      "class_id": 5,
+      "class": "basketball court",
+      "images": 289,
+      "instances": 751,
+      "raw_label_lines": 785,
+      "deduplicated_or_filtered_lines": 34,
+      "precision": 0.7605445667519876,
+      "recall": 0.6311584553928096,
+      "f1": 0.6898370217933388,
+      "mAP50": 0.6412057144277993,
+      "mAP50-95": 0.5874173233793025
+    },
+    {
+      "class_id": 6,
+      "class": "ground track field",
+      "images": 615,
+      "instances": 782,
+      "raw_label_lines": 802,
+      "deduplicated_or_filtered_lines": 20,
+      "precision": 0.7557515604767326,
+      "recall": 0.7320023495604623,
+      "f1": 0.7436873991332658,
+      "mAP50": 0.7496203568402448,
+      "mAP50-95": 0.6360489727553497
+    },
+    {
+      "class_id": 7,
+      "class": "harbor",
+      "images": 1791,
+      "instances": 11875,
+      "raw_label_lines": 11957,
+      "deduplicated_or_filtered_lines": 82,
+      "precision": 0.8618722174723304,
+      "recall": 0.8037052631578947,
+      "f1": 0.8317730581827696,
+      "mAP50": 0.8481356678413572,
+      "mAP50-95": 0.5911498786962616
+    },
+    {
+      "class_id": 8,
+      "class": "bridge",
+      "images": 1632,
+      "instances": 3174,
+      "raw_label_lines": 3182,
+      "deduplicated_or_filtered_lines": 8,
+      "precision": 0.7127356629676668,
+      "recall": 0.5926275992438563,
+      "f1": 0.647155986486714,
+      "mAP50": 0.6262700042431765,
+      "mAP50-95": 0.4063304034499107
+    },
+    {
+      "class_id": 9,
+      "class": "large vehicle",
+      "images": 1493,
+      "instances": 21821,
+      "raw_label_lines": 21822,
+      "deduplicated_or_filtered_lines": 1,
+      "precision": 0.8758980235945714,
+      "recall": 0.7824130175738692,
+      "f1": 0.826520476212649,
+      "mAP50": 0.8243340903689149,
+      "mAP50-95": 0.6859706236433267
+    },
+    {
+      "class_id": 10,
+      "class": "small vehicle",
+      "images": 1188,
+      "instances": 25406,
+      "raw_label_lines": 25411,
+      "deduplicated_or_filtered_lines": 5,
+      "precision": 0.7497037293333335,
+      "recall": 0.7258521609068724,
+      "f1": 0.7375851712237819,
+      "mAP50": 0.7211241731978322,
+      "mAP50-95": 0.5708861011253593
+    },
+    {
+      "class_id": 11,
+      "class": "helicopter",
+      "images": 163,
+      "instances": 559,
+      "raw_label_lines": 559,
+      "deduplicated_or_filtered_lines": 0,
+      "precision": 0.8451797343300561,
+      "recall": 0.7910332947419452,
+      "f1": 0.8172105930184548,
+      "mAP50": 0.8334121257327272,
+      "mAP50-95": 0.6174650806934858
+    },
+    {
+      "class_id": 12,
+      "class": "roundabout",
+      "images": 842,
+      "instances": 1115,
+      "raw_label_lines": 1115,
+      "deduplicated_or_filtered_lines": 0,
+      "precision": 0.7895657383622949,
+      "recall": 0.5713004484304933,
+      "f1": 0.6629296322731194,
+      "mAP50": 0.6673919567039879,
+      "mAP50-95": 0.5281802342035122
+    },
+    {
+      "class_id": 13,
+      "class": "soccer ball field",
+      "images": 606,
+      "instances": 904,
+      "raw_label_lines": 920,
+      "deduplicated_or_filtered_lines": 16,
+      "precision": 0.7203562693056008,
+      "recall": 0.5613585619567616,
+      "f1": 0.6309955218910235,
+      "mAP50": 0.6601376503802823,
+      "mAP50-95": 0.5551930780764585
+    },
+    {
+      "class_id": 14,
+      "class": "swimming pool",
+      "images": 389,
+      "instances": 2445,
+      "raw_label_lines": 2445,
+      "deduplicated_or_filtered_lines": 0,
+      "precision": 0.7907666131302037,
+      "recall": 0.6662170728237318,
+      "f1": 0.7231683146011517,
+      "mAP50": 0.7063383956921057,
+      "mAP50-95": 0.4573821888478851
+    }
+  ]
+}
