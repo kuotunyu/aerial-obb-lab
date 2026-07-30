@@ -1,4 +1,4 @@
-"""DOTA8 end-to-end smoke test on the local GPU (RTX 2070 8GB).
+"""DOTA8 end-to-end smoke test on a CUDA-capable local workstation.
 
 Validates the whole pipeline at tiny scale before any Colab spend:
   1. ENV      - torch CUDA available, correct ultralytics version
@@ -11,6 +11,8 @@ Validates the whole pipeline at tiny scale before any Colab spend:
   7. EXPORT   - ONNX export + inference through YOLO("*.onnx") yields OBBs
 
 Run:  .venv/Scripts/python.exe scripts/smoke_test.py   (Windows; .venv/bin/python on Linux/Mac)
+The default/local-ml project environment is CPU-only; install a PyTorch build that matches
+your own GPU before running this optional test.
 Don't use `uv run` on a non-ASCII repo path -- see docs/DESIGN_NOTES.md T6.
 """
 
