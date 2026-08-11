@@ -183,6 +183,7 @@ def check_static_demo() -> None:
     required = {
         "index.html": 500,
         "app.js": 1_000,
+        "obb.js": 1_000,
         "style.css": 500,
         "yolo26n-obb.onnx": 1_000_000,
     }
@@ -191,7 +192,7 @@ def check_static_demo() -> None:
         if not path.is_file() or path.stat().st_size < minimum_size:
             raise RuntimeError(f"static demo asset missing or too small: {path.relative_to(ROOT)}")
     html = (folder / "index.html").read_text(encoding="utf-8")
-    for reference in ("style.css", "app.js"):
+    for reference in ("style.css", "obb.js", "app.js"):
         if reference not in html:
             raise RuntimeError(f"index.html does not reference {reference}")
     js = (folder / "app.js").read_text(encoding="utf-8")
@@ -232,12 +233,19 @@ def check_javascript() -> None:
     if not node:
         print("[SKIP] JavaScript syntax: Node.js not installed")
         return
+    for relative in ("demo/space-static/obb.js", "demo/space-static/app.js"):
+        subprocess.run([node, "--check", str(ROOT / relative)], cwd=ROOT, check=True)
     subprocess.run(
-        [node, "--check", str(ROOT / "demo" / "space-static" / "app.js")],
+        [
+            node,
+            str(ROOT / "tests" / "js" / "browser_parity_runner.js"),
+            str(ROOT / "tests" / "fixtures" / "browser_parity.json"),
+        ],
         cwd=ROOT,
         check=True,
+        stdout=subprocess.DEVNULL,
     )
-    print("[OK] JavaScript syntax")
+    print("[OK] JavaScript syntax + synthetic browser parity")
 
 
 def main() -> int:

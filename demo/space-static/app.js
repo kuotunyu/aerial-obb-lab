@@ -1,6 +1,6 @@
 // Fully client-side YOLO26n-OBB inference via ONNX Runtime Web.
-// I/O format verified empirically against the ultralytics Python reference (see
-// docs/DESIGN_NOTES.md): input "images" [1,3,1024,1024] float32 /255, letterboxed
+// I/O format is enforced by the synthetic browser parity fixture in tests/fixtures:
+// input "images" [1,3,1024,1024] float32 /255, letterboxed
 // (scale=min(1024/W,1024/H), pad 114 gray, centered); output "output0" [1,300,7] =
 // [cx, cy, w, h, conf, cls, angle_rad] per detection in letterboxed pixel space.
 
@@ -102,11 +102,7 @@ fileDrop.addEventListener("drop", (e) => {
 function preprocess(img) {
   const W = img.naturalWidth;
   const H = img.naturalHeight;
-  const scale = Math.min(IMGSZ / W, IMGSZ / H);
-  const newW = Math.round(W * scale);
-  const newH = Math.round(H * scale);
-  const padX = Math.floor((IMGSZ - newW) / 2);
-  const padY = Math.floor((IMGSZ - newH) / 2);
+  const geometry = OBB.letterboxGeometry(W, H, IMGSZ);
 
   const off = document.createElement("canvas");
   off.width = IMGSZ;
@@ -114,41 +110,20 @@ function preprocess(img) {
   const octx = off.getContext("2d");
   octx.fillStyle = "rgb(114,114,114)";
   octx.fillRect(0, 0, IMGSZ, IMGSZ);
-  octx.drawImage(img, 0, 0, W, H, padX, padY, newW, newH);
+  octx.drawImage(
+    img,
+    0,
+    0,
+    W,
+    H,
+    geometry.padX,
+    geometry.padY,
+    geometry.newWidth,
+    geometry.newHeight,
+  );
 
   const { data } = octx.getImageData(0, 0, IMGSZ, IMGSZ); // RGBA, HWC, uint8
-  const chw = new Float32Array(3 * IMGSZ * IMGSZ);
-  const plane = IMGSZ * IMGSZ;
-  for (let p = 0; p < plane; p++) {
-    chw[p] = data[p * 4] / 255; // R
-    chw[plane + p] = data[p * 4 + 1] / 255; // G
-    chw[2 * plane + p] = data[p * 4 + 2] / 255; // B
-  }
-  return { chw, scale, padX, padY };
-}
-
-// Decode raw [300,7] output into detections in original-image pixel space.
-function postprocess(output, scale, padX, padY, confThresh, classMask) {
-  const dets = [];
-  const n = output.length / 7;
-  for (let i = 0; i < n; i++) {
-    const o = i * 7;
-    const conf = output[o + 4];
-    if (conf < confThresh) continue;
-    const cls = Math.round(output[o + 5]);
-    if (classMask.size > 0 && !classMask.has(cls)) continue;
-    dets.push({
-      cx: (output[o] - padX) / scale,
-      cy: (output[o + 1] - padY) / scale,
-      w: output[o + 2] / scale,
-      h: output[o + 3] / scale,
-      conf,
-      cls,
-      angle: output[o + 6], // radians
-    });
-  }
-  dets.sort((a, b) => b.conf - a.conf);
-  return dets;
+  return { chw: OBB.rgbaToChw(data), geometry };
 }
 
 function drawDetections(dets) {
@@ -159,17 +134,7 @@ function drawDetections(dets) {
   ctx.font = `${Math.max(14, canvas.width / 100)}px sans-serif`;
 
   for (const d of dets) {
-    const cos = Math.cos(d.angle);
-    const sin = Math.sin(d.angle);
-    const hw = d.w / 2;
-    const hh = d.h / 2;
-    // corners in local frame, rotated into image space, translated to (cx,cy)
-    const corners = [
-      [-hw, -hh],
-      [hw, -hh],
-      [hw, hh],
-      [-hw, hh],
-    ].map(([x, y]) => [d.cx + x * cos - y * sin, d.cy + x * sin + y * cos]);
+    const corners = OBB.rotatedCorners(d);
 
     ctx.beginPath();
     ctx.moveTo(corners[0][0], corners[0][1]);
@@ -198,7 +163,7 @@ detectBtn.addEventListener("click", async () => {
   detectBtn.disabled = true;
   try {
     setStatus("preprocessing…");
-    const { chw, scale, padX, padY } = preprocess(currentImage);
+    const { chw, geometry } = preprocess(currentImage);
     const tensor = new ort.Tensor("float32", chw, [1, 3, IMGSZ, IMGSZ]);
 
     setStatus("running inference in your browser…");
@@ -213,7 +178,13 @@ detectBtn.addEventListener("click", async () => {
     const classMask = new Set(
       Array.from(document.querySelectorAll(".class-cb:checked")).map((cb) => Number(cb.value))
     );
-    const dets = postprocess(output, scale, padX, padY, confThresh, classMask);
+    const dets = OBB.decodeDetections(
+      output,
+      geometry,
+      confThresh,
+      classMask,
+      CLASS_NAMES.length,
+    );
 
     drawDetections(dets);
     fillTable(dets);
