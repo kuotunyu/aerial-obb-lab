@@ -105,9 +105,9 @@ neighbor pairs whose *horizontal* boxes overlap heavily (IoU ≥ 0.3), the fract
 | harbor | 43 | **98%** |
 | small vehicle | 42 | **93%** |
 
-A horizontal-box detector's NMS sees these as duplicate detections and suppresses true
-positives — parked trucks and docked ships literally disappear. Oriented boxes make the
-overlap (and the NMS decision) reflect reality.
+This ground-truth geometry result is a proxy, not a detector/NMS experiment. It shows that an
+HBB view can substantially overstate overlap and therefore create suppression risk in dense
+scenes; it does not measure how many predictions a particular HBB detector would lose.
 
 **3. Seeing is believing** — same marina, same labels (all five comparisons in `assets/`):
 

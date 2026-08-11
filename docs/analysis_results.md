@@ -30,8 +30,9 @@ release claim is in [`../release/evidence.json`](../release/evidence.json).
 ## Dense-scene neighbor overlap (same-class pairs within an image)
 
 `phantom rate` = pairs that a horizontal-box view sees as heavily overlapping
-(IoU>=0.3) while the true oriented boxes barely overlap (IoU<0.1) — exactly the
-detections an HBB NMS would wrongly suppress.
+(IoU>=0.3) while the true oriented boxes barely overlap (IoU<0.1). This is a
+ground-truth geometry proxy: it does not run a detector or NMS, so it quantifies
+potential HBB suppression risk rather than observed lost detections.
 
 | class | touching pairs | HBB IoU>=0.3 | ... of which OBB IoU<0.1 | phantom rate |
 |---|---:|---:|---:|---:|

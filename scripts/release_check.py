@@ -43,6 +43,12 @@ CLAIM_FILES = {
     },
 }
 
+UNSUPPORTED_CAUSAL_NMS_PHRASES = (
+    "NMS sees these as duplicate detections and suppresses true positives",
+    "detections an HBB NMS would wrongly suppress",
+    "NMS 會把這些視為重複偵測而誤殺",
+)
+
 
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -127,18 +133,31 @@ def _claim_block(text: str, claim_id: str) -> str | None:
     return text.split(start, 1)[1].split(end, 1)[0]
 
 
+def unsupported_claim_errors(text: str) -> list[str]:
+    """Reject causal detector outcomes that the geometry-only evidence cannot establish."""
+    normalized = " ".join(text.split())
+    if any(phrase in normalized for phrase in UNSUPPORTED_CAUSAL_NMS_PHRASES):
+        return ["unsupported causal NMS outcome claim"]
+    return []
+
+
 def verify_claims(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
+    checked_paths: set[str] = set()
     for claim_id, documents in CLAIM_FILES.items():
         for relative, required_tokens in documents.items():
             path = root / relative
-            block = _claim_block(path.read_text(encoding="utf-8"), claim_id)
+            text = path.read_text(encoding="utf-8")
+            block = _claim_block(text, claim_id)
             if block is None:
                 errors.append(f"{relative}: missing unique {claim_id} claim block")
                 continue
             for token in required_tokens:
                 if token not in block:
                     errors.append(f"{relative}: {claim_id} claim lacks {token!r}")
+            if relative not in checked_paths:
+                errors.extend(f"{relative}: {error}" for error in unsupported_claim_errors(text))
+                checked_paths.add(relative)
     return errors
 
 

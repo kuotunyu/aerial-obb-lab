@@ -65,3 +65,15 @@ def test_release_evidence_and_claim_blocks_verify() -> None:
 
     assert release_check.verify_evidence(ROOT) == []
     assert release_check.verify_claims(ROOT) == []
+
+
+def test_release_checker_rejects_causal_nms_overclaims() -> None:
+    release_check = load_release_check()
+
+    assert release_check.unsupported_claim_errors(
+        "A horizontal-box detector's NMS sees these as duplicate detections and "
+        "suppresses true positives."
+    ) == ["unsupported causal NMS outcome claim"]
+    assert release_check.unsupported_claim_errors(
+        "Ground-truth geometry is a proxy for potential HBB suppression risk."
+    ) == []

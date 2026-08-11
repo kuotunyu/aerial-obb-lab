@@ -100,8 +100,8 @@ delta 是保留的正式歷史結果。Fine-tuned aggregate、證據強度與限
 | harbor | 43 | **98%** |
 | small vehicle | 42 | **93%** |
 
-水平框偵測器的 NMS 會把這些視為重複偵測而誤殺 —— 停車場的卡車、
-港口並排的船就這樣消失。旋轉框讓重疊度（與 NMS 的決策）回歸真實。
+這是 ground-truth 幾何 proxy，不是 detector/NMS 實驗。結果顯示 HBB 會大幅高估密集同類物件
+的重疊，因而形成 suppression 風險；它沒有量測特定 HBB detector 實際少掉多少 predictions。
 
 **3. 一圖勝千言** —— 同一個碼頭、同一份標註（5 組對照圖都在 `assets/`）：
 
