@@ -231,13 +231,18 @@ Given that constraint, the no-cost public route was a **static** Space with infe
 client-side. `demo/space-static/` reimplements
 the same detection pipeline as vanilla JS + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)
 (WASM) — the model downloads once (~10MB) and every prediction runs entirely in the visitor's
-browser, no server involved at all. I/O format (letterbox preprocessing, `[N,7]` output decoding)
-was reverse-engineered and verified against the Python reference before writing a single line of
-JS — see [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) for the full story.
+browser, no server involved at all. The committed synthetic fixture now cross-checks letterbox
+preprocessing, RGB CHW conversion, `[N,7]` output decoding, angles, and rotated corners against an
+independent CPU Python reference without fetching DOTA or running a model.
 
 ## Licensing
 
-- Code: **AGPL-3.0** (required by [Ultralytics](https://github.com/ultralytics/ultralytics) AGPL-3.0; fine-tuned weights are derivative and carry the same license)
-- Dataset: **DOTA** is released for **academic use only — commercial use is prohibited**
+- Repository code: **AGPL-3.0-or-later** as declared in `pyproject.toml`; Ultralytics components
+  remain subject to Ultralytics' separate AGPL and Enterprise routes.
+- DOTA images/annotations: **academic use only; commercial use prohibited**. Underlying image-source
+  terms may also apply. This release treats DOTA-trained weights and DOTA-derived visuals as
+  academic/non-commercial unless the relevant rights holders confirm otherwise.
+- Exact artifact hashes, third-party terms, and owner actions: [artifact manifest](release/artifact-manifest.json),
+  [third-party notices](THIRD_PARTY_NOTICES.md), and [release checklist](RELEASE_CHECKLIST.md).
 
 *(中文版見 README.zh-TW.md)*

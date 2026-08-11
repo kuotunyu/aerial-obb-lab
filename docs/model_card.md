@@ -87,10 +87,11 @@ https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
 
 ## Intended use & limitations
 
-- Academic / research / portfolio use. **The DOTA dataset license prohibits commercial use** —
-  this restriction carries over to any weights derived from it.
-- Code is Ultralytics (AGPL-3.0); these fine-tuned weights are a derivative work and carry the
-  same license.
+- Academic / research / portfolio use. **The DOTA dataset terms prohibit commercial use** and
+  underlying image-source terms may also apply. This project therefore does not clear the weights
+  for commercial use; obtain rights-holder confirmation for any broader use.
+- Ultralytics provides AGPL-3.0 and Enterprise licensing routes. This project uses the AGPL route
+  and makes no Enterprise-license grant; see `THIRD_PARTY_NOTICES.md` in the source release.
 - Trained and evaluated on DOTAv1's specific tiling scheme; performance on differently-tiled or
   differently-sourced aerial imagery is untested.
 
@@ -111,5 +112,5 @@ results[0].show()  # draws rotated boxes
 ## License
 
 - Code: AGPL-3.0 ([Ultralytics](https://github.com/ultralytics/ultralytics))
-- Weights: derivative of AGPL-3.0 Ultralytics code, same license
-- Training data (DOTA): academic use only, commercial use prohibited
+- Weights: AGPL route plus unresolved DOTA/underlying-image commercial-use boundary
+- Training data (DOTA): academic use only; commercial use prohibited

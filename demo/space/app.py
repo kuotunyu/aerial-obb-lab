@@ -62,7 +62,8 @@ with gr.Blocks(title="YOLO26-OBB aerial detection (CPU)") as demo:
         "Upload an aerial/satellite image; the model draws **rotated** bounding boxes "
         "(15 DOTA classes). Runs `yolo26n-obb` with **ONNX Runtime on free CPU** — "
         "expect a few seconds per image. Trained on [DOTA](https://captain-whu.github.io/DOTA/) "
-        "(academic use only); code under AGPL-3.0 (Ultralytics)."
+        "(academic use only; commercial use prohibited and underlying image terms may apply); "
+        "code under AGPL-3.0 (Ultralytics)."
     )
     with gr.Row():
         with gr.Column(scale=1):

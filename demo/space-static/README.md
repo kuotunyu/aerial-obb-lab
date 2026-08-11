@@ -32,5 +32,6 @@ server, no GPU, nothing uploaded anywhere.
 
 ## Licensing
 
-- Code: **AGPL-3.0** (Ultralytics)
-- DOTA dataset: **academic use only — commercial use prohibited**
+- Code/model: **AGPL-3.0** route (Ultralytics; Enterprise licensing is separate)
+- DOTA images/annotations: **academic use only; commercial use prohibited**; underlying image-source
+  terms may also apply. No commercial-use clearance is claimed for this model or uploaded imagery.

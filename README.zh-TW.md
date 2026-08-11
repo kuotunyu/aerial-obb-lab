@@ -214,13 +214,18 @@ and Docker Spaces on free cpu-basic requires a PRO subscription`）。在這個�
 公開 demo 路線是 **static** Space +
 瀏覽器端推論。`demo/space-static/` 把同一套偵測流程用純 JavaScript +
 [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）重新實作一遍——模型
-只下載一次（~10MB），之後每次推論都在訪客的瀏覽器裡跑完，完全不經過任何伺服器。開始寫
-JS 之前，先把輸入輸出格式（letterbox 前處理、`[N,7]` 輸出解碼）拿 Python 端結果反推驗證過，
-完整過程見 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md)。
+只下載一次（~10MB），之後每次推論都在訪客的瀏覽器裡跑完，完全不經過任何伺服器。Committed
+synthetic fixture 會在不下載 DOTA、不執行模型的條件下，把 letterbox、RGB CHW、`[N,7]` decode、
+angle 與 rotated corners 和獨立 CPU Python reference 交叉比對。
 
 ## 授權
 
-- 程式碼：**AGPL-3.0**（[Ultralytics](https://github.com/ultralytics/ultralytics) 為 AGPL-3.0，fine-tune 權重屬衍生物、同授權）
-- 資料集：**DOTA 限學術用途，禁止商業使用**
+- Repository code：依 `pyproject.toml` 宣告為 **AGPL-3.0-or-later**；Ultralytics components
+  仍受 Ultralytics 各自的 AGPL／Enterprise 授權路線約束。
+- DOTA 圖像／標註：**限學術用途，禁止商業使用**，且可能另受原始影像來源條款限制。本 release
+  把 DOTA-trained weights 與 DOTA-derived visuals 視為 academic/non-commercial，除非相關權利人
+  另行書面確認。
+- Artifact hash、第三方條款與 owner actions：見 [artifact manifest](release/artifact-manifest.json)、
+  [third-party notices](THIRD_PARTY_NOTICES.md) 與 [release checklist](RELEASE_CHECKLIST.md)。
 
 *（English version: README.md）*
