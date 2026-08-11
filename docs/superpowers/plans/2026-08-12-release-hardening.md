@@ -107,7 +107,7 @@ def test_declared_local_artifact_hashes_match() -> None:
 
 Run: `python -m pytest tests/test_artifact_policy.py -q`
 
-Expected: failure reports `/home/mason/code/...` in the ONNX metadata and the absent manifest.
+Expected: failure reports the embedded upstream home-directory path in the ONNX metadata and the absent manifest.
 
 - [ ] **Step 3: Sanitize and inventory**
 

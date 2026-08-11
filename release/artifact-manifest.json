@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "release_candidate": "v1.0.0rc1",
+  "generated_from_committed_files": true,
+  "policy": {
+    "maximum_unlisted_tracked_file_bytes": 25000000,
+    "commercial_use_cleared": false,
+    "notes": "Bundled model and DOTA-derived visuals are retained for academic, research, and portfolio review only."
+  },
+  "artifacts": [
+    {
+      "path": "demo/space-static/yolo26n-obb.onnx",
+      "bytes": 10153682,
+      "sha256": "cfb97e7fab004b13c89f53a75089e23574bb2103b1e508aab9e0a3001484603b",
+      "kind": "bundled model",
+      "provenance": "Official Ultralytics yolo26n-obb exported to ONNX opset 19 without simplification; copied from the pinned static Space artifact, then sanitized only to remove an embedded upstream build path from description metadata.",
+      "source_url": "https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection/blob/23211d473c0aa9f424f19a7a3c40fc1931356a0d/yolo26n-obb.onnx",
+      "upstream_revision": "23211d473c0aa9f424f19a7a3c40fc1931356a0d",
+      "upstream_sha256_before_metadata_sanitization": "12572cc068417329f3e1874e3e1013368820cb48ae6b143356cdfccdb6b9511e",
+      "graph_sha256_before_and_after_sanitization": "a08efeba0a5297f0ff02ff5125153384d4f9e26d861a9863c29dd683e667690b",
+      "license": "Ultralytics AGPL-3.0 route plus DOTA/underlying-image terms",
+      "restrictions": [
+        "Treat as academic/non-commercial unless DOTA and underlying image-source rights are separately cleared.",
+        "Closed-source or commercial Ultralytics use requires a separate license analysis and may require Ultralytics Enterprise."
+      ]
+    },
+    {
+      "path": "assets/hbb_vs_obb_1_P0706_ship.jpg",
+      "bytes": 1327538,
+      "sha256": "2e9918a3d142ee38559386ae6447a9b97fdf7f7c8bff4668c47bcc1c3297007d",
+      "kind": "DOTA-derived comparison visual",
+      "provenance": "Rendered locally from DOTAv1 validation imagery and labels by scripts/obb_analysis.py.",
+      "source_url": "https://captain-whu.github.io/DOTA/dataset",
+      "license": "LicenseRef-DOTA-Academic-Only plus underlying image-source terms",
+      "restrictions": ["Academic use only; commercial use prohibited by the DOTA terms."]
+    },
+    {
+      "path": "assets/hbb_vs_obb_2_P2726_ship.jpg",
+      "bytes": 615890,
+      "sha256": "bccc1c3e9a43e890a4ef59bcd805a1360abcef9fc0320515e04c4d7ffc0eeaf5",
+      "kind": "DOTA-derived comparison visual",
+      "provenance": "Rendered locally from DOTAv1 validation imagery and labels by scripts/obb_analysis.py.",
+      "source_url": "https://captain-whu.github.io/DOTA/dataset",
+      "license": "LicenseRef-DOTA-Academic-Only plus underlying image-source terms",
+      "restrictions": ["Academic use only; commercial use prohibited by the DOTA terms."]
+    },
+    {
+      "path": "assets/hbb_vs_obb_3_P2124_large-vehicle.jpg",
+      "bytes": 1052814,
+      "sha256": "13de3e60f0a788a178b1fbecd7fd7e7471c11517d66219e5efc65656c7870766",
+      "kind": "DOTA-derived comparison visual",
+      "provenance": "Rendered locally from DOTAv1 validation imagery and labels by scripts/obb_analysis.py.",
+      "source_url": "https://captain-whu.github.io/DOTA/dataset",
+      "license": "LicenseRef-DOTA-Academic-Only plus underlying image-source terms",
+      "restrictions": ["Academic use only; commercial use prohibited by the DOTA terms."]
+    },
+    {
+      "path": "assets/hbb_vs_obb_4_P1957_large-vehicle.jpg",
+      "bytes": 1702687,
+      "sha256": "b3c912ee87258a21254bb829d82b82eca1050e39d1408b662edf979b3fd2f41e",
+      "kind": "DOTA-derived comparison visual",
+      "provenance": "Rendered locally from DOTAv1 validation imagery and labels by scripts/obb_analysis.py.",
+      "source_url": "https://captain-whu.github.io/DOTA/dataset",
+      "license": "LicenseRef-DOTA-Academic-Only plus underlying image-source terms",
+      "restrictions": ["Academic use only; commercial use prohibited by the DOTA terms."]
+    },
+    {
+      "path": "assets/hbb_vs_obb_5_P2781_large-vehicle.jpg",
+      "bytes": 1449471,
+      "sha256": "2521bc0369b7b10b3c00f3ce037eb9ae0295be481d2c7d9598dc2b92c686e981",
+      "kind": "DOTA-derived comparison visual",
+      "provenance": "Rendered locally from DOTAv1 validation imagery and labels by scripts/obb_analysis.py.",
+      "source_url": "https://captain-whu.github.io/DOTA/dataset",
+      "license": "LicenseRef-DOTA-Academic-Only plus underlying image-source terms",
+      "restrictions": ["Academic use only; commercial use prohibited by the DOTA terms."]
+    }
+  ]
+}

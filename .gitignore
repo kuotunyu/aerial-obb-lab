@@ -33,6 +33,8 @@ wandb/
 .env
 *.token
 notes.private.md
+*interview*
+*面試*
 
 # OS / editor
 Thumbs.db

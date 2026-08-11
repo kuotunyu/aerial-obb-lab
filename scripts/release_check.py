@@ -7,8 +7,11 @@ opens a remote connection, or reads ignored private files.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 from pathlib import Path
+import re
+import subprocess
 import sys
 
 
@@ -48,6 +51,25 @@ UNSUPPORTED_CAUSAL_NMS_PHRASES = (
     "detections an HBB NMS would wrongly suppress",
     "NMS 會把這些視為重複偵測而誤殺",
 )
+PRIVATE_NAMES = {".env", "notes.private.md"}
+PRIVATE_FRAGMENTS = ("interview", "面試")
+RUNTIME_PREFIXES = (
+    ".pytest_cache/",
+    ".venv/",
+    "build/",
+    "datasets/",
+    "dist/",
+    "runs/",
+    "wandb/",
+)
+RUNTIME_PARTS = ("/__pycache__/",)
+LOCAL_PATH_RE = re.compile(
+    r'''(?i)(?:[A-Z]:[\\/](?:Users|Documents and Settings)[\\/]|/(?:Users|home)/[^/\s"']+/)'''
+)
+LOCAL_PATH_BYTES_RE = re.compile(
+    rb'''(?i)(?:[A-Z]:[\\/](?:Users|Documents and Settings)[\\/]|/(?:Users|home)/[^/\x00\s"']+/)'''
+)
+TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 
 
 def load_json(path: Path) -> dict:
@@ -125,6 +147,95 @@ def verify_evidence(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def verify_artifacts(root: Path = ROOT) -> list[str]:
+    errors: list[str] = []
+    manifest = load_json(root / "release" / "artifact-manifest.json")
+    if manifest.get("schema_version") != 1:
+        errors.append("release/artifact-manifest.json: unsupported schema_version")
+        return errors
+    entries = manifest.get("artifacts", [])
+    paths = [entry.get("path") for entry in entries]
+    if len(paths) != len(set(paths)):
+        errors.append("artifact manifest contains duplicate paths")
+
+    expected = {"demo/space-static/yolo26n-obb.onnx"}
+    expected.update(path.relative_to(root).as_posix() for path in (root / "assets").glob("*.jpg"))
+    if set(paths) != expected:
+        errors.append("artifact manifest does not exactly cover bundled model and visuals")
+
+    for entry in entries:
+        relative = entry.get("path", "")
+        path = root / relative
+        for field in ("kind", "provenance", "source_url", "license", "restrictions"):
+            if not entry.get(field):
+                errors.append(f"{relative}: missing artifact field {field}")
+        if not path.is_file():
+            errors.append(f"{relative}: artifact is missing")
+            continue
+        if path.stat().st_size != entry.get("bytes"):
+            errors.append(f"{relative}: byte size differs from manifest")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest != entry.get("sha256"):
+            errors.append(f"{relative}: SHA-256 differs from manifest")
+
+    evidence = load_json(root / "release" / "evidence.json")["browser_demo"]
+    model = next((entry for entry in entries if entry.get("path", "").endswith(".onnx")), None)
+    if model and (model["bytes"] != evidence["model_bytes"] or model["sha256"] != evidence["model_sha256"]):
+        errors.append("browser model identity differs between manifest and evidence")
+    return errors
+
+
+def verify_privacy_paths(relative_paths: list[str]) -> list[str]:
+    errors: list[str] = []
+    for raw in relative_paths:
+        relative = raw.replace("\\", "/")
+        while relative.startswith("./"):
+            relative = relative[2:]
+        lowered = relative.casefold()
+        basename = relative.rsplit("/", 1)[-1].casefold()
+        if basename in PRIVATE_NAMES or any(fragment.casefold() in lowered for fragment in PRIVATE_FRAGMENTS):
+            errors.append(f"private release member: {relative}")
+        elif lowered.startswith(RUNTIME_PREFIXES) or any(part in f"/{lowered}/" for part in RUNTIME_PARTS):
+            errors.append(f"runtime release member: {relative}")
+    return errors
+
+
+def verify_text_privacy(root: Path, paths: list[Path]) -> list[str]:
+    errors: list[str] = []
+    for path in paths:
+        if path.suffix.lower() not in TEXT_SUFFIXES:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if LOCAL_PATH_RE.search(text):
+            errors.append(f"{path.relative_to(root).as_posix()}: absolute local user path")
+    return errors
+
+
+def verify_binary_privacy(root: Path, paths: list[Path]) -> list[str]:
+    errors: list[str] = []
+    for relative in paths:
+        path = relative if relative.is_absolute() else root / relative
+        if LOCAL_PATH_BYTES_RE.search(path.read_bytes()):
+            errors.append(f"{path.relative_to(root).as_posix()}: absolute local user path")
+    return errors
+
+
+def committed_paths(root: Path = ROOT) -> list[str]:
+    output = subprocess.check_output(["git", "ls-files", "-z"], cwd=root, text=False)
+    return [item.decode("utf-8") for item in output.split(b"\0") if item]
+
+
+def verify_committed_privacy(root: Path = ROOT) -> list[str]:
+    relative_paths = committed_paths(root)
+    files = [root / relative for relative in relative_paths]
+    binary_paths = [root / entry["path"] for entry in load_json(root / "release" / "artifact-manifest.json")["artifacts"]]
+    return (
+        verify_privacy_paths(relative_paths)
+        + verify_text_privacy(root, files)
+        + verify_binary_privacy(root, binary_paths)
+    )
+
+
 def _claim_block(text: str, claim_id: str) -> str | None:
     start = f"<!-- claim:{claim_id} -->"
     end = f"<!-- /claim:{claim_id} -->"
@@ -162,12 +273,17 @@ def verify_claims(root: Path = ROOT) -> list[str]:
 
 
 def main() -> int:
-    errors = verify_evidence(ROOT) + verify_claims(ROOT)
+    errors = (
+        verify_evidence(ROOT)
+        + verify_claims(ROOT)
+        + verify_artifacts(ROOT)
+        + verify_committed_privacy(ROOT)
+    )
     if errors:
         for error in errors:
             print(f"[FAIL] {error}", file=sys.stderr)
         return 1
-    print("[OK] Release evidence and bounded claim blocks")
+    print("[OK] Release evidence, claims, artifact hashes, and committed privacy")
     return 0
 
 

@@ -77,3 +77,44 @@ def test_release_checker_rejects_causal_nms_overclaims() -> None:
     assert release_check.unsupported_claim_errors(
         "Ground-truth geometry is a proxy for potential HBB suppression risk."
     ) == []
+
+
+def test_manifest_hashes_every_redistributed_binary() -> None:
+    release_check = load_release_check()
+
+    assert release_check.verify_artifacts(ROOT) == []
+
+
+def test_private_runtime_and_absolute_user_paths_fail_closed(tmp_path: Path) -> None:
+    release_check = load_release_check()
+
+    assert release_check.verify_privacy_paths(
+        [
+            "notes.private.md",
+            ".env",
+            "interview-prep.md",
+            "runs/best.pt",
+            "datasets/DOTAv1/image.png",
+        ]
+    ) == [
+        "private release member: notes.private.md",
+        "private release member: .env",
+        "private release member: interview-prep.md",
+        "runtime release member: runs/best.pt",
+        "runtime release member: datasets/DOTAv1/image.png",
+    ]
+
+    public = tmp_path / "README.md"
+    public.write_text("copied from C:\\Users\\alice\\private\\result.csv", encoding="utf-8")
+    assert release_check.verify_text_privacy(tmp_path, [public]) == [
+        "README.md: absolute local user path"
+    ]
+
+
+def test_redistributed_binaries_contain_no_absolute_user_paths() -> None:
+    release_check = load_release_check()
+
+    assert release_check.verify_binary_privacy(
+        ROOT,
+        [Path("demo/space-static/yolo26n-obb.onnx")],
+    ) == []
