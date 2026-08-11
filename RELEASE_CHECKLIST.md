@@ -10,6 +10,8 @@ Hugging Face mutation is part of this checklist run.
 - [x] Full pytest suite passes without Torch, CUDA, DOTA, tokens, or downloaded weights.
 - [x] Claim/evidence arithmetic and bounded Markdown claim blocks pass.
 - [x] Browser synthetic preprocess, output schema, decode, angle, and corners match Python.
+- [x] Headless Chromium exercises upload, preprocess, canvas drawing, and result rendering with a
+  deterministic output stub; it performs no model inference or network request.
 - [x] Bundled artifact size/SHA-256 values match `release/artifact-manifest.json`.
 - [x] Notebooks have zero outputs/execution counts and remain synchronized with Jupytext sources.
 - [x] Tracked files and Git history pass token-pattern/privacy checks.
@@ -28,6 +30,11 @@ Hugging Face mutation is part of this checklist run.
 - [x] Branch, HEAD, status, refs, author, committer, trailers, ignored/private paths, and remotes are
   audited after the final commit.
 
+No Dockerfile or service was added: the release paths are a static browser site and a Python
+package, so Docker would not remove a product-path dependency. The local Docker daemon was
+unavailable during final verification; hosted Ubuntu execution remains part of the checked-in CI
+matrix.
+
 ## Owner actions required before public release
 
 1. Decide whether the repository should include the five DOTA-derived JPEGs and bundled ONNX model.
@@ -37,6 +44,7 @@ Hugging Face mutation is part of this checklist run.
    Enterprise license for closed-source/commercial use.
 3. Have qualified counsel review the combined DOTA, underlying imagery, weights, and AGPL boundary.
 4. After reviewing the final local diff, create the repository, push the branch, configure branch
-   protection/CI, and optionally create a signed tag and Release. None of these actions is automated.
+   protection/CI, and require successful Ubuntu and Windows jobs before merge. Optionally create a
+   signed tag and Release after those gates pass. None of these actions is automated.
 5. If the local model card/demo changes are desired on Hugging Face, update the model repository and
    static Space manually only after the source release decision; verify the pinned revisions again.
