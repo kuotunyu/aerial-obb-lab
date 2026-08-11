@@ -18,7 +18,7 @@ def test_archive_policy_rejects_unsafe_tar_members() -> None:
     assert archive_policy_errors(["../escape.txt", "/absolute.txt", fake_home_path]) == [
         "unsafe path: ../escape.txt",
         "unsafe path: /absolute.txt",
-        "unsafe path: C:/Users/alice/file.txt",
+        f"unsafe path: {fake_home_path}",
     ]
 
 
