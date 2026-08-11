@@ -241,6 +241,9 @@ def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object
         temp_root = Path(temporary)
         export = temp_root / "export"
         with zipfile.ZipFile(archive) as bundle:
+            committed_archive_files = len(
+                [info for info in bundle.infolist() if not info.is_dir()]
+            )
             symlinks = [
                 info.filename
                 for info in bundle.infolist()
@@ -300,7 +303,7 @@ def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object
             )
         )
         return {
-            "archive_files": len([path for path in export.rglob("*") if path.is_file()]),
+            "committed_archive_files": committed_archive_files,
             "distributions": [path.name for path in distributions],
             "steps": steps,
             "result": "passed",
