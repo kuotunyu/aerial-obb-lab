@@ -38,8 +38,24 @@ def test_ci_runs_core_cpu_gates_on_ubuntu_and_windows() -> None:
         "python -m pytest -q",
         "python scripts/repo_check.py",
         "python scripts/release_check.py",
+        "python scripts/clean_export_check.py",
         "uv build",
     ):
         assert token in text
     for forbidden in ("cuda", "nvidia", "local-ml", "huggingface-token"):
         assert forbidden not in text.casefold()
+
+
+def test_sdist_explicitly_excludes_demo_models_and_dota_visuals() -> None:
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    included = set(config["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
+
+    assert included == {
+        "/CHANGELOG.md",
+        "/CITATION.cff",
+        "/LICENSE",
+        "/README.md",
+        "/THIRD_PARTY_NOTICES.md",
+        "/pyproject.toml",
+        "/src/obbkit",
+    }

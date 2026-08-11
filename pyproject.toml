@@ -55,6 +55,17 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/obbkit"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/CHANGELOG.md",
+    "/CITATION.cff",
+    "/LICENSE",
+    "/README.md",
+    "/THIRD_PARTY_NOTICES.md",
+    "/pyproject.toml",
+    "/src/obbkit",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

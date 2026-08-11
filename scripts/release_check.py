@@ -221,6 +221,13 @@ def verify_binary_privacy(root: Path, paths: list[Path]) -> list[str]:
 
 
 def committed_paths(root: Path = ROOT) -> list[str]:
+    if not (root / ".git").exists():
+        excluded = {".pytest_cache", ".venv", "__pycache__", "build", "dist"}
+        return sorted(
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file() and not any(part in excluded for part in path.relative_to(root).parts)
+        )
     output = subprocess.check_output(["git", "ls-files", "-z"], cwd=root, text=False)
     return [item.decode("utf-8") for item in output.split(b"\0") if item]
 

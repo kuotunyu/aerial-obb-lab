@@ -38,6 +38,13 @@ TEXT_SUFFIXES = {
 
 
 def repository_files() -> list[Path]:
+    if not (ROOT / ".git").exists():
+        excluded = {".pytest_cache", ".venv", "__pycache__", "build", "dist"}
+        return [
+            path
+            for path in ROOT.rglob("*")
+            if path.is_file() and not any(part in excluded for part in path.relative_to(ROOT).parts)
+        ]
     output = subprocess.check_output(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
         cwd=ROOT,
@@ -147,6 +154,11 @@ def check_secrets(files: list[Path]) -> None:
                 hits.append(f"{path.relative_to(ROOT)}: {label}")
     if hits:
         raise RuntimeError("token-shaped strings found in tracked files:\n  " + "\n  ".join(hits))
+    if not (ROOT / ".git").exists():
+        if any(path.name == ".env" for path in files):
+            raise RuntimeError(".env is present in the exported snapshot")
+        print(f"[OK] Secret scan: {len(files)} clean-export files; Git history unavailable by design")
+        return
     ignored = subprocess.run(
         ["git", "check-ignore", "--quiet", ".env"], cwd=ROOT, check=False
     )
