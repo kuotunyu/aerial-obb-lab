@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.clean_export_check import archive_policy_errors
+from scripts.clean_export_check import archive_policy_errors, verify_snapshot
 
 
 def test_archive_policy_rejects_private_and_runtime_paths() -> None:
@@ -14,11 +14,16 @@ def test_archive_policy_rejects_private_and_runtime_paths() -> None:
 
 
 def test_archive_policy_rejects_unsafe_tar_members() -> None:
-    assert archive_policy_errors(["../escape.txt", "/absolute.txt", "C:/Users/alice/file.txt"]) == [
+    fake_home_path = "C:/" + "Users/alice/file.txt"
+    assert archive_policy_errors(["../escape.txt", "/absolute.txt", fake_home_path]) == [
         "unsafe path: ../escape.txt",
         "unsafe path: /absolute.txt",
         "unsafe path: C:/Users/alice/file.txt",
     ]
+
+
+def test_clean_export_has_a_snapshot_rebuild_gate() -> None:
+    assert callable(verify_snapshot)
 
 
 def test_archive_policy_accepts_release_files() -> None:

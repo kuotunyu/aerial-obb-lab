@@ -11,8 +11,12 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import time
 import zipfile
 
 
@@ -171,6 +175,106 @@ def create_archive(output: Path, root: Path = ROOT) -> str:
     return hashlib.sha256(output.read_bytes()).hexdigest()
 
 
+def _run(args: list[str], cwd: Path) -> dict[str, object]:
+    started = time.monotonic()
+    print("+ " + " ".join(args), flush=True)
+    subprocess.run(args, cwd=cwd, check=True)
+    return {"command": args, "seconds": round(time.monotonic() - started, 3), "status": "passed"}
+
+
+def _distribution_members(path: Path) -> list[str]:
+    if path.suffix == ".whl":
+        with zipfile.ZipFile(path) as bundle:
+            return [info.filename for info in bundle.infolist() if not info.is_dir()]
+    with tarfile.open(path, "r:gz") as bundle:
+        return [member.name for member in bundle.getmembers() if member.isfile()]
+
+
+def _distribution_errors(path: Path) -> list[str]:
+    names = _distribution_members(path)
+    errors = archive_policy_errors(names)
+    normalized = [name.casefold().replace("\\", "/") for name in names]
+    forbidden_parts = {"assets", "demo", "notebooks", "release", "tests"}
+    for name in normalized:
+        if forbidden_parts.intersection(PurePosixPath(name).parts):
+            errors.append(f"package contains release-only member: {name}")
+    if path.suffix == ".whl":
+        for name in normalized:
+            if not (name.startswith("obbkit/") or ".dist-info/" in name):
+                errors.append(f"wheel contains unexpected member: {name}")
+    return errors
+
+
+def verify_snapshot(archive: Path) -> dict[str, object]:
+    """Extract a validated archive and rebuild all CPU/package gates from that snapshot."""
+    errors = inspect_archive(archive)
+    if errors:
+        raise RuntimeError("release archive failed inspection:\n  " + "\n  ".join(errors))
+    uv = shutil.which("uv")
+    node = shutil.which("node")
+    if not uv or not node:
+        raise RuntimeError("uv and Node.js are required for snapshot verification")
+
+    with tempfile.TemporaryDirectory(prefix="yolo26-obb-clean-export-") as temporary:
+        temp_root = Path(temporary)
+        export = temp_root / "export"
+        with zipfile.ZipFile(archive) as bundle:
+            symlinks = [
+                info.filename
+                for info in bundle.infolist()
+                if ((info.external_attr >> 16) & 0o170000) == 0o120000
+            ]
+            if symlinks:
+                raise RuntimeError("release archive contains symbolic links: " + ", ".join(symlinks))
+            bundle.extractall(export)
+
+        steps: list[dict[str, object]] = []
+        steps.append(_run([uv, "sync", "--frozen", "--no-install-project"], export))
+        python = export / ".venv" / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        steps.append(_run([str(python), "-m", "pytest", "-q"], export))
+        steps.append(_run([str(python), "scripts/repo_check.py"], export))
+        steps.append(_run([str(python), "scripts/release_check.py"], export))
+        steps.append(_run([uv, "build"], export))
+
+        distributions = sorted((export / "dist").iterdir())
+        if len(distributions) != 2 or {path.suffix for path in distributions} != {".gz", ".whl"}:
+            raise RuntimeError("expected exactly one wheel and one .tar.gz source distribution")
+        for distribution in distributions:
+            package_errors = _distribution_errors(distribution)
+            if package_errors:
+                raise RuntimeError(
+                    f"{distribution.name} failed package inspection:\n  "
+                    + "\n  ".join(package_errors)
+                )
+
+        package_env = temp_root / "package-env"
+        steps.append(_run([uv, "venv", "--python", "3.11", str(package_env)], export))
+        package_python = package_env / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        wheel = next(path for path in distributions if path.suffix == ".whl")
+        steps.append(
+            _run(
+                [uv, "pip", "install", "--python", str(package_python), "--no-deps", str(wheel)],
+                export,
+            )
+        )
+        steps.append(
+            _run(
+                [
+                    str(package_python),
+                    "-c",
+                    "import obbkit; assert obbkit.__version__ == '1.0.0rc1'; print(obbkit.__version__)",
+                ],
+                export,
+            )
+        )
+        return {
+            "archive_files": len([path for path in export.rglob("*") if path.is_file()]),
+            "distributions": [path.name for path in distributions],
+            "steps": steps,
+            "result": "passed",
+        }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -180,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     output = args.output.resolve()
     try:
+        summary = None
         if args.inspect_only:
             errors = inspect_archive(output)
             if errors:
@@ -187,11 +292,14 @@ def main(argv: list[str] | None = None) -> int:
             digest = hashlib.sha256(output.read_bytes()).hexdigest()
         else:
             digest = create_archive(output)
+            summary = verify_snapshot(output)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1
     print(f"[OK] committed clean export: {output}")
     print(f"[OK] SHA-256: {digest}")
+    if summary is not None:
+        print(json.dumps(summary, indent=2))
     return 0
 
 
