@@ -112,15 +112,15 @@ epochs):
 
 **Epoch 13 is the true peak** (`best.pt` saved there) — matches the trainer's own
 `EarlyStopping` message (`Best results observed at epoch 13`). Epoch 2's dip (0.571 → 0.499)
-recovers by epoch 5; classic behavior for continuing to train an already-converged checkpoint
-with a freshly-initialized `optimizer=auto` schedule — the first few epochs perturb the
-weights out of the sharp minimum before re-converging.
+recovers by epoch 5. That pattern is consistent with continuing to train an already-converged
+checkpoint under a freshly initialized `optimizer=auto` schedule, but the committed evidence does
+not isolate optimizer initialization as the cause.
 
 After epoch 13, `val/box_loss` stays essentially flat (~0.86), but `val/cls_loss` climbs
-steadily from 1.56 (epoch 5) to 1.82 (epoch 28) — a mild, gradual classification-head overfit
-that the localization head doesn't share. That's the actual mechanism behind the slow mAP
-decline from epoch 13 to 28, and it's exactly the pattern `patience=15` (not something
-shorter) was set up to distinguish from ordinary noise before stopping.
+steadily from 1.56 (epoch 5) to 1.82 (epoch 28), a pattern consistent with mild classification-head
+overfit while the localization head stays stable. This is a plausible explanation for the slow mAP
+decline from epoch 13 to 28, not an isolated causal test; `patience=15` allowed that sustained trend
+to be distinguished from a shorter fluctuation before stopping.
 
 ## Confusion matrix (fine-tuned `best.pt`)
 

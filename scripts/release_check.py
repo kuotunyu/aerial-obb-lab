@@ -47,6 +47,7 @@ CLAIM_FILES = {
 }
 
 UNSUPPORTED_CAUSAL_NMS_PHRASES = (
+    "why OBB beats horizontal boxes",
     "NMS sees these as duplicate detections and suppresses true positives",
     "detections an HBB NMS would wrongly suppress",
     "NMS 會把這些視為重複偵測而誤殺",

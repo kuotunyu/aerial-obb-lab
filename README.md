@@ -3,7 +3,9 @@
 > ✅ Complete (Phase 0–7) — see [docs/PLAN.md](docs/PLAN.md) for the full project plan.
 
 Fine-tuning **YOLO26-OBB** (oriented bounding boxes) on the **DOTAv1** aerial dataset, with a full lifecycle:
-train on Colab A100 → evaluate against the official baseline → quantify *why OBB beats horizontal boxes* on aerial imagery → export ONNX / TensorRT FP16 with a 3-framework latency benchmark → Gradio demo + Hugging Face Space.
+train on Colab A100 → evaluate against the official baseline → quantify OBB-vs-HBB annotation
+geometry on aerial imagery → export ONNX / TensorRT FP16 with a 3-framework latency benchmark →
+Gradio demo + Hugging Face Space.
 
 **🚀 Live demo (100% browser-side, no server): https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
 **Model card: https://huggingface.co/steven0226/yolo26m-obb-dota**
@@ -165,8 +167,9 @@ never copy `.venv` from another computer.
 ```powershell
 uv python install 3.11
 uv venv --python 3.11
-uv sync --locked --no-install-project
+uv sync --frozen --no-install-project
 .venv/Scripts/python.exe scripts/repo_check.py
+.venv/Scripts/python.exe scripts/release_check.py
 .venv/Scripts/python.exe -m pytest
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/space-static
 ```
@@ -183,10 +186,20 @@ when a Windows checkout path contains non-ASCII characters (see
 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6). Call `.venv/Scripts/python.exe` directly instead
 of `uv run` for the same reason.
 
+From a clean committed HEAD, the release archive gate rebuilds the locked environment in a fresh
+temporary directory, reruns tests/link/privacy/artifact/browser checks, builds both distributions,
+and installs the wheel into another clean environment. Its browser step uses a synthetic fixture
+and deterministic output stub, not model inference:
+
+```powershell
+.venv/Scripts/playwright.exe install chromium
+.venv/Scripts/python.exe scripts/clean_export_check.py
+```
+
 **Optional local ML / Gradio**
 
 ```powershell
-uv sync --locked --no-install-project --group demo
+uv sync --frozen --no-install-project --group demo
 # HF_MODEL_REPO is optional; without it the app uses local best.pt, then official weights
 .venv/Scripts/python.exe demo/app.py
 ```

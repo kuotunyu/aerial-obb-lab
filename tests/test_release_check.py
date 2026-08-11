@@ -77,6 +77,9 @@ def test_release_checker_rejects_causal_nms_overclaims() -> None:
     assert release_check.unsupported_claim_errors(
         "Ground-truth geometry is a proxy for potential HBB suppression risk."
     ) == []
+    assert release_check.unsupported_claim_errors(
+        "We quantify why OBB beats horizontal boxes."
+    ) == ["unsupported causal NMS outcome claim"]
 
 
 def test_manifest_hashes_every_redistributed_binary() -> None:

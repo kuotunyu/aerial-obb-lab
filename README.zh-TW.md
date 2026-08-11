@@ -3,7 +3,8 @@
 > ✅ 已完成（Phase 0–7）— 完整計畫見 [docs/PLAN.md](docs/PLAN.md)。
 
 以 **YOLO26-OBB**（旋轉框）在 **DOTAv1** 航拍資料集上 fine-tune，展示完整生命週期：
-Colab A100 訓練 → 與官方 baseline 對照評估 → 用數據回答「為什麼航拍場景需要 OBB」→ ONNX / TensorRT FP16 匯出與三框架 latency benchmark → Gradio demo + Hugging Face Space。
+Colab A100 訓練 → 與官方 baseline 對照評估 → 量化航拍標註中的 OBB／HBB 幾何差異 →
+ONNX / TensorRT FP16 匯出與三框架 latency benchmark → Gradio demo + Hugging Face Space。
 
 **🚀 線上 demo（100% 瀏覽器端運算，無伺服器）：https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
 **Model card：https://huggingface.co/steven0226/yolo26m-obb-dota**
@@ -153,8 +154,9 @@ provider 會讓整個 Colab 執行階段原生崩潰（後來改用獨立子行�
 ```powershell
 uv python install 3.11
 uv venv --python 3.11
-uv sync --locked --no-install-project
+uv sync --frozen --no-install-project
 .venv/Scripts/python.exe scripts/repo_check.py
+.venv/Scripts/python.exe scripts/release_check.py
 .venv/Scripts/python.exe -m pytest
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/space-static
 ```
@@ -173,7 +175,7 @@ Torch、CUDA、Ultralytics、ONNX Runtime 或 Gradio；`tool.uv.link-mode = "cop
 **選配：本機 ML／Gradio**
 
 ```powershell
-uv sync --locked --no-install-project --group demo
+uv sync --frozen --no-install-project --group demo
 # HF_MODEL_REPO 可省略；未設定時會依序使用本機 best.pt、官方權重
 .venv/Scripts/python.exe demo/app.py
 ```

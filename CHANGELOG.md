@@ -13,6 +13,8 @@ All notable changes to this project are documented here.
   environment.
 - Added synthetic Python/JavaScript parity for browser preprocessing, `[N,7]` decode, angle, and
   rotated corners without model inference.
+- Added a headless end-to-end UI smoke with a fixed synthetic SVG and deterministic ONNX output
+  stub; it exercises upload, canvas drawing, and result rendering without model inference.
 - Added artifact hashes, privacy gates, third-party notices, citation metadata, cross-platform CI,
   package checks, and clean-export verification.
 
