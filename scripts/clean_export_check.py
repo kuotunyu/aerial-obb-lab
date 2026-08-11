@@ -208,6 +208,25 @@ def _distribution_errors(path: Path) -> list[str]:
     return errors
 
 
+def distribution_paths(folder: Path) -> list[Path]:
+    """Select one wheel and one sdist while validating uv's generated ignore marker."""
+    entries = sorted(folder.iterdir())
+    marker = folder / ".gitignore"
+    if marker in entries:
+        if marker.read_text(encoding="utf-8").strip() != "*":
+            raise RuntimeError("dist/.gitignore has unexpected content")
+        entries.remove(marker)
+    distributions = [
+        path for path in entries if path.is_file() and (path.suffix == ".whl" or path.name.endswith(".tar.gz"))
+    ]
+    unexpected = [path.name for path in entries if path not in distributions]
+    if unexpected:
+        raise RuntimeError("unexpected dist members: " + ", ".join(unexpected))
+    if len(distributions) != 2 or len([path for path in distributions if path.suffix == ".whl"]) != 1:
+        raise RuntimeError("expected exactly one wheel and one .tar.gz source distribution")
+    return sorted(distributions)
+
+
 def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object]:
     """Extract a validated archive and rebuild all CPU/package gates from that snapshot."""
     errors = inspect_archive(archive)
@@ -251,9 +270,7 @@ def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object
             )
         steps.append(_run([uv, "build"], export))
 
-        distributions = sorted((export / "dist").iterdir())
-        if len(distributions) != 2 or {path.suffix for path in distributions} != {".gz", ".whl"}:
-            raise RuntimeError("expected exactly one wheel and one .tar.gz source distribution")
+        distributions = distribution_paths(export / "dist")
         for distribution in distributions:
             package_errors = _distribution_errors(distribution)
             if package_errors:

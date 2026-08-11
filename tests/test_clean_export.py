@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import inspect
 
-from scripts.clean_export_check import REQUIRED_MEMBERS, archive_policy_errors, verify_snapshot
+from scripts.clean_export_check import (
+    REQUIRED_MEMBERS,
+    archive_policy_errors,
+    distribution_paths,
+    verify_snapshot,
+)
 
 
 def test_archive_policy_rejects_private_and_runtime_paths() -> None:
@@ -46,3 +51,14 @@ def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
         "scripts/browser_smoke.py",
         "tests/fixtures/browser-smoke.svg",
     } <= REQUIRED_MEMBERS
+
+
+def test_distribution_selector_accepts_uv_build_marker_only(tmp_path) -> None:
+    (tmp_path / ".gitignore").write_text("*", encoding="utf-8")
+    (tmp_path / "package-1.0.tar.gz").write_bytes(b"sdist")
+    (tmp_path / "package-1.0-py3-none-any.whl").write_bytes(b"wheel")
+
+    assert [path.name for path in distribution_paths(tmp_path)] == [
+        "package-1.0-py3-none-any.whl",
+        "package-1.0.tar.gz",
+    ]
