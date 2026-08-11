@@ -8,8 +8,11 @@ Colab A100 訓練 → 與官方 baseline 對照評估 → 用數據回答「為�
 **🚀 線上 demo（100% 瀏覽器端運算，無伺服器）：https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
 **Model card：https://huggingface.co/steven0226/yolo26m-obb-dota**
 
-> 線上 Space 為了能免費在瀏覽器內執行，刻意使用輕量的官方 `yolo26n-obb` ONNX 模型；本專案
-> 評估與 benchmark 的 fine-tuned `yolo26m-obb` 成果放在上方 model repo，並供選配的本機 demo 使用。
+<!-- claim:browser-scope -->
+> 線上 Space 刻意使用輕量的官方 `yolo26n-obb` ONNX 模型在瀏覽器內執行；它不代表
+> fine-tuned `yolo26m-obb` checkpoint 的準確度或 T4 latency。後者的 artifacts 放在上方
+> model repo，並供選配的本機 demo 使用。
+<!-- /claim:browser-scope -->
 
 ## 專案流程
 
@@ -21,8 +24,7 @@ flowchart LR
     D --> E["5 · 模型部署<br/>ONNX · TensorRT · demos"]
 ```
 
-更細的訓練、評估、分析與部署分支收錄在下方各節。公開瀏覽器
-demo 是刻意分開的輕量部署路線，不能代表 fine-tuned medium checkpoint 的實測準確度或 T4 latency。
+更細的訓練、評估、分析與部署分支收錄在下方各節。
 
 ## 進度
 
@@ -39,6 +41,7 @@ demo 是刻意分開的輕量部署路線，不能代表 fine-tuned medium check
 
 ## 評估：Fine-tuned vs 官方 Baseline
 
+<!-- claim:matched-evaluation -->
 在 Colab A100 上用重新切過的 DOTAv1（`split_dota` 尺度 `[0.8, 1.2]`）fine-tune
 `yolo26m-obb.pt`，跑了 28/30 個 epoch、由 `patience=15` 觸發提早停止。2026-07-15 已完成有
 checksum 與來源證據閘門的 validation-only 補值，補回原 session 未保存的三類：`plane`
@@ -60,13 +63,17 @@ checksum 與來源證據閘門的 validation-only 補值，補回原 session 未
 比較用的（test/val 這個落差在 mAP50 跟 mAP50-95 上方向不一致，原因見
 [docs/training_results.md](docs/training_results.md)）。
 
-在同條件下比較，fine-tune 幾乎沒有帶來進步（Δ mAP50 -0.05 個百分點、Δ mAP50-95 -0.13 個
-百分點）。這是預期中的結果，不是訓練失敗：`yolo26m-obb.pt` 本來就是官方在 DOTAv1 上訓練過
+在同條件下比較，fine-tune 是**持平略降**（Δ mAP50 -0.05 個百分點、Δ mAP50-95 -0.13 個
+百分點），不是精度提升：`yolo26m-obb.pt` 本來就是官方在 DOTAv1 上訓練過
 的權重，這次等於是「繼續訓練一個已經收斂的模型」而不是「帶模型認識新領域」，這個結果量化
-的正是這種情境下的邊際效益上限，不是要展示一次大幅進步。
+的正是這種情境下的邊際效益上限。Baseline 原始 console log 未提交；四位小數與上述四捨五入
+delta 是保留的正式歷史結果。Fine-tuned aggregate、證據強度與限制可由
+[`release/evidence.json`](release/evidence.json) 機器驗證。
+<!-- /claim:matched-evaluation -->
 
 ## 為什麼需要旋轉框？（用數據說話）
 
+<!-- claim:analysis -->
 在 **DOTAv1 驗證集 456 張圖、28,853 個標註物件**上實測（完整表格見
 [docs/analysis_results.md](docs/analysis_results.md)，重現腳本
 [scripts/obb_analysis.py](scripts/obb_analysis.py)）：
@@ -99,17 +106,21 @@ checksum 與來源證據閘門的 validation-only 補值，補回原 session 未
 **3. 一圖勝千言** —— 同一個碼頭、同一份標註（5 組對照圖都在 `assets/`）：
 
 ![HBB vs OBB，碼頭 535 艘船](assets/hbb_vs_obb_1_P0706_ship.jpg)
+<!-- /claim:analysis -->
 
 ## 部署 Benchmark：PyTorch vs ONNX Runtime vs TensorRT FP16
 
+<!-- claim:t4-benchmark -->
 在 Colab **Tesla T4** 上把 fine-tuned `best.pt` 匯出成 ONNX 跟 TensorRT FP16 engine
 （[notebooks/02_benchmark_colab.ipynb](notebooks/02_benchmark_colab.ipynb)，可獨立重現）。匯出
 與 benchmark 固定在 Colab 執行，不綁定貢獻者自己的 GPU 或 Windows TensorRT 環境。batch=1、imgsz=1024，每個後端
 20 次 warmup + 100 次計時取平均，engine 綁定這次 build 用的 GPU 型號與 TensorRT 版本。
 
-**先做匯出精度驗證**（dota8 val，同工具同條件比較三個後端）：PyTorch mAP50=0.9950、
-ONNX 0.9950、TensorRT 0.9950——三者沒有精度損失，符合這個專案一開始設的 <1 個百分點門檻
-（YOLO26 的 end-to-end 匯出有已知 issue，ultralytics#23397 等）。
+<!-- claim:export-smoke -->
+**先做匯出 smoke**（DOTA8 val，同工具同條件比較三個後端）：PyTorch mAP50=0.9950、
+ONNX 0.9950、TensorRT 0.9950。三者在報告的四位小數相同並符合 <1 個百分點 parity 門檻；
+這只是 export smoke，**不是完整 DOTAv1 production certification**，且原始 console log 未提交。
+<!-- /claim:export-smoke -->
 
 | 後端 | 檔案大小 (MB) | 平均延遲 | p50 | p95 | FPS |
 |---|---:|---:|---:|---:|---:|
@@ -117,7 +128,10 @@ ONNX 0.9950、TensorRT 0.9950——三者沒有精度損失，符合這個專案
 | ONNX Runtime GPU | 85.3 | 79.09 ms | 79.67 ms | 81.43 ms | 12.6 |
 | TensorRT FP16 | 45.0 | 20.22 ms | 20.14 ms | 21.09 ms | 49.4 |
 
-**TensorRT FP16 比原生 PyTorch 快約 3.5 倍**，檔案也最小。**ONNX Runtime GPU 反而比原生
+這是指定 Tesla T4、batch=1、1024px、20+100 次量測與當時 Colab/TensorRT 環境的正式**歷史**
+結果；該次 Torch、CUDA、ONNX Runtime、TensorRT 的完整版本字串未保存在 committed raw log。
+在這個限定比較內，TensorRT FP16 比原生 PyTorch 快約 3.5 倍且檔案最小，但不是瀏覽器、其他
+硬體、throughput 或 production SLA 的承諾。**ONNX Runtime GPU 反而比原生
 PyTorch 略慢**——沒有 TensorRT 這種圖編譯後端加持的話，ONNX Runtime 的 GPU 執行不一定會贏
 PyTorch 自己的 cuDNN kernel。會保留這個後端是因為 ONNX 匯出是下面兩種部署路線共同的起點
 （`demo/space/` 的伺服器端 ONNX Runtime CPU、以及實際部署的 `demo/space-static/` 用瀏覽器端
@@ -127,6 +141,7 @@ ONNX Runtime **Web**）——不是因為 GPU 版 ONNX Runtime 本身是最快�
 內部版本兜不起來、HF 檔案 CDN 間歇性回傳簽章失效的下載連結、ONNX Runtime 的 CUDA 執行
 provider 會讓整個 Colab 執行階段原生崩潰（後來改用獨立子行程隔離跑推論解決）。完整過程寫在
 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md)。
+<!-- /claim:t4-benchmark -->
 
 ## 重現步驟
 

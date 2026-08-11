@@ -8,9 +8,12 @@ train on Colab A100 → evaluate against the official baseline → quantify *why
 **🚀 Live demo (100% browser-side, no server): https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
 **Model card: https://huggingface.co/steven0226/yolo26m-obb-dota**
 
+<!-- claim:browser-scope -->
 > The live Space deliberately uses the lightweight official `yolo26n-obb` ONNX model so it can
-> run for free in a browser. The fine-tuned `yolo26m-obb` artifacts evaluated and benchmarked in
-> this project are published in the model repository above and power the optional local demo.
+> run in a browser. It does not represent the fine-tuned `yolo26m-obb` checkpoint's accuracy or
+> its recorded T4 latency; those artifacts are published in the model repository above and power
+> the optional local demo.
+<!-- /claim:browser-scope -->
 
 ## Project Flow
 
@@ -23,8 +26,6 @@ flowchart LR
 ```
 
 Detailed training, evaluation, analysis, and deployment branches are documented below.
-The public browser demo is intentionally a separate lightweight
-path; it does not represent the fine-tuned medium checkpoint's measured accuracy or T4 latency.
 
 ## Status
 
@@ -41,6 +42,7 @@ path; it does not represent the fine-tuned medium checkpoint's measured accuracy
 
 ## Evaluation: Fine-tuned vs. Official Baseline
 
+<!-- claim:matched-evaluation -->
 Fine-tuned `yolo26m-obb.pt` on a re-split DOTAv1 (Colab A100, `split_dota` rates `[0.8, 1.2]`,
 28/30 epochs, early-stopped on `patience=15`). A checksum- and provenance-gated validation-only
 run completed on 2026-07-15 and restored the three per-class rows that the original session had
@@ -62,14 +64,18 @@ conditions. The top row uses DOTA's own test-split evaluation pipeline and is sh
 context, not comparison (see [docs/training_results.md](docs/training_results.md) for why the
 test/val gap runs in an unexpected direction on mAP50 vs mAP50-95).
 
-Under matched conditions, fine-tuning moved the needle by essentially nothing (Δ mAP50
--0.05pt, Δ mAP50-95 -0.13pt). That's expected, not a failure: `yolo26m-obb.pt` is already the
+Under matched conditions, fine-tuning is a **near-tie/slight regression** (Δ mAP50
+-0.05pt, Δ mAP50-95 -0.13pt). `yolo26m-obb.pt` is already the
 official DOTAv1-trained checkpoint, so this quantifies the ceiling of continuing to fine-tune
 an already-converged model on a re-tiled version of the same dataset, rather than demonstrating
-a big lift.
+a lift. The baseline's raw console log is not committed; its four-decimal values and these rounded
+deltas are preserved accepted historical results. The checksum-gated fine-tuned aggregate and
+limitations are machine-readable in [`release/evidence.json`](release/evidence.json).
+<!-- /claim:matched-evaluation -->
 
 ## Why Oriented Bounding Boxes? (quantified, not hand-waved)
 
+<!-- claim:analysis -->
 Measured on **28,853 ground-truth objects across 456 DOTAv1 val images** (see
 [docs/analysis_results.md](docs/analysis_results.md) for full tables,
 [scripts/obb_analysis.py](scripts/obb_analysis.py) to reproduce):
@@ -106,19 +112,23 @@ overlap (and the NMS decision) reflect reality.
 **3. Seeing is believing** — same marina, same labels (all five comparisons in `assets/`):
 
 ![HBB vs OBB, 535 ships in a marina](assets/hbb_vs_obb_1_P0706_ship.jpg)
+<!-- /claim:analysis -->
 
 ## Deployment Benchmark: PyTorch vs. ONNX Runtime vs. TensorRT FP16
 
+<!-- claim:t4-benchmark -->
 Exported the fine-tuned `best.pt` to ONNX and a TensorRT FP16 engine on a Colab **Tesla T4**
 (`notebooks/02_benchmark_colab.ipynb`, reproducible standalone). Export and benchmarking run in
 Colab rather than depending on a contributor's local GPU or Windows TensorRT setup. Batch=1,
 imgsz=1024, 20 warmup + 100 timed runs per backend, engine build tied to this exact GPU model
 and TensorRT version.
 
-**Export accuracy check first** (dota8 val, same tool/conditions across backends): PyTorch
-mAP50=0.9950, ONNX 0.9950, TensorRT 0.9950 — no accuracy loss from either export, clears the
-<1pt tolerance this project set going in given YOLO26's known end-to-end export issues
-(ultralytics#23397 et al.).
+<!-- claim:export-smoke -->
+**Export smoke first** (DOTA8 val, same tool/conditions across backends): PyTorch mAP50=0.9950,
+ONNX 0.9950, TensorRT 0.9950. These values are identical to four reported decimals and clear the
+project's <1pt parity tolerance. This is an export smoke check, **not full DOTAv1 production certification**,
+and the raw console log is not committed.
+<!-- /claim:export-smoke -->
 
 | backend | size (MB) | mean latency | p50 | p95 | FPS |
 |---|---:|---:|---:|---:|---:|
@@ -126,7 +136,11 @@ mAP50=0.9950, ONNX 0.9950, TensorRT 0.9950 — no accuracy loss from either expo
 | ONNX Runtime GPU | 85.3 | 79.09 ms | 79.67 ms | 81.43 ms | 12.6 |
 | TensorRT FP16 | 45.0 | 20.22 ms | 20.14 ms | 21.09 ms | 49.4 |
 
-**TensorRT FP16 is ~3.5× faster than eager PyTorch** and comes in at the smallest file size.
+These are accepted **historical** results for that specific T4, batch=1, 1024px, 20+100-run
+Colab/TensorRT environment. The exact Torch, CUDA, ONNX Runtime, and TensorRT version strings from
+the run are not preserved in a committed raw log. In that bounded comparison, TensorRT FP16 was
+~3.5× faster than eager PyTorch and came in at the smallest file size; this is not a browser,
+other-hardware, throughput, or production-SLA claim.
 **ONNX Runtime GPU is actually slightly slower than native PyTorch here** — without a
 graph-compilation backend like TensorRT behind it, ONNX Runtime's GPU execution provider doesn't
 automatically beat PyTorch's own cuDNN kernels. It's included for completeness and because the
@@ -139,6 +153,7 @@ this project's own code: a broken `torch._dynamo` build, HF's file CDN intermitt
 signed URLs with an invalid key, and ONNX Runtime's CUDA execution provider crashing the whole
 Colab runtime outright (worked around by running that inference in an isolated subprocess). Full
 writeup in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
+<!-- /claim:t4-benchmark -->
 
 ## Reproduction
 

@@ -1,6 +1,11 @@
 # HBB vs OBB on DOTAv1 val — raw analysis output
 
+<!-- claim:analysis -->
 Objects analyzed: **28853** across **456** images (ground-truth labels).
+
+This is **ground-truth geometry** evidence, not detector accuracy or production performance. The
+machine-readable values are in [`analysis_results.json`](analysis_results.json) and the bounded
+release claim is in [`../release/evidence.json`](../release/evidence.json).
 
 ## Area inflation: axis-aligned box area / oriented box area
 
@@ -52,3 +57,4 @@ detections an HBB NMS would wrongly suppress.
 - `hbb_vs_obb_3_P2124_large-vehicle.jpg` — P2124, dominant class: large vehicle (score 82)
 - `hbb_vs_obb_4_P1957_large-vehicle.jpg` — P1957, dominant class: large vehicle (score 75)
 - `hbb_vs_obb_5_P2781_large-vehicle.jpg` — P2781, dominant class: large vehicle (score 68)
+<!-- /claim:analysis -->

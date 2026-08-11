@@ -36,7 +36,7 @@ https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
 - **Base checkpoint**: Ultralytics' official `yolo26m-obb.pt` (already DOTAv1-trained; see
   Training data below for what "fine-tuned" means here)
 - **Input**: 1024×1024 RGB
-- **Params**: 21.2M / **GFLOPs**: 183 (at 1024)
+- **Params**: 21.2M / **GFLOPs**: 183.3 (at 1024; [official Ultralytics OBB table](https://docs.ultralytics.com/tasks/obb))
 
 ## Training data
 
@@ -46,6 +46,7 @@ epochs, early-stopped (`patience=15`), best checkpoint at epoch 13.
 
 ## Evaluation
 
+<!-- claim:matched-evaluation -->
 Baseline = official `yolo26m-obb.pt`, evaluated on this repo's own val split for an apples-to-apples
 comparison (not the officially published test-split numbers — see caveat below).
 
@@ -55,9 +56,10 @@ comparison (not the officially published test-split numbers — see caveat below
 | yolo26m-obb.pt (official, this repo's val) | DOTAv1 val | 78.2 | 63.3 |
 | **this fine-tuned checkpoint** | DOTAv1 val | 78.2 | 63.1 |
 
-Fine-tuning moved the needle by essentially nothing under matched conditions (Δ mAP50 -0.05pt,
-Δ mAP50-95 -0.13pt) — expected, since the base checkpoint was already DOTAv1-converged; this
-run quantifies that ceiling rather than claiming a large improvement. A checksum-, manifest-, and
+Fine-tuning is a **near-tie/slight regression** under matched conditions (Δ mAP50 -0.05pt,
+Δ mAP50-95 -0.13pt), not an improvement. The base checkpoint was already DOTAv1-converged; this
+run quantifies that ceiling. The baseline raw console log is not committed, while the fine-tuned
+aggregate is checksum-gated in the committed evidence registry. A checksum-, manifest-, and
 historical-consistency-gated validation-only run completed on 2026-07-15 and restored the three
 rows not preserved by the original session: `plane` 0.952147 / 0.862352, `ship` 0.909448 /
 0.762681, and `storage tank` 0.850699 / 0.716696 (mAP50 / mAP50-95). The reviewed run is accepted
@@ -69,6 +71,7 @@ are in [`docs/training_results.md`](training_results.md).
 **Caveat**: the top row uses DOTA's own test-split evaluation pipeline (full-image stitching);
 the bottom two rows use this repo's own val-split tiling and `ultralytics` evaluation — not
 directly comparable to the top row, only to each other.
+<!-- /claim:matched-evaluation -->
 
 ## Deployment
 
@@ -76,9 +79,11 @@ Also exported to ONNX and a TensorRT FP16 engine (Tesla T4). The Hugging Face mo
 contains `results.png`, `confusion_matrix_normalized.png`, and `results.csv`; the source project
 README contains the latency/FPS benchmark table.
 
-**Live demo** (official `yolo26n-obb`, not the fine-tuned `yolo26m-obb` checkpoint described on
-this card; 100% browser-side via ONNX Runtime Web, no server):
+<!-- claim:browser-scope -->
+**Live demo** (official `yolo26n-obb`; it does not represent the fine-tuned `yolo26m-obb`
+checkpoint's accuracy or T4 latency; 100% browser-side via ONNX Runtime Web, no server):
 https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
+<!-- /claim:browser-scope -->
 
 ## Intended use & limitations
 

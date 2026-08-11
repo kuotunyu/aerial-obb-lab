@@ -1,5 +1,6 @@
 # Phase 2 fine-tuning results — raw output
 
+<!-- claim:matched-evaluation -->
 `yolo26m-obb.pt` fine-tuned on a DOTAv1 re-split (`split_dota` rates `[0.8, 1.2]`, gap 500,
 62,030 train / 21,271 val tiles at 1024px) on a Colab A100, evaluated against the same
 official checkpoint on the identical val split. Full run config in `args.yaml` (archived to the
@@ -30,11 +31,14 @@ evaluation pipelines (official: full-image stitching + DOTA's own AP tool; ours:
 `ultralytics` `val()`) rather than the model having seen the val data — but this is exactly
 the kind of number that deserves a footnote instead of being reported at face value.
 
-**Fine-tuning result**: Δ mAP50 = **-0.05pt**, Δ mAP50-95 = **-0.13pt** — within noise,
-essentially a tie. Expected: `yolo26m-obb.pt` is already the official DOTAv1-trained
+**Fine-tuning result**: Δ mAP50 = **-0.05pt**, Δ mAP50-95 = **-0.13pt** — a
+**near-tie/slight regression**, not an improvement. Expected: `yolo26m-obb.pt` is already the official DOTAv1-trained
 checkpoint, so continuing to fine-tune it on our own re-tiled version of the same dataset is
 closer to "keep training an already-converged model" than "adapt to a new domain." The value
-of this run is demonstrating (and quantifying) that ceiling, not chasing a score.
+of this run is demonstrating (and quantifying) that ceiling, not chasing a score. The matched
+baseline's raw console log is not committed; its four-decimal values and rounded deltas are
+accepted historical evidence recorded in [`../release/evidence.json`](../release/evidence.json).
+<!-- /claim:matched-evaluation -->
 
 ## Per-class comparison (fine-tuned − baseline)
 

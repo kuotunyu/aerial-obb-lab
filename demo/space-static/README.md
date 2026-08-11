@@ -16,10 +16,12 @@ DOTA aerial classes (planes, ships, vehicles, harbors, …) — inference happen
 your browser** via [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/) (WASM), no
 server, no GPU, nothing uploaded anywhere.
 
-- Model: `yolo26n-obb` exported to ONNX, running client-side (~10MB model, downloaded once and
+<!-- claim:browser-scope -->
+- Model: official `yolo26n-obb` exported to ONNX, running client-side (~10MB model, downloaded once and
   cached by the browser)
-- This live demo does not run the fine-tuned `yolo26m-obb` checkpoint; that model is published
-  separately for evaluation and deployment experiments
+- This live demo does not represent the fine-tuned `yolo26m-obb` checkpoint's accuracy or its
+  recorded T4 latency; that model is published separately for evaluation and deployment experiments
+<!-- /claim:browser-scope -->
 - Adjustable confidence threshold and per-class filtering; the table reports each detection's
   rotation angle
 - Built as a **static Space** that requires no hosted compute tier — the whole
