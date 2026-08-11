@@ -11,7 +11,7 @@ Hugging Face mutation is part of this checklist run.
 - [x] Claim/evidence arithmetic and bounded Markdown claim blocks pass.
 - [x] Browser synthetic preprocess, output schema, decode, angle, and corners match Python.
 - [x] Headless Chromium exercises upload, preprocess, canvas drawing, and result rendering with a
-  deterministic output stub; it performs no model inference or network request.
+  deterministic output stub; it performs no model inference or external network request.
 - [x] Bundled artifact size/SHA-256 values match `release/artifact-manifest.json`.
 - [x] Notebooks have zero outputs/execution counts and remain synchronized with Jupytext sources.
 - [x] Tracked files and Git history pass token-pattern/privacy checks.
