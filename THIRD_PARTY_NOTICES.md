@@ -9,8 +9,10 @@ below. This document is a release inventory, not legal advice.
 
 ### Ultralytics YOLO26 OBB model export
 
-`demo/space-static/yolo26n-obb.onnx` is an export of the official `yolo26n-obb` model. Its exact
-size, SHA-256, source revision, and restrictions are recorded in
+`demo/space-static/yolo26n-obb.onnx` is an export of the official `yolo26n-obb` model. Release
+hardening reserialized its protobuf to remove a stale absolute exporter path. ONNX checker passed,
+and the graph SHA-256 is identical before and after sanitation; no inference was run. Its upstream
+and local size, SHA-256, source revision, and restrictions are recorded in
 [`release/artifact-manifest.json`](release/artifact-manifest.json). Ultralytics publishes its
 software and models under an [AGPL-3.0 or Enterprise licensing route](https://www.ultralytics.com/license).
 This release uses the AGPL route and makes no Enterprise-license grant.
