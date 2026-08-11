@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+import tomllib
+
+
+ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_VERSION = "1.0.0rc1"
+
+
+def test_package_metadata_and_runtime_version_match_release_candidate() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["version"] == EXPECTED_VERSION
+    assert project["license"]["text"] == "AGPL-3.0-or-later"
+
+    module_path = ROOT / "src" / "obbkit" / "__init__.py"
+    spec = importlib.util.spec_from_file_location("obbkit_release_metadata", module_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.__version__ == EXPECTED_VERSION
+
+
+def test_release_metadata_files_exist() -> None:
+    for relative in ("CHANGELOG.md", "CITATION.cff", "LICENSE", "THIRD_PARTY_NOTICES.md"):
+        assert (ROOT / relative).is_file(), f"missing release metadata: {relative}"
+
+
+def test_ci_runs_core_cpu_gates_on_ubuntu_and_windows() -> None:
+    workflow = ROOT / ".github" / "workflows" / "release-gates.yml"
+    text = workflow.read_text(encoding="utf-8")
+
+    for token in (
+        "ubuntu-latest",
+        "windows-latest",
+        "uv sync --frozen --no-install-project",
+        "python -m pytest -q",
+        "python scripts/repo_check.py",
+        "python scripts/release_check.py",
+        "uv build",
+    ):
+        assert token in text
+    for forbidden in ("cuda", "nvidia", "local-ml", "huggingface-token"):
+        assert forbidden not in text.casefold()

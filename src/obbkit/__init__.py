@@ -1,4 +1,4 @@
-"""obbkit — reusable helpers for the YOLO26 OBB DOTA project.
+"""Reusable helpers for the YOLO26 OBB on DOTA project.
 
 Modules (added phase by phase):
 - hf_checkpoint: HF Hub checkpoint push callback + resume helpers (Phase 1/2)
@@ -6,4 +6,4 @@ Modules (added phase by phase):
 - viz: HBB vs OBB side-by-side comparison plots (Phase 4)
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0rc1"

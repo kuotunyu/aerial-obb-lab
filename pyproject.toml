@@ -1,6 +1,6 @@
 [project]
 name = "yolo26-dota-obb"
-version = "0.1.0"
+version = "1.0.0rc1"
 description = "YOLO26 Oriented Bounding Box detection on DOTA aerial imagery - training to deployment"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
