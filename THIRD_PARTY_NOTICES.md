@@ -49,6 +49,7 @@ own licenses and notices continue to apply.
 | Pillow | Image support | [HPND](https://github.com/python-pillow/Pillow/blob/main/LICENSE) |
 | Shapely | Polygon geometry | [BSD-3-Clause](https://github.com/shapely/shapely/blob/main/LICENSE.txt) |
 | Jupytext / pytest / Hatchling | Notebook sync, tests, package build | [MIT](https://github.com/mwouts/jupytext/blob/main/LICENSE), [MIT](https://github.com/pytest-dev/pytest/blob/main/LICENSE), [MIT](https://github.com/pypa/hatch/blob/master/LICENSE.txt) |
+| Playwright | Headless synthetic browser smoke | [Apache-2.0](https://github.com/microsoft/playwright-python/blob/main/LICENSE) |
 
 Package-specific transitive notices are available in each installed distribution and lockfile.
 

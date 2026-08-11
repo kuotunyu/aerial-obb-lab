@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.clean_export_check import archive_policy_errors, verify_snapshot
+from scripts.clean_export_check import REQUIRED_MEMBERS, archive_policy_errors, verify_snapshot
 
 
 def test_archive_policy_rejects_private_and_runtime_paths() -> None:
@@ -35,3 +35,11 @@ def test_archive_policy_accepts_release_files() -> None:
             "assets/hbb_vs_obb_1_P0706_ship.jpg",
         ]
     ) == []
+
+
+def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
+    assert {
+        "scripts/clean_export_check.py",
+        "scripts/browser_smoke.py",
+        "tests/fixtures/browser-smoke.svg",
+    } <= REQUIRED_MEMBERS

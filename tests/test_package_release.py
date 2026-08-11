@@ -46,6 +46,22 @@ def test_ci_runs_core_cpu_gates_on_ubuntu_and_windows() -> None:
         assert forbidden not in text.casefold()
 
 
+def test_ci_runs_a_headless_synthetic_browser_smoke() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
+        encoding="utf-8"
+    )
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert "playwright>=1.55,<2" in project["dependency-groups"]["dev"]
+    for token in (
+        "browser-smoke:",
+        "ubuntu-latest",
+        "playwright install --with-deps chromium",
+        "python scripts/browser_smoke.py",
+    ):
+        assert token in workflow
+
+
 def test_sdist_explicitly_excludes_demo_models_and_dota_visuals() -> None:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     included = set(config["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
