@@ -208,7 +208,7 @@ def _distribution_errors(path: Path) -> list[str]:
     return errors
 
 
-def verify_snapshot(archive: Path) -> dict[str, object]:
+def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object]:
     """Extract a validated archive and rebuild all CPU/package gates from that snapshot."""
     errors = inspect_archive(archive)
     if errors:
@@ -237,6 +237,18 @@ def verify_snapshot(archive: Path) -> dict[str, object]:
         steps.append(_run([str(python), "-m", "pytest", "-q"], export))
         steps.append(_run([str(python), "scripts/repo_check.py"], export))
         steps.append(_run([str(python), "scripts/release_check.py"], export))
+        if run_browser:
+            steps.append(
+                _run(
+                    [
+                        str(python),
+                        "scripts/browser_smoke.py",
+                        "--screenshot",
+                        str(temp_root / "browser-smoke.png"),
+                    ],
+                    export,
+                )
+            )
         steps.append(_run([uv, "build"], export))
 
         distributions = sorted((export / "dist").iterdir())
@@ -284,6 +296,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--inspect-only", action="store_true", help="inspect an existing --output archive"
     )
+    parser.add_argument(
+        "--skip-browser",
+        action="store_true",
+        help="skip Playwright in this job when a separate browser-smoke CI job runs it",
+    )
     args = parser.parse_args(argv)
     output = args.output.resolve()
     try:
@@ -295,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
             digest = hashlib.sha256(output.read_bytes()).hexdigest()
         else:
             digest = create_archive(output)
-            summary = verify_snapshot(output)
+            summary = verify_snapshot(output, run_browser=not args.skip_browser)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1

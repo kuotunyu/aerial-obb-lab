@@ -40,7 +40,7 @@ jobs:
       - name: Build wheel and source distribution
         run: uv build
       - name: Rebuild and verify committed snapshot
-        run: uv run --no-sync python scripts/clean_export_check.py
+        run: uv run --no-sync python scripts/clean_export_check.py --skip-browser
 
   browser-smoke:
     name: Synthetic browser smoke / Ubuntu CPU

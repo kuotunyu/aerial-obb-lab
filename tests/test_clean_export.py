@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from scripts.clean_export_check import REQUIRED_MEMBERS, archive_policy_errors, verify_snapshot
 
 
@@ -24,6 +26,7 @@ def test_archive_policy_rejects_unsafe_tar_members() -> None:
 
 def test_clean_export_has_a_snapshot_rebuild_gate() -> None:
     assert callable(verify_snapshot)
+    assert "run_browser" in inspect.signature(verify_snapshot).parameters
 
 
 def test_archive_policy_accepts_release_files() -> None:
