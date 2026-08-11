@@ -171,7 +171,7 @@ detectBtn.addEventListener("click", async () => {
     const sess = await ensureSession();
     const feeds = { images: tensor };
     const results = await sess.run(feeds);
-    const output = results[Object.keys(results)[0]].data;
+    const output = OBB.selectEndToEndOutput(results);
     const ms = (performance.now() - t0).toFixed(0);
 
     const confThresh = Number(confSlider.value);

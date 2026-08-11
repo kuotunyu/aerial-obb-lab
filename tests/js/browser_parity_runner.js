@@ -23,6 +23,29 @@ const detections = OBB.decodeDetections(
 );
 const corners = OBB.rotatedCorners(detections[0]);
 
+const schema = fixture.output_schema;
+const validOutput = OBB.selectEndToEndOutput({
+  [schema.name]: {
+    dims: schema.dims,
+    data: new Float32Array(schema.expected_length),
+  },
+});
+const schemaErrors = {};
+for (const scenario of schema.invalid) {
+  const results = Object.fromEntries(
+    Object.entries(scenario.results).map(([name, tensor]) => [
+      name,
+      { dims: tensor.dims, data: new Float32Array(tensor.data_length) },
+    ]),
+  );
+  try {
+    OBB.selectEndToEndOutput(results);
+    schemaErrors[scenario.name] = null;
+  } catch (error) {
+    schemaErrors[scenario.name] = error.message;
+  }
+}
+
 const invalidErrors = {};
 for (const scenario of fixture.invalid_outputs) {
   try {
@@ -39,4 +62,12 @@ for (const scenario of fixture.invalid_outputs) {
   }
 }
 
-process.stdout.write(JSON.stringify({ geometry, chw, detections, corners, invalidErrors }));
+process.stdout.write(JSON.stringify({
+  geometry,
+  chw,
+  detections,
+  corners,
+  validOutputLength: validOutput.length,
+  schemaErrors,
+  invalidErrors,
+}));

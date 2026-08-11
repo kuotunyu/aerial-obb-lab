@@ -73,3 +73,11 @@ def test_malformed_end_to_end_outputs_fail_closed() -> None:
 
     expected = {item["name"]: item["error"] for item in fixture["invalid_outputs"]}
     assert actual["invalidErrors"] == expected
+
+
+def test_onnx_output_name_shape_and_length_fail_closed() -> None:
+    fixture, actual = run_browser_geometry()
+
+    assert actual["validOutputLength"] == fixture["output_schema"]["expected_length"]
+    expected = {item["name"]: item["error"] for item in fixture["output_schema"]["invalid"]}
+    assert actual["schemaErrors"] == expected

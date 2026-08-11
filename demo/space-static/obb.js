@@ -44,6 +44,28 @@
     return chw;
   }
 
+  function selectEndToEndOutput(results) {
+    if (!results || !Object.prototype.hasOwnProperty.call(results, "output0")) {
+      throw new Error("expected ONNX output named output0");
+    }
+    const tensor = results.output0;
+    if (
+      !tensor ||
+      !Array.isArray(tensor.dims) ||
+      tensor.dims.length !== 3 ||
+      tensor.dims[0] !== 1 ||
+      !Number.isInteger(tensor.dims[1]) ||
+      tensor.dims[1] <= 0 ||
+      tensor.dims[2] !== 7
+    ) {
+      throw new Error("expected output0 shape [1,N,7]");
+    }
+    if (!tensor.data || tensor.data.length !== tensor.dims[1] * 7) {
+      throw new Error("output0 data length does not match its dimensions");
+    }
+    return tensor.data;
+  }
+
   function decodeDetections(output, geometry, confidence, classIds, classCount) {
     if (!output || typeof output.length !== "number" || output.length % 7 !== 0) {
       throw new Error("expected flattened [N,7] output");
@@ -103,5 +125,11 @@
     ].map(([x, y]) => [cx + x * cos - y * sin, cy + x * sin + y * cos]);
   }
 
-  return { letterboxGeometry, rgbaToChw, decodeDetections, rotatedCorners };
+  return {
+    letterboxGeometry,
+    rgbaToChw,
+    selectEndToEndOutput,
+    decodeDetections,
+    rotatedCorners,
+  };
 });

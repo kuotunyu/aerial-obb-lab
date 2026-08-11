@@ -56,6 +56,28 @@
       [175, 50]
     ]
   },
+  "output_schema": {
+    "name": "output0",
+    "dims": [1, 2, 7],
+    "expected_length": 14,
+    "invalid": [
+      {
+        "name": "wrong-output-name",
+        "results": {"unexpected": {"dims": [1, 2, 7], "data_length": 14}},
+        "error": "expected ONNX output named output0"
+      },
+      {
+        "name": "wrong-output-shape",
+        "results": {"output0": {"dims": [1, 7, 2], "data_length": 14}},
+        "error": "expected output0 shape [1,N,7]"
+      },
+      {
+        "name": "wrong-output-length",
+        "results": {"output0": {"dims": [1, 2, 7], "data_length": 7}},
+        "error": "output0 data length does not match its dimensions"
+      }
+    ]
+  },
   "invalid_outputs": [
     {
       "name": "wrong-width",
