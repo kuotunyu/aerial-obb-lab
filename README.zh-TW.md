@@ -172,6 +172,16 @@ Torch、CUDA、Ultralytics、ONNX Runtime 或 Gradio；`tool.uv.link-mode = "cop
 字元時，該檔可能讓 CPython 啟動失敗（細節見 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md) T6）。
 基於同一原因，請直接呼叫 `.venv/Scripts/python.exe`，不要用 `uv run`。
 
+在乾淨、已提交的 HEAD 上，release archive gate 會於全新暫存目錄重建 locked 環境，
+重跑 tests、links、privacy、artifact 與 browser 檢查，建置 wheel/sdist，並在另一個乾淨
+環境安裝 wheel。Browser 步驟只使用 synthetic fixture 與固定 output stub，不會執行模型
+inference：
+
+```powershell
+.venv/Scripts/playwright.exe install chromium
+.venv/Scripts/python.exe scripts/clean_export_check.py
+```
+
 **選配：本機 ML／Gradio**
 
 ```powershell
