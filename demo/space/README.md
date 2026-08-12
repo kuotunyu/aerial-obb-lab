@@ -36,6 +36,7 @@ python app.py
 
 ## Licensing
 
-- Code/model: **AGPL-3.0** route (Ultralytics; Enterprise licensing is separate)
-- DOTA images/annotations: **academic use only; commercial use prohibited**; underlying image-source
-  terms may also apply. No commercial-use clearance is claimed for this model or uploaded imagery.
+- Code: **AGPL-3.0**. A user-supplied model keeps its own upstream, dataset, and weight terms;
+  Ultralytics' Enterprise route is separate.
+- DOTA images/annotations are academic-use-only and are not bundled. Users are responsible for
+  the rights to any model or image they select.

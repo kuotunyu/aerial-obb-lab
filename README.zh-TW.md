@@ -134,7 +134,7 @@ ONNX 0.9950、TensorRT 0.9950。三者在報告的四位小數相同並符合 <1
 硬體、throughput 或 production SLA 的承諾。**ONNX Runtime GPU 反而比原生
 PyTorch 略慢**——沒有 TensorRT 這種圖編譯後端加持的話，ONNX Runtime 的 GPU 執行不一定會贏
 PyTorch 自己的 cuDNN kernel。會保留這個後端是因為 ONNX 匯出是下面兩種部署路線共同的起點
-（`demo/space/` 的伺服器端 ONNX Runtime CPU、以及實際部署的 `demo/space-static/` 用瀏覽器端
+（`demo/space/` 的伺服器端 ONNX Runtime CPU、以及 `demo/space-static/` 的瀏覽器端
 ONNX Runtime **Web**）——不是因為 GPU 版 ONNX Runtime 本身是最快的選項。
 
 拿到這組數字的過程踩了好幾輪 Colab 環境的坑，都不是這個專案自己程式碼的問題：`torch._dynamo`
