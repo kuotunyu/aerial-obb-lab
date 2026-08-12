@@ -9,6 +9,89 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "aerial-obb-lab"
+version = "1.0.0rc2"
+source = { editable = "." }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "pillow" },
+    { name = "shapely" },
+]
+
+[package.dev-dependencies]
+demo = [
+    { name = "gradio" },
+    { name = "onnx" },
+    { name = "onnxruntime" },
+    { name = "onnxslim" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torchvision", version = "0.23.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'" },
+    { name = "torchvision", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "torchvision", version = "0.23.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "ultralytics" },
+]
+dev = [
+    { name = "jupytext" },
+    { name = "playwright" },
+    { name = "pytest" },
+]
+local-ml = [
+    { name = "onnx" },
+    { name = "onnxruntime" },
+    { name = "onnxslim" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
+    { name = "torchvision", version = "0.23.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'" },
+    { name = "torchvision", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "torchvision", version = "0.23.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
+    { name = "ultralytics" },
+]
+ui-preview = [
+    { name = "gradio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "huggingface-hub", specifier = ">=0.30" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "opencv-python", specifier = ">=4.9" },
+    { name = "pillow", specifier = ">=10" },
+    { name = "shapely", specifier = ">=2.0" },
+]
+
+[package.metadata.requires-dev]
+demo = [
+    { name = "gradio", specifier = "==6.20.0" },
+    { name = "onnx", specifier = ">=1.16" },
+    { name = "onnxruntime", specifier = ">=1.20,<1.21" },
+    { name = "onnxslim" },
+    { name = "torch", marker = "sys_platform != 'darwin'", specifier = ">=2.6,<2.9", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform == 'darwin'", specifier = ">=2.6,<2.9" },
+    { name = "torchvision", marker = "sys_platform != 'darwin'", specifier = ">=0.21,<0.24", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torchvision", marker = "sys_platform == 'darwin'", specifier = ">=0.21,<0.24" },
+    { name = "ultralytics", specifier = "==8.4.93" },
+]
+dev = [
+    { name = "jupytext", specifier = ">=1.19.4" },
+    { name = "playwright", specifier = ">=1.55,<2" },
+    { name = "pytest", specifier = ">=8.0" },
+]
+local-ml = [
+    { name = "onnx", specifier = ">=1.16" },
+    { name = "onnxruntime", specifier = ">=1.20,<1.21" },
+    { name = "onnxslim" },
+    { name = "torch", marker = "sys_platform != 'darwin'", specifier = ">=2.6,<2.9", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform == 'darwin'", specifier = ">=2.6,<2.9" },
+    { name = "torchvision", marker = "sys_platform != 'darwin'", specifier = ">=0.21,<0.24", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torchvision", marker = "sys_platform == 'darwin'", specifier = ">=0.21,<0.24" },
+    { name = "ultralytics", specifier = "==8.4.93" },
+]
+ui-preview = [{ name = "gradio", specifier = "==6.20.0" }]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1499,86 +1582,3 @@ sdist = { url = "https://files.pythonhosted.org/packages/a2/65/b7c6c443ccc58678c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/45/ec/dbb7e5a6b91f86bfb9eb7d2988a2730907b6a729875b949c7f022e8b88fa/uvicorn-0.51.0-py3-none-any.whl", hash = "sha256:5d38af6cd620f2ae3849fb44fd4879e0890aa1febe8d47eb355fb45d93fe6a5b", size = 73219, upload-time = "2026-07-08T10:59:04.44Z" },
 ]
-
-[[package]]
-name = "yolo26-dota-obb"
-version = "1.0.0rc2"
-source = { editable = "." }
-dependencies = [
-    { name = "huggingface-hub" },
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "pillow" },
-    { name = "shapely" },
-]
-
-[package.dev-dependencies]
-demo = [
-    { name = "gradio" },
-    { name = "onnx" },
-    { name = "onnxruntime" },
-    { name = "onnxslim" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
-    { name = "torchvision", version = "0.23.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'" },
-    { name = "torchvision", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "torchvision", version = "0.23.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "ultralytics" },
-]
-dev = [
-    { name = "jupytext" },
-    { name = "playwright" },
-    { name = "pytest" },
-]
-local-ml = [
-    { name = "onnx" },
-    { name = "onnxruntime" },
-    { name = "onnxslim" },
-    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "torch", version = "2.8.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
-    { name = "torchvision", version = "0.23.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux'" },
-    { name = "torchvision", version = "0.23.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "torchvision", version = "0.23.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(platform_machine != 'aarch64' and sys_platform == 'linux') or (platform_python_implementation != 'CPython' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')" },
-    { name = "ultralytics" },
-]
-ui-preview = [
-    { name = "gradio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "huggingface-hub", specifier = ">=0.30" },
-    { name = "numpy", specifier = ">=1.26" },
-    { name = "opencv-python", specifier = ">=4.9" },
-    { name = "pillow", specifier = ">=10" },
-    { name = "shapely", specifier = ">=2.0" },
-]
-
-[package.metadata.requires-dev]
-demo = [
-    { name = "gradio", specifier = "==6.20.0" },
-    { name = "onnx", specifier = ">=1.16" },
-    { name = "onnxruntime", specifier = ">=1.20,<1.21" },
-    { name = "onnxslim" },
-    { name = "torch", marker = "sys_platform != 'darwin'", specifier = ">=2.6,<2.9", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torch", marker = "sys_platform == 'darwin'", specifier = ">=2.6,<2.9" },
-    { name = "torchvision", marker = "sys_platform != 'darwin'", specifier = ">=0.21,<0.24", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torchvision", marker = "sys_platform == 'darwin'", specifier = ">=0.21,<0.24" },
-    { name = "ultralytics", specifier = "==8.4.93" },
-]
-dev = [
-    { name = "jupytext", specifier = ">=1.19.4" },
-    { name = "playwright", specifier = ">=1.55,<2" },
-    { name = "pytest", specifier = ">=8.0" },
-]
-local-ml = [
-    { name = "onnx", specifier = ">=1.16" },
-    { name = "onnxruntime", specifier = ">=1.20,<1.21" },
-    { name = "onnxslim" },
-    { name = "torch", marker = "sys_platform != 'darwin'", specifier = ">=2.6,<2.9", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torch", marker = "sys_platform == 'darwin'", specifier = ">=2.6,<2.9" },
-    { name = "torchvision", marker = "sys_platform != 'darwin'", specifier = ">=0.21,<0.24", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torchvision", marker = "sys_platform == 'darwin'", specifier = ">=0.21,<0.24" },
-    { name = "ultralytics", specifier = "==8.4.93" },
-]
-ui-preview = [{ name = "gradio", specifier = "==6.20.0" }]

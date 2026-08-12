@@ -1,6 +1,8 @@
 [正體中文](README.md) | English
 
-# YOLO26 OBB on DOTA: Aerial Oriented Object Detection, Training to Deployment
+# Aerial OBB Lab
+
+## YOLO26 Oriented Detection: From Honest Evaluation to Browser Deployment
 
 > ✅ Complete (Phase 0–7) — see [docs/PLAN.md](docs/PLAN.md) for the full project plan.
 

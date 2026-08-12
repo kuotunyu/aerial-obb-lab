@@ -20,7 +20,7 @@ metrics:
 pipeline_tag: object-detection
 ---
 
-# YOLO26m-OBB fine-tuned on DOTAv1
+# Aerial OBB Lab — YOLO26m-OBB DOTAv1 Experiment Model Card
 
 Fine-tuned [`yolo26m-obb`](https://docs.ultralytics.com/) (oriented bounding box detection) on
 a re-split of the [DOTAv1](https://captain-whu.github.io/DOTA/) aerial imagery dataset. Part of

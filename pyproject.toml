@@ -1,7 +1,7 @@
 [project]
-name = "yolo26-dota-obb"
+name = "aerial-obb-lab"
 version = "1.0.0rc2"
-description = "YOLO26 Oriented Bounding Box detection on DOTA aerial imagery - training to deployment"
+description = "Aerial OBB engineering lab for honest YOLO26 evaluation and browser deployment"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 license = { text = "AGPL-3.0-or-later" }
@@ -12,6 +12,9 @@ dependencies = [
     "pillow>=10",
     "shapely>=2.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/kuotunyu/aerial-obb-lab"
 
 [dependency-groups]
 # Optional local inference/export stack. Full training and deployment benchmarks run in

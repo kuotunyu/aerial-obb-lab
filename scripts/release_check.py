@@ -65,7 +65,7 @@ PUBLIC_PRESENTATION_FILES = (
 )
 OWNER_HF_ARTIFACT_RE = re.compile(
     r"(?:https://huggingface\.co/(?:spaces/)?)?steven0226/"
-    r"(?:yolo26m-obb-dota|yolo26-obb-aerial-detection)",
+    r"(?:aerial-obb-lab-model-archive|yolo26m-obb-dota|yolo26-obb-aerial-detection)",
     re.I,
 )
 

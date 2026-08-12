@@ -1,6 +1,8 @@
 正體中文 | [English](README.en.md)
 
-# YOLO26 OBB × DOTA：航拍旋轉框偵測，從訓練到部署
+# Aerial OBB Lab
+
+## YOLO26 Oriented Detection：從誠實評估到 Browser Deployment
 
 > ✅ 已完成（Phase 0–7）— 完整計畫見 [docs/PLAN.md](docs/PLAN.md)。
 

@@ -18,6 +18,9 @@ All notable changes to this project are documented here.
   with a complete `README.en.md` and a short compatibility pointer.
 - Replaced duplicated Gradio layouts with a shared 38/62 wide workbench, explicit Detect flow,
   model-free loopback preview, responsive Playwright smoke, and no ML runtime in the preview gate.
+- Adopted the `Aerial OBB Lab` release identity across the zh-TW-first presentation, Python
+  distribution, citation metadata, and clean-export filename while preserving `obbkit` imports and
+  historical experiment identifiers.
 
 ### Remaining evidence limitations
 

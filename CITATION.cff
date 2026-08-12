@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this project, cite this software and the DOTA papers listed below."
-title: "YOLO26 OBB on DOTA: Training-to-Deployment Release Candidate"
+title: "Aerial OBB Lab: YOLO26 Oriented Detection from Honest Evaluation to Browser Deployment"
 type: software
 authors:
   - family-names: "kuotunyu"
