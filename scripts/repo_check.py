@@ -32,6 +32,8 @@ TOKEN_PATTERNS = {
     "PEM private key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
 }
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+INLINE_CODE_RE = re.compile(r"(`+)(.*?)\1")
 TEXT_SUFFIXES = {
     ".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml",
 }
@@ -123,11 +125,29 @@ def check_notebook_pairs(files: list[Path]) -> None:
     print(f"[OK] Jupytext notebook pairs + source sync: {len(notebook_files) // 2}")
 
 
+def markdown_prose(text: str) -> str:
+    """Return Markdown prose while excluding fenced and inline code samples."""
+    prose: list[str] = []
+    fence_char: str | None = None
+    for line in text.splitlines():
+        fence = FENCE_RE.match(line)
+        if fence:
+            marker_char = fence.group(1)[0]
+            if fence_char is None:
+                fence_char = marker_char
+            elif marker_char == fence_char:
+                fence_char = None
+            continue
+        if fence_char is None:
+            prose.append(INLINE_CODE_RE.sub("", line))
+    return "\n".join(prose)
+
+
 def check_markdown_links(files: list[Path]) -> None:
     checked = 0
     missing: list[str] = []
     for path in (p for p in files if p.suffix == ".md"):
-        for raw in LINK_RE.findall(path.read_text(encoding="utf-8")):
+        for raw in LINK_RE.findall(markdown_prose(path.read_text(encoding="utf-8"))):
             target = raw.strip().split()[0].strip("<>")
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
