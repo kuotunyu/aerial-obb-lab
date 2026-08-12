@@ -1,10 +1,9 @@
 # Owner actions after local release-candidate approval
 
-Authenticated owner actions are recorded separately from the local hardening workflow. The local
-hardening commands did not publish a Space, upload artifacts, or create a tag or Release. At
-2026-08-12 15:14:55 +08:00, however, this shared checkout recorded an external `update by push` for
-the release branch. The remote state below must therefore be treated as already public, not as a
-future owner action.
+Authenticated owner actions are recorded separately from the local hardening workflow. With the
+owner's explicit authorization, the workflow added the reviewed GitHub `origin` and pushed only
+`portfolio/obb-v1.0-release-hardening`. It did not create a pull request, tag, GitHub Release, or
+Space, upload an artifact, or mutate Hugging Face.
 
 ## Completed owner actions — 2026-08-12
 
@@ -29,9 +28,8 @@ future owner action.
 ### Public GitHub repository
 
 - Created `https://github.com/kuotunyu/aerial-obb-lab` as a Public repository.
-- Read-only `git ls-remote` verification now shows
-  `portfolio/obb-v1.0-release-hardening` at
-  `381f676d3f01afa401d34b839b03256adf2597a4`; the repository is no longer empty.
+- The public repository now contains `portfolio/obb-v1.0-release-hardening`; final handoff audits
+  must compare its exact remote SHA with the clean local branch tip.
 - About description:
   `Aerial OBB 工程實驗室：以 YOLO26 與 DOTA 實驗為核心，涵蓋可重現訓練、誠實 baseline 評估、ONNX／TensorRT export、效能分析、Browser BYOM demo 與 CPU CI release gates。`
 - Suggested topics: `computer-vision`, `object-detection`, `oriented-bounding-box`, `obb`,
@@ -42,13 +40,9 @@ future owner action.
 ## Remaining owner actions
 
 1. Make the still-public historical Hugging Face Space private and verify anonymous denial.
-2. Review the final local branch, clean-export SHA-256, exact tracked-file inventory, and the branch
-   that is already public on GitHub.
-3. After local approval, push only the final corrected
-   `portfolio/obb-v1.0-release-hardening` tip; do not push ignored files, runtime artifacts,
-   weights, datasets, or an automatic tag.
-4. Add the suggested GitHub topics; the anonymous API currently reports an empty topics list.
-5. On GitHub, require all release-gate jobs to pass on Ubuntu and Windows CPU before merging.
+2. Add the suggested GitHub topics; the anonymous API currently reports an empty topics list.
+3. Confirm the latest pushed tip passes Ubuntu/Windows CPU and synthetic browser gates, then decide
+   whether to merge it or make it the repository's default branch.
 
 ## Optional tag or Release after hosted CI
 

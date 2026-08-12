@@ -1,9 +1,9 @@
 # v1.0.0-rc.2 Release Checklist
 
-**State:** Local feature-frozen release candidate with one external owner blocker. The Private HF
-archive rename is complete, and the public GitHub repository already contains an earlier release
-branch tip. The historical Hugging Face Space is still public and running. The local hardening
-commands performed no tag, GitHub Release, pull request, Space creation, or Hugging Face mutation.
+**State:** Feature-frozen release candidate with one external owner blocker. The Private HF archive
+rename and the explicitly authorized GitHub branch push are complete. The historical Hugging Face
+Space is still public and running. The workflow performed no tag, GitHub Release, pull request,
+Space creation, or Hugging Face mutation.
 
 ## Automated gates
 
@@ -53,9 +53,10 @@ matrix.
   and verify anonymous access fails.
 - [ ] Make the historical Hugging Face Space private and verify anonymous access fails; do not
   create a replacement Space for this release candidate.
-- [x] Create the public GitHub repository `aerial-obb-lab`; a shared-checkout action has already
-  pushed release-branch tip `381f676d3f01afa401d34b839b03256adf2597a4`.
-- [ ] Review and push only the final corrected branch tip, then require Ubuntu/Windows CPU gates.
+- [x] Create the public GitHub repository `aerial-obb-lab` and, after explicit authorization, push
+  only `portfolio/obb-v1.0-release-hardening`.
+- [ ] Confirm the latest pushed tip passes Ubuntu/Windows CPU and synthetic browser gates before
+  merging or changing the default branch.
 - [ ] Add the reviewed GitHub topics; the anonymous API currently reports no topics.
 - [ ] Create a tag or GitHub Release only after hosted CI and the public file inventory are green.
 
