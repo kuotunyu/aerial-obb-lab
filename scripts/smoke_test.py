@@ -13,8 +13,8 @@ review the release candidate.
 
 Historical-only run: .venv/Scripts/python.exe scripts/smoke_test.py \
   --acknowledge-historical-gpu-workflow
-The default/local-ml project environment is CPU-only; install a PyTorch build that matches
-your own GPU before running this optional test.
+The release project environment intentionally omits this historical GPU stack. Install a
+compatible Ultralytics/PyTorch environment separately before running this optional test.
 Don't use `uv run` on a non-ASCII repo path -- see docs/DESIGN_NOTES.md T6.
 """
 

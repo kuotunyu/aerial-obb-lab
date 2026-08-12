@@ -16,18 +16,6 @@ dependencies = [
 Repository = "https://github.com/kuotunyu/aerial-obb-lab"
 
 [dependency-groups]
-# Optional local inference/export stack. Full training and deployment benchmarks run in
-# the self-contained Colab notebooks and do not consume this environment.
-local-ml = [
-    "ultralytics==8.4.93",
-    # Conservative Windows-compatible range for the optional local reference demo.
-    # Colab notebooks manage their own newer GPU stack independently.
-    "torch>=2.6,<2.9",
-    "torchvision>=0.21,<0.24",
-    "onnx>=1.16",
-    "onnxslim",
-    "onnxruntime>=1.20,<1.21",
-]
 dev = [
     "jupytext>=1.19.4",
     "playwright>=1.55,<2",

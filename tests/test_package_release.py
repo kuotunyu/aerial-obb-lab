@@ -69,6 +69,15 @@ def test_default_dependency_graph_has_no_hugging_face_client() -> None:
     assert "huggingface-hub" not in package_names
 
 
+def test_release_lock_omits_historical_gpu_dependency_stack() -> None:
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    package_names = {package["name"] for package in lock["package"]}
+
+    assert "local-ml" not in config["dependency-groups"]
+    assert package_names.isdisjoint({"torch", "torchvision", "ultralytics"})
+
+
 def test_ci_runs_core_cpu_gates_on_ubuntu_and_windows() -> None:
     workflow = ROOT / ".github" / "workflows" / "release-gates.yml"
     text = workflow.read_text(encoding="utf-8")

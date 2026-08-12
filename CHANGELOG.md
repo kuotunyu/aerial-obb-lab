@@ -37,6 +37,8 @@ All notable changes to this project are documented here.
   model/image bytes stay local but runtime code is fetched from jsDelivr.
 - Removed obsolete planning, one-time owner-instruction, language-pointer, and remote-checkpoint
   helper files from the public release surface.
+- Removed the historical GPU inference/export stack from the release dependency graph after its
+  obsolete Torch/torchvision bounds blocked automated vulnerability remediation.
 
 ### Remaining evidence limitations
 
