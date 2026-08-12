@@ -37,7 +37,7 @@
 - `demo/model_source.py`: pure explicit-local-model path validation shared by Python demos.
 - `demo/app.py`, `demo/space/app.py`: optional local UI entry points with no download or fallback.
 - `tests/test_release_check.py`: code-only policy and public-link regression tests.
-- `tests/test_browser_demo_contract.py`: static BYOM source contract.
+- `scripts/browser_smoke.py`: executable BYOM behavior contract in headless Chromium.
 - `tests/test_model_source.py`: explicit local model path behavior without ML imports.
 - `tests/test_clean_export.py`: archive policy and required-member regressions.
 - `README.md`, `README.zh-TW.md`, `docs/*.md`, demo READMEs: public code-only narrative and bounded evidence.
@@ -158,7 +158,6 @@ fix: exclude restricted release artifacts
 ### Task 2: Require a user-supplied ONNX model in the browser
 
 **Files:**
-- Create: `tests/test_browser_demo_contract.py`
 - Modify: `demo/space-static/index.html`
 - Modify: `demo/space-static/app.js`
 - Modify: `demo/space-static/style.css`
@@ -173,39 +172,26 @@ fix: exclude restricted release artifacts
 - Produces: `updateDetectEnabled() -> void`, enabling detection only for ready model plus image.
 - Consumes: unchanged `OBB.selectEndToEndOutput` and `OBB.decodeDetections` APIs.
 
-- [ ] **Step 1: Write the failing BYOM contract tests**
+- [ ] **Step 1: Turn the headless smoke into a failing BYOM behavior contract**
 
-Create source-contract assertions equivalent to:
-
-```python
-def test_static_demo_requires_local_model_bytes() -> None:
-    html = (ROOT / "demo/space-static/index.html").read_text(encoding="utf-8")
-    js = (ROOT / "demo/space-static/app.js").read_text(encoding="utf-8")
-    assert 'id="modelInput"' in html
-    assert 'accept=".onnx,application/octet-stream"' in html
-    assert "await file.arrayBuffer()" in js
-    assert "new Uint8Array" in js
-    assert "InferenceSession.create(modelBytes" in js
-    assert "MODEL_URL" not in js
-    assert "yolo26n-obb.onnx" not in js
-
-
-def test_detect_requires_both_model_and_image() -> None:
-    js = (ROOT / "demo/space-static/app.js").read_text(encoding="utf-8")
-    assert "detectBtn.disabled = !(session && currentImage)" in js
-```
-
-Update the browser evidence test to expect `distribution_mode == "bring-your-own-model"`, no model hash/size, and no inherited accuracy or T4 latency.
+Update `scripts/browser_smoke.py` before changing the demo. The smoke must select an in-memory
+model file, observe that Detect remains disabled until an image is also selected, and require the
+ORT stub to receive non-empty `Uint8Array` bytes. Record every browser request and fail if any URL
+other than loopback assets and the intercepted pinned ORT runtime is requested. Update the browser
+evidence test to expect `distribution_mode == "bring-your-own-model"`, no model hash/size, and no
+inherited accuracy or T4 latency.
 
 - [ ] **Step 2: Run the tests and verify RED**
 
 Run:
 
 ```powershell
-.venv/Scripts/python.exe -m pytest tests/test_browser_demo_contract.py tests/test_release_check.py -q
+.venv/Scripts/python.exe scripts/browser_smoke.py
+.venv/Scripts/python.exe -m pytest tests/test_release_check.py -q
 ```
 
-Expected: FAIL because the current demo uses `MODEL_URL` and auto-loads the bundled ONNX.
+Expected: browser smoke FAIL because `#modelInput` is absent; evidence test FAIL because the
+current browser record is tied to the former bundled model.
 
 - [ ] **Step 3: Implement local model-byte loading**
 
@@ -253,7 +239,7 @@ Remove the ONNX file from `check_static_demo.required`. Require `modelInput`, `f
 Run:
 
 ```powershell
-.venv/Scripts/python.exe -m pytest tests/test_browser_demo_contract.py tests/test_browser_parity.py tests/test_release_check.py -q
+.venv/Scripts/python.exe -m pytest tests/test_browser_parity.py tests/test_release_check.py -q
 .venv/Scripts/python.exe scripts/browser_smoke.py --screenshot dist/browser-smoke-rc2.png
 .venv/Scripts/python.exe scripts/repo_check.py
 ```
@@ -301,7 +287,9 @@ def test_existing_supported_model_is_resolved(tmp_path) -> None:
     assert require_model_path(str(model), allowed_suffixes=(".onnx",)) == model.resolve()
 ```
 
-Add source assertions that both demos contain no `hf_hub_download`, `HF_MODEL_REPO`, automatic `YOLO("yolo26`, `.export(`, or `torch.cuda.is_available`.
+The path tests exercise only the pure helper. The repository release policy separately scans the
+published demo entry points for forbidden remote acquisition/fallback constructs; do not add
+source-text assertions to this unit test.
 
 - [ ] **Step 2: Run and verify RED**
 
