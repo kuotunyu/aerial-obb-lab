@@ -41,3 +41,16 @@ def test_owner_actions_recommends_zh_tw_about_metadata() -> None:
     assert "BYOM demo" in text
     assert "`zh-tw`" in text
     assert "Website field" in text
+
+
+def test_owner_actions_records_public_historical_space_as_a_blocker() -> None:
+    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
+    checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
+
+    assert "`private: false`" in text
+    assert "`RUNNING`" in text
+    assert "set the existing Space to **Private**" in text
+    assert "the Space is absent" not in text
+    assert "[ ] Make the historical Hugging Face Space private" in checklist
+    assert "historical Space is not present" not in checklist
+    assert "empty public GitHub repository" not in checklist

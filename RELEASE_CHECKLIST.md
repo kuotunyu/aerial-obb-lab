@@ -1,8 +1,9 @@
 # v1.0.0-rc.2 Release Checklist
 
-**State:** Local feature-frozen release candidate. The owner completed the Private HF archive
-rename and created the empty public GitHub repository. The local workflow performed no push, tag,
-GitHub Release, pull request, Space creation, or Hugging Face mutation.
+**State:** Local feature-frozen release candidate with one external owner blocker. The Private HF
+archive rename is complete, and the public GitHub repository already contains an earlier release
+branch tip. The historical Hugging Face Space is still public and running. The local hardening
+commands performed no tag, GitHub Release, pull request, Space creation, or Hugging Face mutation.
 
 ## Automated gates
 
@@ -50,11 +51,12 @@ matrix.
 
 - [x] Rename the historical Hugging Face model to `aerial-obb-lab-model-archive`, keep it Private,
   and verify anonymous access fails.
-- [x] Confirm the previously recorded historical Space is not present; no replacement Space is
-  required for this release candidate.
-- [x] Create the empty public GitHub repository `aerial-obb-lab` without generated starter files.
-- [ ] Add and review the remote URL only after local approval; push only this branch and require
-  Ubuntu/Windows CPU gates.
+- [ ] Make the historical Hugging Face Space private and verify anonymous access fails; do not
+  create a replacement Space for this release candidate.
+- [x] Create the public GitHub repository `aerial-obb-lab`; a shared-checkout action has already
+  pushed release-branch tip `381f676d3f01afa401d34b839b03256adf2597a4`.
+- [ ] Review and push only the final corrected branch tip, then require Ubuntu/Windows CPU gates.
+- [ ] Add the reviewed GitHub topics; the anonymous API currently reports no topics.
 - [ ] Create a tag or GitHub Release only after hosted CI and the public file inventory are green.
 
 Exact authenticated instructions are in [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md). None of
