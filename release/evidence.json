@@ -160,6 +160,9 @@
     "model": "user-supplied compatible YOLO26 OBB ONNX",
     "format": "User-supplied ONNX with the documented end-to-end output contract",
     "runtime": "ONNX Runtime Web 1.20.1 WASM",
+    "runtime_source": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js",
+    "runtime_integrity": "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp",
+    "runtime_crossorigin": "anonymous",
     "model_bundled": false,
     "language": "zh-TW",
     "layout": "workbench-34-66",
@@ -184,6 +187,7 @@
     ],
     "limitations": [
       "The public repository distributes no model binary; the user must supply a compatible local ONNX file.",
+      "Model and image bytes stay in the browser, but a network connection is required on a cache miss to load the pinned, SRI-verified runtime from jsDelivr.",
       "The browser demo is a usability/integration demonstration and has no committed accuracy benchmark.",
       "Browser latency varies by client and is unrelated to the recorded T4 TensorRT result."
     ]

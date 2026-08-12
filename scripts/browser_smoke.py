@@ -2,7 +2,8 @@
 
 This script tests local model selection, browser wiring, preprocessing, strict output
 selection, OBB decoding, drawing, and result rendering without model inference or an
-external network request.
+external network request. The committed CDN tag is checked separately by unit tests;
+the smoke response replaces only that tag with the synthetic runtime stub.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from contextlib import contextmanager, nullcontext
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import re
 import sys
 from threading import Thread
 from typing import Iterator
@@ -22,6 +24,10 @@ DEMO = ROOT / "demo" / "web"
 FIXTURE = ROOT / "tests" / "fixtures" / "browser-smoke.svg"
 EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
+ORT_SCRIPT_RE = re.compile(
+    rf'<script\b(?=[^>]*\bsrc="{re.escape(ORT_CDN_URL)}")[^>]*></script>',
+    flags=re.IGNORECASE | re.DOTALL,
+)
 ORT_STUB = r"""
 globalThis.ort = {
   Tensor: class Tensor {
@@ -116,14 +122,21 @@ def run_smoke(
             )
 
             def stub_ort(route: Route) -> None:
-                route.fulfill(status=200, content_type="application/javascript", body=ORT_STUB)
+                response = route.fetch()
+                body, replacements = ORT_SCRIPT_RE.subn(
+                    f"<script>{ORT_STUB}</script>", response.text(), count=1
+                )
+                if replacements != 1:
+                    raise RuntimeError("pinned ONNX Runtime Web script tag was not found")
+                route.fulfill(response=response, body=body)
 
-            page.route(ORT_CDN_URL, stub_ort)
-            page.goto(str(served_url), wait_until="networkidle")
+            entry_url = f"{str(served_url).rstrip('/')}/"
+            page.route(entry_url, stub_ort)
+            page.goto(entry_url, wait_until="networkidle")
             if page.locator("html").get_attribute("lang") != "zh-Hant-TW":
                 raise RuntimeError("browser workbench must declare zh-Hant-TW")
             header = page.locator("header").inner_text()
-            for token in ("Aerial OBB Lab", "Browser", "WASM", "Local-only"):
+            for token in ("Aerial OBB Lab", "Browser", "WASM", "Local files"):
                 if token not in header:
                     raise RuntimeError(f"browser workbench header is missing {token!r}")
             body_text = page.locator("body").inner_text()
@@ -323,8 +336,8 @@ def run_smoke(
                 invalid_page.on(
                     "pageerror", lambda error: invalid_messages.append(str(error))
                 )
-                invalid_page.route(ORT_CDN_URL, stub_ort)
-                invalid_page.goto(str(served_url), wait_until="networkidle")
+                invalid_page.route(entry_url, stub_ort)
+                invalid_page.goto(entry_url, wait_until="networkidle")
                 invalid_page.locator("#modelInput").set_input_files(
                     files=[
                         {
@@ -353,7 +366,7 @@ def run_smoke(
     unexpected = [
         url
         for url in requested_urls
-        if not url.startswith(str(served_url)) and url != ORT_CDN_URL
+        if not url.startswith(str(served_url))
     ]
     if unexpected:
         raise RuntimeError("unexpected external browser requests: " + " | ".join(unexpected))

@@ -17,7 +17,8 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 **發布範圍：**僅程式碼與證據，不含 weights。
 
 <!-- claim:browser-scope -->
-> 瀏覽器 demo 需要使用者自行提供相容的 ONNX 模型，模型與圖片都只在本機瀏覽器處理。
+> 瀏覽器 demo 需要使用者自行提供相容的 ONNX 模型，模型與圖片都只在本機瀏覽器處理；
+> ONNX Runtime Web code 由固定版本 jsDelivr URL 載入，並以 SHA-384 SRI 驗證。
 > 它不代表 fine-tuned `yolo26m-obb` checkpoint 的準確度或 T4 latency；本 repo 也不發布
 > 這兩種模型檔。
 <!-- /claim:browser-scope -->
@@ -29,7 +30,7 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 | Matched evaluation | Fine-tuned 相較官方 baseline：Δ mAP50 **-0.05pt**、Δ mAP50-95 **-0.13pt** | 持平略降，不宣稱精度提升 |
 | OBB geometry | 456 張 val images、28,853 個 objects；全體 weighted mean HBB／OBB 面積比 **1.76×**（bridge mean 2.43×） | Ground-truth geometry，不是 detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms／49.4 FPS** | 歷史 Tesla T4、batch=1、1024px 指定環境 |
-| Browser-native demo | ONNX Runtime Web WASM、BYOM、模型與影像都只在本機瀏覽器處理 | 不含模型，不代表 medium checkpoint 精度或 T4 latency |
+| Browser-native demo | ONNX Runtime Web WASM、BYOM、模型與影像只在本機處理 | Runtime code 由 jsDelivr + SRI 載入；不含模型，不代表 medium checkpoint 精度或 T4 latency |
 
 ![Synthetic UI fixture：Browser-native BYOM workbench，不代表模型精度](docs/assets/browser-workbench.png)
 
@@ -205,7 +206,7 @@ uv sync --frozen --no-install-project
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-- Demo：開啟 `http://localhost:8765`；模型與圖片留在本機瀏覽器。
+- Demo：開啟 `http://localhost:8765`；模型與圖片留在本機瀏覽器，runtime code 由固定版本 CDN + SRI 載入。
 - Default env：不含 Torch、CUDA、Ultralytics 或 Python ONNX Runtime。
 - 壞掉的 `.venv`：執行 `uv venv --clear --python 3.11`；Linux/macOS 改用 `.venv/bin/python`。
 - Windows 非 ASCII path：使用 `--no-install-project` 並直接呼叫 Python；細節見
@@ -240,6 +241,7 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
 ### 3. 瀏覽器 BYOM Demo
 
 - 以 static HTTP server 提供 `demo/web/`，再選擇本機 ONNX 與圖片；兩者不離開 Browser。
+- 頁面只向 jsDelivr 請求固定版本 ONNX Runtime Web code，並以 SHA-384 SRI 驗證；不會上傳 model／圖片。
 - 純 JavaScript + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）；不下載、
   export 或 fallback 到具名模型。
 - Synthetic fixture 交叉驗證 letterbox、RGB CHW、`[N,7]` decode、angle 與 rotated corners；

@@ -34,7 +34,7 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
         "demo/web/",
         "ONNX Runtime Web",
         "Browser-native",
-        "模型與影像都只在本機瀏覽器處理",
+        "模型與圖片都只在本機瀏覽器處理",
         "Synthetic UI fixture",
     ):
         assert token in canonical

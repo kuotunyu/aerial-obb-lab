@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+from html.parser import HTMLParser
 import importlib.util
 from pathlib import Path
+import re
 import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSION = "1.0.0rc2"
+ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
+
+
+class _ScriptTagParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.scripts: list[dict[str, str | None]] = []
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        if tag == "script":
+            self.scripts.append(dict(attrs))
 
 
 def test_release_identity_matches_aerial_obb_lab() -> None:
@@ -115,3 +130,14 @@ def test_ci_runs_only_the_browser_native_ui_smoke() -> None:
     assert "gradio" not in workflow.casefold()
     assert "--group ui-preview" not in workflow
     assert 'CUDA_VISIBLE_DEVICES: "-1"' in workflow
+
+
+def test_browser_runtime_is_version_pinned_and_integrity_checked() -> None:
+    parser = _ScriptTagParser()
+    parser.feed((ROOT / "demo" / "web" / "index.html").read_text(encoding="utf-8"))
+    runtime_scripts = [script for script in parser.scripts if script.get("src") == ORT_CDN_URL]
+
+    assert len(runtime_scripts) == 1
+    runtime = runtime_scripts[0]
+    assert runtime.get("crossorigin") == "anonymous"
+    assert re.fullmatch(r"sha384-[A-Za-z0-9+/]{64}", runtime.get("integrity") or "")

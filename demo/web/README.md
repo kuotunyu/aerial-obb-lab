@@ -3,6 +3,8 @@
 這是一個使用純 HTML／CSS／JavaScript 與 ONNX Runtime Web WASM 的 Browser-native OBB
 workbench。使用者選擇相容的 YOLO26 OBB ONNX model 與影像後，兩個檔案都只在 local browser
 session 中處理；此 repo 不發布 model binary，也不會自動下載、export 或 fallback 到具名模型。
+頁面程式會從 jsDelivr 載入固定版本 `onnxruntime-web@1.20.1`；該 script 使用 SHA-384 SRI 與
+anonymous CORS 驗證。這是 runtime code 的 network boundary，不會把使用者的 model 或影像送出。
 
 ## 執行
 
@@ -14,6 +16,7 @@ session 中處理；此 repo 不發布 model binary，也不會自動下載、ex
 
 開啟 `http://localhost:8765`，依序選擇 model、影像，調整 confidence／class filter，再按下
 「開始 Detect」。直接用 `file://` 開啟可能被 browser 的 WASM／resource policy 阻擋。
+首次載入或 browser cache miss 時需要連線到 jsDelivr 取得 runtime。
 
 ## Model contract 與限制
 
