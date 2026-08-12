@@ -61,6 +61,7 @@ h1 { font-size: 1.4rem; margin-bottom: 4px; }
 }
 .file-drop.dragover { border-color: var(--accent); color: var(--accent); }
 .file-drop input { display: none; }
+.model-picker { border-style: solid; padding-block: 16px; }
 
 label { font-size: 0.85rem; color: var(--muted); }
 input[type="range"] { width: 100%; }

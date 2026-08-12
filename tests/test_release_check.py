@@ -55,7 +55,11 @@ def test_dota8_and_t4_claims_are_strictly_scoped() -> None:
 def test_browser_demo_is_not_medium_checkpoint_evidence() -> None:
     browser = load_evidence()["browser_demo"]
 
-    assert browser["model"] == "official yolo26n-obb"
+    assert browser["distribution_mode"] == "bring-your-own-model"
+    assert browser["model"] == "user-supplied compatible YOLO26 OBB ONNX"
+    assert "model_sha256" not in browser
+    assert "model_bytes" not in browser
+    assert "space_revision" not in browser
     assert browser["represents_fine_tuned_medium_accuracy"] is False
     assert browser["represents_t4_latency"] is False
 

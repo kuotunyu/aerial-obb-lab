@@ -1,11 +1,10 @@
-// Fully client-side YOLO26n-OBB inference via ONNX Runtime Web.
+// Fully client-side bring-your-own-model YOLO26 OBB inference via ONNX Runtime Web.
 // I/O format is enforced by the synthetic browser parity fixture in tests/fixtures:
 // input "images" [1,3,1024,1024] float32 /255, letterboxed
 // (scale=min(1024/W,1024/H), pad 114 gray, centered); output "output0" [1,300,7] =
 // [cx, cy, w, h, conf, cls, angle_rad] per detection in letterboxed pixel space.
 
 const IMGSZ = 1024;
-const MODEL_URL = "yolo26n-obb.onnx";
 const CLASS_NAMES = [
   "plane", "ship", "storage tank", "baseball diamond", "tennis court",
   "basketball court", "ground track field", "harbor", "bridge", "large vehicle",
@@ -13,6 +12,8 @@ const CLASS_NAMES = [
 ];
 const BOX_COLOR = "#22c55e";
 
+const modelInput = document.getElementById("modelInput");
+const modelLabel = document.getElementById("modelLabel");
 const fileInput = document.getElementById("fileInput");
 const fileDrop = document.getElementById("fileDrop");
 const fileLabel = document.getElementById("fileLabel");
@@ -47,18 +48,41 @@ function setStatus(msg) {
   statusEl.textContent = msg;
 }
 
-async function ensureSession() {
-  if (session) return session;
-  setStatus("loading model (~10MB, first time only)…");
-  session = await ort.InferenceSession.create(MODEL_URL, {
+function updateDetectEnabled() {
+  detectBtn.disabled = !(session && currentImage);
+}
+
+async function releaseSession() {
+  if (session && typeof session.release === "function") await session.release();
+  session = null;
+}
+
+async function loadModelFile(file) {
+  setStatus("loading local model...");
+  const modelBytes = new Uint8Array(await file.arrayBuffer());
+  const nextSession = await ort.InferenceSession.create(modelBytes, {
     executionProviders: ["wasm"],
   });
+  await releaseSession();
+  session = nextSession;
+  modelLabel.textContent = file.name;
   setStatus("model ready");
-  return session;
+  updateDetectEnabled();
 }
-// kick off model loading in the background as soon as the page is ready, so the
-// first click on "Detect" doesn't have to wait for the full download.
-ensureSession().catch((e) => setStatus("model load failed: " + e.message));
+
+modelInput.addEventListener("change", async () => {
+  const file = modelInput.files[0];
+  if (!file) return;
+  detectBtn.disabled = true;
+  try {
+    await loadModelFile(file);
+  } catch (e) {
+    await releaseSession();
+    modelLabel.textContent = "Choose a compatible .onnx model";
+    setStatus("model load failed: " + e.message);
+    updateDetectEnabled();
+  }
+});
 
 function loadImageFile(file) {
   const url = URL.createObjectURL(file);
@@ -68,10 +92,10 @@ function loadImageFile(file) {
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     ctx.drawImage(img, 0, 0);
-    detectBtn.disabled = false;
+    updateDetectEnabled();
     fileLabel.textContent = file.name;
     resultsBody.innerHTML = "";
-    setStatus("image loaded, click Detect");
+    setStatus(session ? "image loaded, click Detect" : "image loaded; choose a model");
     URL.revokeObjectURL(url);
   };
   img.src = url;
@@ -159,7 +183,7 @@ function fillTable(dets) {
 }
 
 detectBtn.addEventListener("click", async () => {
-  if (!currentImage) return;
+  if (!currentImage || !session) return;
   detectBtn.disabled = true;
   try {
     setStatus("preprocessing…");
@@ -168,9 +192,8 @@ detectBtn.addEventListener("click", async () => {
 
     setStatus("running inference in your browser…");
     const t0 = performance.now();
-    const sess = await ensureSession();
     const feeds = { images: tensor };
-    const results = await sess.run(feeds);
+    const results = await session.run(feeds);
     const output = OBB.selectEndToEndOutput(results);
     const ms = (performance.now() - t0).toFixed(0);
 
@@ -193,6 +216,6 @@ detectBtn.addEventListener("click", async () => {
     console.error(e);
     setStatus("error: " + e.message);
   } finally {
-    detectBtn.disabled = false;
+    updateDetectEnabled();
   }
 });

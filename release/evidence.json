@@ -155,22 +155,20 @@
     ]
   },
   "browser_demo": {
-    "model": "official yolo26n-obb",
-    "format": "ONNX opset 19, no simplify",
+    "distribution_mode": "bring-your-own-model",
+    "model": "user-supplied compatible YOLO26 OBB ONNX",
+    "format": "User-supplied ONNX with the documented end-to-end output contract",
     "runtime": "ONNX Runtime Web 1.20.1 WASM",
-    "model_sha256": "cfb97e7fab004b13c89f53a75089e23574bb2103b1e508aab9e0a3001484603b",
-    "model_bytes": 10153682,
-    "upstream_sha256_before_metadata_sanitization": "12572cc068417329f3e1874e3e1013368820cb48ae6b143356cdfccdb6b9511e",
-    "graph_sha256_before_and_after_sanitization": "a08efeba0a5297f0ff02ff5125153384d4f9e26d861a9863c29dd683e667690b",
-    "space_revision": "23211d473c0aa9f424f19a7a3c40fc1931356a0d",
     "represents_fine_tuned_medium_accuracy": false,
     "represents_t4_latency": false,
     "source_files": [
       "demo/space-static/app.js",
-      "demo/space-static/yolo26n-obb.onnx"
+      "demo/space-static/index.html",
+      "tests/fixtures/browser-smoke.svg"
     ],
     "limitations": [
-      "The browser demo is a usability/export demonstration and has no committed accuracy benchmark.",
+      "The public repository distributes no model binary; the user must supply a compatible local ONNX file.",
+      "The browser demo is a usability/integration demonstration and has no committed accuracy benchmark.",
       "Browser latency varies by client and is unrelated to the recorded T4 TensorRT result."
     ]
   },

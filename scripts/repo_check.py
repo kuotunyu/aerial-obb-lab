@@ -18,7 +18,7 @@ import sys
 from threading import Thread
 from pathlib import Path
 from urllib.parse import unquote
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -197,7 +197,6 @@ def check_static_demo() -> None:
         "app.js": 1_000,
         "obb.js": 1_000,
         "style.css": 500,
-        "yolo26n-obb.onnx": 1_000_000,
     }
     for name, minimum_size in required.items():
         path = folder / name
@@ -207,9 +206,12 @@ def check_static_demo() -> None:
     for reference in ("style.css", "obb.js", "app.js"):
         if reference not in html:
             raise RuntimeError(f"index.html does not reference {reference}")
+    for control in ('id="modelInput"', 'id="fileInput"', 'id="detectBtn"'):
+        if control not in html:
+            raise RuntimeError(f"index.html lacks BYOM control {control}")
     js = (folder / "app.js").read_text(encoding="utf-8")
-    if "yolo26n-obb.onnx" not in js:
-        raise RuntimeError("app.js does not reference the deployed ONNX model")
+    if "MODEL_URL" in js or "yolo26n-obb.onnx" in js:
+        raise RuntimeError("app.js must not embed or fetch a model")
 
     class QuietHandler(SimpleHTTPRequestHandler):
         def log_message(self, format: str, *args: object) -> None:
@@ -225,13 +227,11 @@ def check_static_demo() -> None:
             if response.status != 200 or b"YOLO26" not in response.read():
                 raise RuntimeError("HTTP validation failed for /")
         for name, minimum_size in required.items():
-            method = "HEAD" if name.endswith(".onnx") else "GET"
-            request = Request(f"{base}/{name}", method=method)
-            with urlopen(request, timeout=5) as response:
+            with urlopen(f"{base}/{name}", timeout=5) as response:
                 length = int(response.headers.get("Content-Length", "0"))
                 if response.status != 200 or length < minimum_size:
                     raise RuntimeError(f"HTTP validation failed for {name}")
-                if method == "GET" and len(response.read()) < minimum_size:
+                if len(response.read()) < minimum_size:
                     raise RuntimeError(f"HTTP body validation failed for {name}")
     finally:
         server.shutdown()

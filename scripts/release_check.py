@@ -41,7 +41,7 @@ CLAIM_FILES = {
         "README.md": ("yolo26n-obb", "yolo26m-obb", "does not represent"),
         "README.zh-TW.md": ("yolo26n-obb", "yolo26m-obb", "不代表"),
         "docs/model_card.md": ("yolo26n-obb", "yolo26m-obb", "does not represent"),
-        "demo/space-static/README.md": ("yolo26n-obb", "yolo26m-obb", "does not represent"),
+        "demo/space-static/README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
         "demo/space/README.md": ("yolo26n-obb", "yolo26m-obb", "does not represent"),
     },
 }
