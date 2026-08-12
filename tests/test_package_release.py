@@ -70,6 +70,7 @@ def test_sdist_explicitly_excludes_demo_models_and_dota_visuals() -> None:
         "/CHANGELOG.md",
         "/CITATION.cff",
         "/LICENSE",
+        "/README.en.md",
         "/README.md",
         "/THIRD_PARTY_NOTICES.md",
         "/pyproject.toml",

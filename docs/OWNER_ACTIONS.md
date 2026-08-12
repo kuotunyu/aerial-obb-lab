@@ -27,9 +27,11 @@ Do not delete it; private storage preserves the historical evidence and is rever
 
 1. Create an empty public repository named `yolo26-dota-obb`.
 2. Do not initialize it with a README, license, `.gitignore`, template, or generated files.
-3. Suggested description: `Code-only YOLO26 OBB on DOTA portfolio: honest evaluation, deployment benchmarks, BYOM demos, and reproducible release gates.`
+3. Suggested description: `Code-only YOLO26 OBB × DOTA 作品集：誠實評估、deployment benchmark、BYOM demo 與可重現 release gates。`
 4. Suggested topics: `computer-vision`, `object-detection`, `oriented-bounding-box`, `obb`,
-   `yolo`, `dota`, `onnx`, `tensorrt`, `onnxruntime`, `mlops`, `reproducibility`, `portfolio`.
+   `yolo`, `dota`, `onnx`, `tensorrt`, `onnxruntime`, `gradio`, `byom`, `mlops`,
+   `reproducibility`, `portfolio`, `zh-tw`.
+5. Leave the Website field empty until a reviewed BYOM site is deliberately published.
 
 ## 4. Review and push the candidate
 

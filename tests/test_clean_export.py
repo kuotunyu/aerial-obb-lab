@@ -56,6 +56,7 @@ def test_archive_policy_accepts_code_only_release_files() -> None:
 
 def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
     assert {
+        "README.en.md",
         "demo/model_source.py",
         "demo/space-static/app.js",
         "demo/space-static/index.html",

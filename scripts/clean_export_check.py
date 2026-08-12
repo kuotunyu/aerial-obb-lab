@@ -28,6 +28,7 @@ REQUIRED_MEMBERS = {
     "CHANGELOG.md",
     "CITATION.cff",
     "LICENSE",
+    "README.en.md",
     "README.md",
     "README.zh-TW.md",
     "RELEASE_CHECKLIST.md",

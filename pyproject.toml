@@ -61,6 +61,7 @@ include = [
     "/CHANGELOG.md",
     "/CITATION.cff",
     "/LICENSE",
+    "/README.en.md",
     "/README.md",
     "/THIRD_PARTY_NOTICES.md",
     "/pyproject.toml",

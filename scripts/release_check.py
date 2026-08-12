@@ -19,27 +19,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 CLAIM_FILES = {
     "matched-evaluation": {
-        "README.md": ("-0.05", "-0.13", "near-tie"),
-        "README.zh-TW.md": ("-0.05", "-0.13", "持平略降"),
+        "README.en.md": ("-0.05", "-0.13", "near-tie"),
+        "README.md": ("-0.05", "-0.13", "持平略降"),
         "docs/training_results.md": ("-0.05", "-0.13", "slight regression"),
         "docs/model_card.md": ("-0.05", "-0.13", "slight regression"),
     },
     "export-smoke": {
-        "README.md": ("DOTA8", "0.9950", "not full DOTAv1 production certification"),
-        "README.zh-TW.md": ("DOTA8", "0.9950", "不是完整 DOTAv1 production certification"),
+        "README.en.md": ("DOTA8", "0.9950", "not full DOTAv1 production certification"),
+        "README.md": ("DOTA8", "0.9950", "不是完整 DOTAv1 production certification"),
     },
     "t4-benchmark": {
-        "README.md": ("Tesla T4", "batch=1", "1024", "20.22", "49.4", "historical"),
-        "README.zh-TW.md": ("Tesla T4", "batch=1", "1024", "20.22", "49.4", "歷史"),
+        "README.en.md": ("Tesla T4", "batch=1", "1024", "20.22", "49.4", "historical"),
+        "README.md": ("Tesla T4", "batch=1", "1024", "20.22", "49.4", "歷史"),
     },
     "analysis": {
+        "README.en.md": ("28,853", "456", "2.43", "100%"),
         "README.md": ("28,853", "456", "2.43", "100%"),
-        "README.zh-TW.md": ("28,853", "456", "2.43", "100%"),
         "docs/analysis_results.md": ("28853", "456", "ground-truth geometry"),
     },
     "browser-scope": {
-        "README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
-        "README.zh-TW.md": ("使用者自行提供", "yolo26m-obb", "不代表"),
+        "README.en.md": ("user-supplied", "yolo26m-obb", "does not represent"),
+        "README.md": ("使用者自行提供", "yolo26m-obb", "不代表"),
         "docs/model_card.md": ("user-supplied", "yolo26m-obb", "does not represent"),
         "demo/space-static/README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
         "demo/space/README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
@@ -48,6 +48,7 @@ CLAIM_FILES = {
 
 PUBLIC_PRESENTATION_FILES = (
     "README.md",
+    "README.en.md",
     "README.zh-TW.md",
     "THIRD_PARTY_NOTICES.md",
     "docs/training_results.md",
@@ -349,6 +350,24 @@ def verify_claims(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def verify_readme_language_structure(root: Path = ROOT) -> list[str]:
+    errors: list[str] = []
+    canonical = (root / "README.md").read_text(encoding="utf-8")
+    english = (root / "README.en.md").read_text(encoding="utf-8")
+    compatibility = (root / "README.zh-TW.md").read_text(encoding="utf-8")
+    if not canonical.startswith("正體中文 | [English](README.en.md)"):
+        errors.append("README.md: canonical zh-TW language navigation is missing")
+    if not english.startswith("[正體中文](README.md) | English"):
+        errors.append("README.en.md: English language navigation is missing")
+    if (
+        len(compatibility) >= 500
+        or "[README.md](README.md)" not in compatibility
+        or "<!-- claim:" in compatibility
+    ):
+        errors.append("README.zh-TW.md: expected a short canonical-README pointer")
+    return errors
+
+
 def verify_public_links(root: Path = ROOT) -> list[str]:
     """Keep public product presentation independent of the owner's HF artifacts."""
     errors: list[str] = []
@@ -363,6 +382,7 @@ def main() -> int:
     errors = (
         verify_evidence(ROOT)
         + verify_claims(ROOT)
+        + verify_readme_language_structure(ROOT)
         + verify_public_links(ROOT)
         + verify_artifacts(ROOT)
         + verify_demo_model_sources(ROOT)
