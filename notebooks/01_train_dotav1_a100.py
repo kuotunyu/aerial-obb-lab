@@ -42,7 +42,7 @@ SPLIT_RATES = [0.8, 1.2]
 SPLIT_GAP = 500
 
 RUN_NAME = "yolo26m-obb-dotav1"
-HF_MODEL_REPO_NAME = "yolo26m-obb-dota"        # -> {你的帳號}/yolo26m-obb-dota（訓練期間 private）
+HF_MODEL_REPO_NAME = "aerial-obb-lab-model-archive"  # -> {你的帳號}/aerial-obb-lab-model-archive（private）
 HF_DATASET_CACHE_NAME = "dotav1-split-cache"   # 切好的 tiles 快取（private，遵守 DOTA 學術授權）
 CACHE_MAX_GB = 30                              # tar 超過此大小就不上傳快取
 

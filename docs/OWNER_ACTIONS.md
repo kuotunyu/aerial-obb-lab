@@ -1,52 +1,52 @@
 # Owner actions after local release-candidate approval
 
-These steps require the owner's authenticated accounts. They are intentionally **not completed**
-by the local hardening workflow. Review each target before confirming a destructive or public
-action.
+Authenticated owner actions are recorded separately from the local hardening workflow. The local
+workflow did not create or mutate a remote, push code, publish a Space, upload artifacts, or create
+a tag or Release.
 
-## 1. Restrict the historical Hugging Face model
+## Completed owner actions — 2026-08-12
 
-1. Sign in and open `steven0226/yolo26m-obb-dota`.
-2. Open **Settings → Repository visibility** and change the repository to **Private**.
-3. Sign out or use a private browser window and confirm the model page and files are inaccessible
-   anonymously.
+### Private historical model archive
 
-Reason: the checkpoint is DOTA-trained and is intentionally outside this code-only public release.
-Do not delete it; private storage preserves the historical evidence and is reversible.
+- Renamed the historical model repository to
+  `steven0226/aerial-obb-lab-model-archive`.
+- Kept repository visibility **Private**.
+- Anonymous HTTP verification returned `401`; the model page and files are not a public release.
 
-## 2. Restrict or replace the historical Hugging Face Space
+### Historical Space
 
-1. Sign in and open `steven0226/yolo26-obb-aerial-detection`.
-2. Open **Settings → Repository visibility** and change the Space to **Private**.
-3. Confirm anonymously that access is denied.
-4. Keep it private unless every distributed model and DOTA-derived file is removed. If it is later
-   made public, replace its contents with the reviewed `demo/space-static/` BYOM files and rerun the
-   browser gate first.
+- The previously recorded historical Space URL does not resolve and the Space is absent from the
+  owner's visible repositories.
+- No replacement Space is required for this release candidate. Do not create
+  `aerial-obb-lab-browser` unless a separate public-hosting decision is made later.
 
-## 3. Create the GitHub repository
+### Empty public GitHub repository
 
-1. Create an empty public repository named `yolo26-dota-obb`.
-2. Do not initialize it with a README, license, `.gitignore`, template, or generated files.
-3. Suggested description: `Code-only YOLO26 OBB × DOTA 作品集：誠實評估、deployment benchmark、BYOM demo 與可重現 release gates。`
-4. Suggested topics: `computer-vision`, `object-detection`, `oriented-bounding-box`, `obb`,
+- Created `https://github.com/kuotunyu/aerial-obb-lab` as an empty Public repository.
+- It was not initialized with a README, license, `.gitignore`, template, or generated file.
+- About description:
+  `Aerial OBB 工程實驗室：以 YOLO26 與 DOTA 實驗為核心，涵蓋可重現訓練、誠實 baseline 評估、ONNX／TensorRT export、效能分析、Browser BYOM demo 與 CPU CI release gates。`
+- Suggested topics: `computer-vision`, `object-detection`, `oriented-bounding-box`, `obb`,
    `yolo`, `dota`, `onnx`, `tensorrt`, `onnxruntime`, `gradio`, `byom`, `mlops`,
    `reproducibility`, `portfolio`, `zh-tw`.
-5. Leave the Website field empty until a reviewed BYOM site is deliberately published.
+- Leave the Website field empty until a reviewed BYOM site is deliberately published.
 
-## 4. Review and push the candidate
+## Remaining owner actions
 
-1. Copy the new repository URL and review it character-for-character before adding a remote.
-2. From the clean local candidate, add that URL as `origin`.
-3. Push only `portfolio/obb-v1.0-release-hardening`; do not push ignored files, local artifacts,
+1. Review the final local branch, clean-export SHA-256, and exact tracked-file inventory.
+2. Review `https://github.com/kuotunyu/aerial-obb-lab.git` character-for-character, then add it as
+   `origin` only after local approval.
+3. Push only `portfolio/obb-v1.0-release-hardening`; do not push ignored files, runtime artifacts,
    weights, datasets, or an automatic tag.
 4. On GitHub, require all release-gate jobs to pass on Ubuntu and Windows CPU before merging.
 
-## 5. Tag or publish only after hosted CI is green
+## Optional tag or Release after hosted CI
 
 After reviewing the GitHub file inventory and successful hosted CI, decide whether to merge and
 create `v1.0.0-rc.2`. Create a GitHub Release only after that decision. Do not upload model weights,
 DOTA-derived visuals, datasets, or the historical clean-export archive as release assets without a
 new rights and privacy review.
 
-These steps reduce avoidable exposure but do not eliminate legal responsibility. The repository
-is a portfolio engineering artifact, not a grant of dataset, model-weight, or Enterprise rights.
+These controls reduce avoidable exposure but do not eliminate legal responsibility. The repository
+is a code-only portfolio engineering artifact, not a grant of dataset, model-weight, underlying
+image-source, or Ultralytics Enterprise rights.

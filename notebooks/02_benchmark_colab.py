@@ -24,7 +24,7 @@
 # ## 0. 設定
 
 # %%
-HF_MODEL_REPO_NAME = "yolo26m-obb-dota"  # -> {你的帳號}/yolo26m-obb-dota
+HF_MODEL_REPO_NAME = "aerial-obb-lab-model-archive"  # -> {你的帳號}/aerial-obb-lab-model-archive（private）
 WEIGHT_FILE = "best.pt"                  # 訓練 notebook 上傳的檔名
 IMGSZ = 1024
 N_WARMUP = 20

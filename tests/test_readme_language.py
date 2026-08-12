@@ -33,8 +33,11 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
 
 def test_owner_actions_recommends_zh_tw_about_metadata() -> None:
     text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
-    assert "Code-only YOLO26 OBB × DOTA 作品集" in text
-    assert "deployment benchmark" in text
+    assert (
+        "Aerial OBB 工程實驗室：以 YOLO26 與 DOTA 實驗為核心，涵蓋可重現訓練、誠實 "
+        "baseline 評估、ONNX／TensorRT export、效能分析、Browser BYOM demo 與 CPU CI "
+        "release gates。"
+    ) in text
     assert "BYOM demo" in text
     assert "`zh-tw`" in text
     assert "Website field" in text

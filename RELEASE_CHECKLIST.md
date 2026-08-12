@@ -1,7 +1,8 @@
 # v1.0.0-rc.2 Release Checklist
 
-**State:** Local feature-frozen release candidate. No push, tag, GitHub Release, pull request, or
-Hugging Face mutation is part of this checklist run.
+**State:** Local feature-frozen release candidate. The owner completed the Private HF archive
+rename and created the empty public GitHub repository. The local workflow performed no push, tag,
+GitHub Release, pull request, Space creation, or Hugging Face mutation.
 
 ## Automated gates
 
@@ -47,11 +48,13 @@ matrix.
 
 ## Owner actions required before public release
 
-- [ ] Make the historical Hugging Face model repository private and verify anonymous access fails.
-- [ ] Make the historical Space private until its contents are replaced by the BYOM static folder;
-  verify anonymous access fails.
-- [ ] Create the empty public GitHub repository `yolo26-dota-obb` without generated starter files.
-- [ ] Add and review the remote URL, push only this branch, and require Ubuntu/Windows CPU gates.
+- [x] Rename the historical Hugging Face model to `aerial-obb-lab-model-archive`, keep it Private,
+  and verify anonymous access fails.
+- [x] Confirm the previously recorded historical Space is not present; no replacement Space is
+  required for this release candidate.
+- [x] Create the empty public GitHub repository `aerial-obb-lab` without generated starter files.
+- [ ] Add and review the remote URL only after local approval; push only this branch and require
+  Ubuntu/Windows CPU gates.
 - [ ] Create a tag or GitHub Release only after hosted CI and the public file inventory are green.
 
 Exact authenticated instructions are in [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md). None of
