@@ -6,15 +6,13 @@ Validates the whole pipeline at tiny scale before any Colab spend:
   3. TRAIN    - short fine-tune on dota8.yaml, interrupted mid-run on purpose
   4. RESUME   - training resumes from last.pt and finishes all epochs
   5. VAL      - validation metrics come out sane
-  6. HF_PUSH  - optional checkpoint push to a private HF test repo
-               (disabled unless --allow-remote-writes is explicit)
-  7. EXPORT   - ONNX export + inference through YOLO("*.onnx") yields OBBs
+  6. EXPORT   - ONNX export + inference through YOLO("*.onnx") yields OBBs
 
 This is a historical GPU/training workflow, not a release gate. Do not run it merely to publish or
 review the release candidate.
 
-Local-only run:  .venv/Scripts/python.exe scripts/smoke_test.py
-Remote-write opt-in: add --allow-remote-writes only after reviewing the target account/repository.
+Historical-only run: .venv/Scripts/python.exe scripts/smoke_test.py \
+  --acknowledge-historical-gpu-workflow
 The default/local-ml project environment is CPU-only; install a PyTorch build that matches
 your own GPU before running this optional test.
 Don't use `uv run` on a non-ASCII repo path -- see docs/DESIGN_NOTES.md T6.
@@ -51,17 +49,28 @@ class SimulatedDisconnect(Exception):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Historical CUDA DOTA8 smoke; remote writes are disabled by default."
+        description="Historical CUDA DOTA8 smoke; never a release or CI gate."
     )
     parser.add_argument(
-        "--allow-remote-writes",
+        "--acknowledge-historical-gpu-workflow",
         action="store_true",
-        help="allow creation/update of the authenticated user's private HF smoke repository",
+        help="confirm this optional workflow downloads assets and performs GPU training/export",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.acknowledge_historical_gpu_workflow:
+        parser.error(
+            "refusing to start: pass --acknowledge-historical-gpu-workflow only when "
+            "intentionally reproducing the historical CUDA workflow"
+        )
+    return args
 
 
-def main(*, allow_remote_writes: bool = False) -> int:
+def main(*, acknowledge_historical_gpu_workflow: bool = False) -> int:
+    if not acknowledge_historical_gpu_workflow:
+        raise RuntimeError(
+            "historical GPU workflow requires --acknowledge-historical-gpu-workflow"
+        )
+
     # ---- 1. ENV ----------------------------------------------------------
     try:
         import torch
@@ -92,28 +101,10 @@ def main(*, allow_remote_writes: bool = False) -> int:
         record("PREDICT", "FAIL", str(e))
         return summary()
 
-    # ---- HF setup (used by TRAIN callback; optional) ---------------------
-    hf_repo = None
-    if allow_remote_writes:
-        try:
-            from huggingface_hub import HfApi
-
-            user = HfApi().whoami()["name"]
-            from obbkit.hf_checkpoint import ensure_repo, install_hf_checkpoint_callback
-
-            hf_repo = ensure_repo(f"{user}/yolo26-dota-obb-smoke", private=True)
-            print(f"[smoke] HF logged in as {user}, test repo: {hf_repo}")
-        except Exception as e:
-            print(f"[smoke] HF not available ({e}); HF_PUSH will be SKIP")
-    else:
-        print("[smoke] HF remote writes disabled; HF_PUSH will be SKIP")
-
     # ---- 3. TRAIN with simulated disconnect ------------------------------
     train_name = "smoke_dota8"
     try:
         model = YOLO("yolo26n-obb.pt")
-        if hf_repo:
-            install_hf_checkpoint_callback(model, hf_repo, every_n_epochs=1)
 
         def kill_switch(trainer):
             if trainer.epoch + 1 >= INTERRUPT_AFTER:
@@ -139,8 +130,6 @@ def main(*, allow_remote_writes: bool = False) -> int:
     try:
         last = RUNS / train_name / "weights" / "last.pt"
         model = YOLO(str(last))
-        if hf_repo:
-            install_hf_checkpoint_callback(model, hf_repo, every_n_epochs=1)
         model.train(resume=True)
         import csv
 
@@ -163,21 +152,7 @@ def main(*, allow_remote_writes: bool = False) -> int:
     except Exception as e:
         record("VAL", "FAIL", str(e))
 
-    # ---- 6. HF_PUSH check ---------------------------------------------------
-    if hf_repo:
-        try:
-            from huggingface_hub import HfApi
-
-            api = HfApi()
-            assert api.file_exists(hf_repo, "checkpoints/last.pt"), "checkpoints/last.pt not on Hub"
-            assert api.file_exists(hf_repo, "checkpoints/best.pt"), "checkpoints/best.pt not on Hub"
-            record("HF_PUSH", "OK", f"last/best/results on {hf_repo}")
-        except Exception as e:
-            record("HF_PUSH", "FAIL", str(e))
-    else:
-        record("HF_PUSH", "SKIP", "not logged in to Hugging Face (run: .venv/Scripts/hf.exe auth login)")
-
-    # ---- 7. EXPORT ONNX + ORT inference -------------------------------------
+    # ---- 6. EXPORT ONNX + ORT inference -------------------------------------
     try:
         best = RUNS / train_name / "weights" / "best.pt"
         # simplify=False: onnxslim 0.1.94 hard-crashes (0xC0000005) on this Windows box;
@@ -215,4 +190,8 @@ def summary() -> int:
 
 if __name__ == "__main__":
     args = parse_args()
-    raise SystemExit(main(allow_remote_writes=args.allow_remote_writes))
+    raise SystemExit(
+        main(
+            acknowledge_historical_gpu_workflow=args.acknowledge_historical_gpu_workflow
+        )
+    )

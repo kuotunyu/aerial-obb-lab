@@ -259,13 +259,17 @@ def test_recovery_notebook_requires_owner_supplied_checkpoint() -> None:
     assert "請先上傳" in source
 
 
-def test_historical_gpu_smoke_requires_remote_write_opt_in() -> None:
+def test_historical_gpu_smoke_has_no_remote_write_path() -> None:
     source = (ROOT / "scripts" / "smoke_test.py").read_text(encoding="utf-8")
 
-    assert '"--allow-remote-writes"' in source
-    assert "action=\"store_true\"" in source
-    assert "if allow_remote_writes:" in source
-    assert "main(allow_remote_writes=args.allow_remote_writes)" in source
+    for retired_remote_surface in (
+        "--allow-remote-writes",
+        "huggingface_hub",
+        "hf_checkpoint",
+        "HF_PUSH",
+    ):
+        assert retired_remote_surface not in source
+    assert '"--acknowledge-historical-gpu-workflow"' in source
 
 
 def test_release_checker_rejects_causal_nms_overclaims() -> None:

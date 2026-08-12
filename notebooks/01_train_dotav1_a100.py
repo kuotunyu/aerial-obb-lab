@@ -1,23 +1,39 @@
 # %% [markdown]
 # # YOLO26m-OBB × DOTAv1 — Fine-tuning on Colab (A100)
 #
-# **這個 notebook 是自包含的**：不需要 clone 任何 repo，直接「全部執行」即可。
+# **這個 notebook 是歷史可重現紀錄，不是發布步驟。** 預設安全閘門會立即停止執行；只有在刻意
+# 重現 A100 訓練、確認帳號／private repo／token scope 後，才可手動開啟下方兩個 opt-in。
 #
 # ## 使用步驟
 # 1. 執行階段 → 變更執行階段類型 → **A100 GPU**（搶不到就改用 T4，並把下方 `PRESET` 改成 `"T4"`）
 # 2. 左側 🔑 **Secrets**：新增 `HF_TOKEN`（Hugging Face **write** token），並開啟「筆記本存取權」
-# 3. 執行階段 → **全部執行**，掛機等完成（兩尺度 `SPLIT_RATES=[0.8, 1.2]`、`EPOCHS=30` 估計 14.5 小時內；實際時間看下方第 1 格印出的 CPU 核數與訓練時第一個 epoch 的 it/s 再抓感覺）
+# 3. 逐項核對設定後，把 `ALLOW_HISTORICAL_GPU_RUN` 與 `ALLOW_REMOTE_WRITES` 改成 `True`；這會
+#    啟動 DOTA 下載／切圖、A100 訓練及 private Hugging Face repo 寫入，不要為了發布本 repo 而執行。
 # 4. 跑完把最後一格的 `=== PASTE BACK ===` 區塊貼回 Claude Code session
 # 5. **記得**：執行階段 → 中斷連線並刪除執行階段
 #
 # ## 斷線怎麼辦？
 # 訓練中每 2 個 epoch 會把 `last.pt` push 到你的 HF model repo。
-# **重新開啟本 notebook 再「全部執行」一次即可**：它會自動偵測 HF 上的 checkpoint 並 `resume=True` 接續訓練。
+# 只有在刻意重現歷史訓練時，重新核對 opt-in 後執行，才會從 HF checkpoint `resume=True` 接續。
 
 # %% [markdown]
 # ## 0. 設定
 
 # %%
+ALLOW_HISTORICAL_GPU_RUN = False
+ALLOW_REMOTE_WRITES = False
+
+if not ALLOW_HISTORICAL_GPU_RUN:
+    raise RuntimeError(
+        "Historical A100 training is disabled by default. Review the release limitations, "
+        "then set ALLOW_HISTORICAL_GPU_RUN=True only for an intentional reproduction run."
+    )
+if not ALLOW_REMOTE_WRITES:
+    raise RuntimeError(
+        "This notebook creates or updates private Hugging Face repositories. "
+        "Set ALLOW_REMOTE_WRITES=True only after verifying the account, repo names, and token scope."
+    )
+
 import os
 
 PRESET = "A100"  # "A100" 或 "T4"

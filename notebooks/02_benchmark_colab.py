@@ -9,14 +9,15 @@
 # 2. 左側 🔑 Secrets：`HF_TOKEN`（與訓練 notebook 相同，且開啟這份 notebook 的存取權）
 # 3. **建議先手動上傳權重**：左側 📁 檔案總管，把本機 `runs/yolo26m-obb-dotav1/weights/best.pt`
 #    拖進去（會出現在 `/content/best.pt`）——跳過已知會失敗的 HF 下載步驟，省時間
-# 4. 全部執行（TensorRT 安裝 + engine build 約 10–20 分鐘）
+# 4. 逐項核對設定後，把 `ALLOW_HISTORICAL_GPU_RUN` 與 `ALLOW_REMOTE_WRITES` 改成 `True`；這會
+#    啟動 T4 inference／TensorRT build 與 Hugging Face artifact 寫入，不要為了發布本 repo 而執行。
 # 5. 把最後的 `=== PASTE BACK ===` 區塊貼回 Claude Code
 # 6. 跑完記得中斷連線並刪除執行階段
 #
 # ## 如果中途卡住/報錯怎麼辦？
 # 第 2 格（下載/匯出）寫成「檔案已存在就跳過」，**斷線或報錯後不用整個刪除執行階段重來**
-# （那樣連已經匯出好的檔案也會沒了）——只要重新連線、直接「全部執行」，已經做好的步驟會
-# 自動跳過，只補做還沒完成的部分。真的需要整個重來時才刪除執行階段。
+# （那樣連已經匯出好的檔案也會沒了）。只有在刻意重現歷史 benchmark 時，重新連線並再次
+# 核對兩個 opt-in；已完成的 artifact 會自動跳過。真的需要整個重來時才刪除執行階段。
 #
 # > 注意:TensorRT engine 綁定 build 時的 GPU 型號與 TensorRT 版本，benchmark 數字都會標注環境。
 
@@ -24,6 +25,20 @@
 # ## 0. 設定
 
 # %%
+ALLOW_HISTORICAL_GPU_RUN = False
+ALLOW_REMOTE_WRITES = False
+
+if not ALLOW_HISTORICAL_GPU_RUN:
+    raise RuntimeError(
+        "Historical T4 export/benchmark execution is disabled by default. Review the release "
+        "limitations, then set ALLOW_HISTORICAL_GPU_RUN=True only for an intentional reproduction run."
+    )
+if not ALLOW_REMOTE_WRITES:
+    raise RuntimeError(
+        "This notebook can update Hugging Face artifacts. Set ALLOW_REMOTE_WRITES=True only after "
+        "verifying the account, repo name, artifact paths, and token scope."
+    )
+
 HF_MODEL_REPO_NAME = "SET_YOUR_PRIVATE_MODEL_REPO"  # 自行填寫；不要提交 owner identifier
 WEIGHT_FILE = "best.pt"                  # 訓練 notebook 上傳的檔名
 IMGSZ = 1024

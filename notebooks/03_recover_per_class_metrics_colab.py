@@ -12,8 +12,8 @@
 #    這份 code-only release 不提供或自動下載 checkpoint。
 # 3. 流程會從 Ultralytics 的固定 DOTAv1 release asset 下載原始資料，再用原參數
 #    重切；請預留下載、切圖與完整驗證時間。
-# 4. 「全部執行」。最後會下載 `per_class_metrics_bundle.zip`，並印出
-#    `=== PASTE BACK TO CODEX ===` 區塊。
+# 4. 只有在刻意重現既有證據時，才把 `ALLOW_HISTORICAL_GPU_RUN` 改成 `True` 後執行；這會下載
+#    約 2 GB DOTA asset 並跑完整 validation。發布、檢查或展示本 repo 不需要執行。
 #
 # 完整性檢查不只看三個新數字：raw ZIP 與 checkpoint SHA-256、整體 mAP、原本已保存的
 # 12 類、15 類順序、split 圖片數與 manifest 都必須吻合，結果才會標成 `PASS`。
@@ -22,6 +22,15 @@
 # ## 0. 固定原始評估設定
 
 # %%
+ALLOW_HISTORICAL_GPU_RUN = False
+
+if not ALLOW_HISTORICAL_GPU_RUN:
+    raise RuntimeError(
+        "Historical full DOTAv1 validation is disabled by default. It downloads about 2 GB and "
+        "requires an owner-supplied checkpoint plus GPU runtime. Review the release limitations, "
+        "then set ALLOW_HISTORICAL_GPU_RUN=True only for an intentional evidence recovery run."
+    )
+
 HISTORICAL_MODEL_REVISION = "3f5705719a6e161fd105118fa8ba80b9a6cb1536"
 WEIGHT_FILE = "best.pt"
 EXPECTED_WEIGHT_SHA256 = "59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188"
