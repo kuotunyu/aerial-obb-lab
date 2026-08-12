@@ -1,9 +1,7 @@
-"""Local Gradio demo: upload an aerial image, get oriented bounding boxes.
+"""Local BYOM Gradio demo: upload an image and get oriented bounding boxes.
 
-Weights resolution order:
-1. HF_MODEL_REPO env var (e.g. "user/yolo26m-obb-dota") -> downloads best.pt
-2. local runs/… best.pt if present
-3. official pretrained yolo26m-obb.pt (so the demo works before training finishes)
+Set MODEL_PATH to a local .pt or .onnx file before starting the app. MODEL_DEVICE
+defaults to CPU and may be overridden explicitly by the user.
 
 Run:  .venv/Scripts/python.exe demo/app.py   (Windows; .venv/bin/python on Linux/Mac)
 Don't use `uv run` on a non-ASCII repo path -- see docs/DESIGN_NOTES.md T6.
@@ -13,34 +11,16 @@ from __future__ import annotations
 
 import math
 import os
-from pathlib import Path
 
 import gradio as gr
-import torch
 from ultralytics import YOLO
 
+from model_source import require_model_path
+
 IMGSZ = 1024
-DEVICE = 0 if torch.cuda.is_available() else "cpu"
-
-
-def resolve_weights() -> tuple[str, str]:
-    repo = os.environ.get("HF_MODEL_REPO", "")
-    if repo:
-        try:
-            from huggingface_hub import hf_hub_download
-
-            path = hf_hub_download(repo, "best.pt")
-            return path, f"fine-tuned best.pt from {repo}"
-        except Exception as e:
-            print(f"[demo] HF weights unavailable ({e}), falling back")
-    local = Path(__file__).resolve().parents[1] / "runs" / "yolo26m-obb-dotav1" / "weights" / "best.pt"
-    if local.is_file():
-        return str(local), f"local {local.relative_to(local.parents[3])}"
-    return "yolo26m-obb.pt", "official pretrained yolo26m-obb.pt (fallback)"
-
-
-WEIGHTS, WEIGHTS_LABEL = resolve_weights()
-model = YOLO(WEIGHTS)
+DEVICE = os.environ.get("MODEL_DEVICE", "cpu").strip() or "cpu"
+MODEL_PATH = require_model_path()
+model = YOLO(str(MODEL_PATH), task="obb")
 NAMES = model.names  # id -> name
 
 
@@ -70,7 +50,7 @@ def detect(image, conf: float, selected_classes: list[str]):
 with gr.Blocks(title="YOLO26-OBB aerial demo") as app:
     gr.Markdown(
         f"# YOLO26-OBB 航拍旋轉框偵測\n"
-        f"weights: **{WEIGHTS_LABEL}** | device: **{'GPU' if DEVICE == 0 else 'CPU'}** | imgsz {IMGSZ}"
+        f"model: **local `{MODEL_PATH.name}`** | device: **{DEVICE}** | imgsz {IMGSZ}"
     )
     with gr.Row():
         with gr.Column(scale=1):

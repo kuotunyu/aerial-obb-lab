@@ -7,20 +7,19 @@ sdk: gradio
 app_file: app.py
 pinned: false
 license: agpl-3.0
-short_description: Rotated bounding boxes on aerial images (YOLO26n-OBB, CPU)
+short_description: Bring-your-own-model rotated detection on CPU
 ---
 
-# YOLO26n-OBB — Oriented Object Detection on Aerial Images (CPU demo)
+# YOLO26 OBB — Bring Your Own Model CPU Demo
 
 > **Reference implementation only.** This Gradio/CPU version is not the deployed Space. The live
 > demo is the static browser implementation in `demo/space-static/`.
 
-Upload an aerial or satellite image and get **oriented (rotated) bounding boxes**
-for the 15 DOTA aerial classes (planes, ships, vehicles, harbors, …).
+Set `MODEL_PATH` to an existing local `.pt` or `.onnx` file, then upload an image to get
+**oriented (rotated) bounding boxes**. `MODEL_DEVICE` defaults to `cpu`.
 
 <!-- claim:browser-scope -->
-- Model: official `yolo26n-obb` exported to **ONNX**, inference via **ONNX Runtime CPU**
-  (the nano model keeps CPU-only local or self-hosted inference responsive)
+- Model: a user-supplied local model file; this app has no download, export, or named-model fallback
 - This reference demo does not represent the fine-tuned `yolo26m-obb` checkpoint's accuracy or
   its recorded T4 latency.
 <!-- /claim:browser-scope -->
@@ -28,6 +27,12 @@ for the 15 DOTA aerial classes (planes, ships, vehicles, harbors, …).
   detection's rotation angle
 - Part of a full training-to-deployment portfolio project (fine-tuning
   YOLO26m-OBB on DOTAv1, ONNX/TensorRT benchmarks, HBB-vs-OBB analysis)
+
+```powershell
+$env:MODEL_PATH = "C:\\path\\to\\your-model.onnx"
+$env:MODEL_DEVICE = "cpu"
+python app.py
+```
 
 ## Licensing
 
