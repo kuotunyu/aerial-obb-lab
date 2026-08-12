@@ -30,7 +30,6 @@ REQUIRED_MEMBERS = {
     "LICENSE",
     "README.en.md",
     "README.md",
-    "README.zh-TW.md",
     "RELEASE_CHECKLIST.md",
     "THIRD_PARTY_NOTICES.md",
     "demo/web/app.js",
@@ -40,7 +39,6 @@ REQUIRED_MEMBERS = {
     "demo/web/obb.js",
     "demo/web/style.css",
     "docs/assets/browser-workbench.png",
-    "docs/OWNER_ACTIONS.md",
     "pyproject.toml",
     "release/artifact-manifest.json",
     "release/evidence.json",
@@ -57,6 +55,12 @@ PRIVATE_NAMES = {".env", "notes.private.md"}
 PRIVATE_FRAGMENTS = ("interview", "面試")
 INTERNAL_ONLY_NAMES = {"design.md", "product.md"}
 INTERNAL_ONLY_PREFIXES = (".claude/", ".impeccable/", "docs/superpowers/")
+OBSOLETE_PUBLIC_PATHS = {
+    "readme.zh-tw.md",
+    "docs/owner_actions.md",
+    "docs/plan.md",
+    "src/obbkit/hf_checkpoint.py",
+}
 RUNTIME_PREFIXES = (
     ".pytest_cache/",
     ".venv/",
@@ -102,7 +106,9 @@ def archive_policy_errors(member_names: list[str]) -> list[str]:
         relative = normalized.removeprefix("./")
         lowered = relative.casefold()
         basename = PurePosixPath(relative).name.casefold()
-        if basename in PRIVATE_NAMES or any(fragment.casefold() in lowered for fragment in PRIVATE_FRAGMENTS):
+        if lowered in OBSOLETE_PUBLIC_PATHS:
+            errors.append(f"obsolete public surface: {relative}")
+        elif basename in PRIVATE_NAMES or any(fragment.casefold() in lowered for fragment in PRIVATE_FRAGMENTS):
             errors.append(f"private path: {relative}")
         elif basename in INTERNAL_ONLY_NAMES or lowered.startswith(INTERNAL_ONLY_PREFIXES):
             errors.append(f"internal-only path: {relative}")
@@ -296,7 +302,7 @@ def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object
                     [
                         str(python),
                         "-c",
-                        "import importlib.util; assert importlib.util.find_spec('torch') is None; assert importlib.util.find_spec('ultralytics') is None",
+                        "import importlib.util; assert importlib.util.find_spec('torch') is None; assert importlib.util.find_spec('ultralytics') is None; assert importlib.util.find_spec('huggingface_hub') is None",
                     ],
                     export,
                 )

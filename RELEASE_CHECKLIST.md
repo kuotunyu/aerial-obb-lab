@@ -12,9 +12,11 @@ remain Private. No tag, GitHub Release, replacement Space, model weight, or data
 - [x] Claim/evidence arithmetic and bounded Markdown claim blocks pass.
 - [x] Browser synthetic preprocess, output schema, decode, angle, and corners match Python.
 - [x] Headless Chromium exercises upload, preprocess, canvas drawing, and result rendering with a
-  deterministic output stub; it performs no model inference or external network request.
-- [x] The canonical `README.md` is complete Traditional Chinese, `README.en.md` retains the complete
-  English claims, and `README.zh-TW.md` is only a compatibility pointer.
+  deterministic inline runtime/output stub; it performs no model inference or external network request.
+- [x] The canonical `README.md` is complete Traditional Chinese and `README.en.md` retains the
+  complete English claims; no duplicate language-pointer file is published.
+- [x] The production browser page pins ONNX Runtime Web 1.20.1 and verifies the jsDelivr response
+  with SHA-384 SRI plus anonymous CORS.
 - [x] The browser-native workbench uses an explicit Detect action, a 34/66 desktop layout, 19px
   base type, 15px minimum secondary text, square-edged working surfaces, visible keyboard focus,
   and a responsive single-column layout below 900px.
@@ -48,11 +50,9 @@ remain Private. No tag, GitHub Release, replacement Space, model weight, or data
   comparison image, private document, owner handle, or private Hugging Face repo identifier.
 
 No Dockerfile or service was added: the release paths are a static browser site and a Python
-package, so Docker would not remove a product-path dependency. The local Docker daemon was
-unavailable during final verification; hosted Ubuntu execution remains part of the checked-in CI
-matrix.
+package, so Docker would not remove a product-path dependency.
 
-## Owner publication actions
+## Publication state
 
 - [x] Rename the historical Hugging Face model to a neutral archive name, keep it Private, and
   verify anonymous access fails; the public tree does not record its owner identifier or repo name.
@@ -65,7 +65,5 @@ matrix.
   branch deletion are disabled.
 - [x] Confirm the published tip passes Ubuntu/Windows CPU and synthetic browser gates, then review
   the public file inventory; the release branch is already the default branch.
-- [ ] Create a tag or GitHub Release only after hosted CI and the public file inventory are green.
-
-The completed remote actions and residual limits are recorded in
-[`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md).
+- [x] No tag or GitHub Release is part of this release-candidate scope; future publication remains
+  a separate, explicit owner decision.

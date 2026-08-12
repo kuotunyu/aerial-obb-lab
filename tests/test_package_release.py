@@ -10,6 +10,12 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSION = "1.0.0rc2"
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
+OBSOLETE_PUBLIC_PATHS = (
+    "README.zh-TW.md",
+    "docs/OWNER_ACTIONS.md",
+    "docs/PLAN.md",
+    "src/obbkit/hf_checkpoint.py",
+)
 
 
 class _ScriptTagParser(HTMLParser):
@@ -47,6 +53,20 @@ def test_package_metadata_and_runtime_version_match_release_candidate() -> None:
 def test_release_metadata_files_exist() -> None:
     for relative in ("CHANGELOG.md", "CITATION.cff", "LICENSE", "THIRD_PARTY_NOTICES.md"):
         assert (ROOT / relative).is_file(), f"missing release metadata: {relative}"
+
+
+def test_public_release_omits_obsolete_operational_surfaces() -> None:
+    for relative in OBSOLETE_PUBLIC_PATHS:
+        assert not (ROOT / relative).exists(), f"obsolete public surface remains: {relative}"
+
+
+def test_default_dependency_graph_has_no_hugging_face_client() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    package_names = {package["name"] for package in lock["package"]}
+
+    assert all(not dependency.startswith("huggingface_hub") for dependency in project["dependencies"])
+    assert "huggingface-hub" not in package_names
 
 
 def test_ci_runs_core_cpu_gates_on_ubuntu_and_windows() -> None:

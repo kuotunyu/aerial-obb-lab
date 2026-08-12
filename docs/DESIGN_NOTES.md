@@ -47,8 +47,8 @@ epoch 要 ~74 分鐘、60 epoch 換算 70+ 小時，不可行。診斷與調整�
 - 背景：Colab runtime 是可能中斷的暫時性環境，`/content` 是這次執行階段專屬的
   暫存空間，執行階段一斷、沒存到別處的東西全部消失；DOTAv1 正式訓練一輪要跑數小時到十幾
   小時，中途斷線幾乎是必然會遇到的事，不是邊角案例
-- 設計：`src/obbkit/hf_checkpoint.py`（本機與 Colab notebook 共用同一份邏輯）掛兩個
-  ultralytics callback——`on_model_save`：每 `PUSH_EVERY`（2）個 epoch 把 `last.pt` +
+- 設計：歷史 training notebook 內建兩個 ultralytics callback——`on_model_save`：每
+  `PUSH_EVERY`（2）個 epoch 把 `last.pt` +
   `results.csv` push 到 HF model repo；`on_train_end`：訓練結束（不管正常結束或早停）
   額外 push `best.pt`。notebook 一開始執行就先呼叫 `pull_resume_checkpoint`檢查 HF 上
   有沒有 `checkpoints/last.pt`，有的話直接下載、`model.train(resume=True)` 接著跑，
@@ -223,27 +223,9 @@ OBB」這個問題的兩個不同層面：
   不會讓整個 notebook 跟 Colab 執行階段一起死掉
 - 順便處理了「訓練套件安裝過程要求重啟執行階段，把 Python 變數清空但磁碟檔案還在」的狀況：
   把 `best.pt`/`best.onnx`/`best.engine` 三個匯出步驟都改成「產出檔案已存在就跳過」，讓
-  「全部執行」不管重跑幾次都安全、不會重做已完成的工作，也不用整個刪除執行階段重來
+  使用者明確開啟安全 opt-in 後仍可接續，不會重做已完成的工作，也不用整個刪除執行階段重來
 - 工程教訓：這是「防禦不可信賴的原生依賴」的標準模式——當一個函式庫可能整個拖垮 process
   （而不是丟出可攔截的例外）時，唯一可靠的隔離手段是行程邊界（subprocess/多行程），
   Python 語言層級的 `try/except` 對這類失敗是無效的；另外也是「讓長流程可以安全重跑」
   （idempotent pipeline）的實例——用「產出物已存在就跳過」取代「假設每次都從零開始」，
   讓不穩定的雲端環境下的長流程變得可以放心重試
-
-### T10. 歷史 retired path：測試 `demo/space/app.py` 時誤判「卡住」（2026-07-15）
-- 症狀：用 `import app` 直接呼叫函式測試（跟測 `demo/app.py` 一樣的手法），process 一直沒
-  反應，看起來像卡死；用工作管理員查發現該 process 累積 CPU 時間極低（跑了好幾分鐘只有
-  ~11 秒 CPU time），代表它不是在算東西、是在等待
-- 原因：`demo/space/app.py` 最後一行 `demo.launch()`**沒有包在** `if __name__ == "__main__":`
-  裡面（`demo/app.py` 有包）——這是刻意的正確設計，因為 HF Space 部署時就是直接執行這支
-  script，不是被 import。但這代表本機用 `import app` 的方式測試，import 這個動作本身就會
-  觸發 `launch()`，啟動一個會一直跑下去等 HTTP 請求的 Gradio 伺服器，不會「執行完畢返回」
-- 現況：上述檔案與 Gradio dependency 已在 v1.0 hardening 刪除；本段只保留 incident learning，
-  不能當作目前可執行指引。
-- 解法：測試前先把 `gr.Blocks.launch` monkey-patch 成空函式再 import，讓 import 能正常
-  跑完不觸發真的啟動伺服器，之後就能直接呼叫 `detect()` 驗證邏輯；另外也直接開瀏覽器連
-  到那個意外啟動的伺服器確認 UI 渲染正常，兩種驗證方式都做了
-- 工程教訓：診斷「這個 process 是真的卡住還是在正常等待」，看累積 CPU 時間比看「還在跑」
-  更準——卡死或死鎖通常伴隨接近 0 的 CPU 使用率或忽然衝到 100%，正常等待 I/O（像這裡等
-  HTTP 請求）CPU 時間會維持極低但穩定；另外也是「兩個檔案表面相似但關鍵一行差異」會造成
-  完全不同行為的例子，測試前該先看程式碼而不是照搬另一支腳本的測試手法

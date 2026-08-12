@@ -39,6 +39,19 @@ def test_archive_policy_rejects_internal_design_tool_files() -> None:
     ]
 
 
+def test_archive_policy_rejects_obsolete_operational_surfaces() -> None:
+    retired = [
+        "README.zh-TW.md",
+        "docs/OWNER_ACTIONS.md",
+        "docs/PLAN.md",
+        "src/obbkit/hf_checkpoint.py",
+    ]
+
+    assert archive_policy_errors(retired) == [
+        f"obsolete public surface: {relative}" for relative in retired
+    ]
+
+
 def test_archive_policy_rejects_unsafe_tar_members() -> None:
     fake_home_path = "C:/" + "Users/alice/file.txt"
     assert archive_policy_errors(["../escape.txt", "/absolute.txt", fake_home_path]) == [
@@ -82,12 +95,21 @@ def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
         "demo/web/obb.js",
         "demo/web/style.css",
         "docs/assets/browser-workbench.png",
-        "docs/OWNER_ACTIONS.md",
         "scripts/clean_export_check.py",
         "scripts/browser_smoke.py",
         "tests/fixtures/browser-smoke.svg",
     } <= REQUIRED_MEMBERS
     assert not any("gradio" in member.casefold() for member in REQUIRED_MEMBERS)
+
+
+def test_clean_export_omits_obsolete_operational_surfaces() -> None:
+    for retired in (
+        "README.zh-TW.md",
+        "docs/OWNER_ACTIONS.md",
+        "docs/PLAN.md",
+        "src/obbkit/hf_checkpoint.py",
+    ):
+        assert retired not in REQUIRED_MEMBERS
 
 
 def test_clean_export_default_is_rc2() -> None:

@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest_cache/
 *.py[cod]
 .venv/
 *.egg-info/
@@ -8,6 +9,9 @@ dist/
 
 # Notebooks
 .ipynb_checkpoints/
+
+# Retired local demo surface
+demo/space/
 
 # Ultralytics / training artifacts (weights & datasets stay out of git)
 runs/

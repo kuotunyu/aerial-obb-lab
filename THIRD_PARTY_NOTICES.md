@@ -48,9 +48,8 @@ Historical model/Space revision and checksum facts are retained without advertis
 download location. They are evidence records, not redistributed contents or license grants.
 PyTorch `.pt` files use pickle-based loading; only load a trusted, checksum-verified checkpoint.
 
-## Owner actions before broader use
+## Before broader use
 
-Authenticated publication tasks are listed in [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md).
 For any future commercial use, closed-source integration, or redistribution of DOTA-derived
 weights/visuals, the owner must separately obtain the relevant permissions, satisfy either the
 applicable AGPL obligations or an Enterprise agreement, and seek qualified legal review when needed.

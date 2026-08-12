@@ -22,13 +22,10 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
 
     canonical = (ROOT / "README.md").read_text(encoding="utf-8")
     english = (ROOT / "README.en.md").read_text(encoding="utf-8")
-    compatibility = (ROOT / "README.zh-TW.md").read_text(encoding="utf-8")
 
     assert canonical.startswith("正體中文 | [English](README.en.md)")
     assert english.startswith("[正體中文](README.md) | English")
-    assert len(compatibility) < 500
-    assert "[README.md](README.md)" in compatibility
-    assert "<!-- claim:" not in compatibility
+    assert not (ROOT / "README.zh-TW.md").exists()
 
     for token in (
         "demo/web/",
@@ -69,27 +66,13 @@ def test_release_checklist_matches_bundled_font_inventory() -> None:
     assert "one self-hosted OFL display font" in checklist
 
 
-def test_owner_actions_recommends_zh_tw_about_metadata() -> None:
-    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
-    assert (
-        "Aerial OBB 工程實驗室：以 YOLO26 與 DOTA 實驗為核心，涵蓋可重現訓練、誠實 "
-        "baseline 評估、ONNX／TensorRT export、效能分析、Browser BYOM demo 與 CPU CI "
-        "release gates。"
-    ) in text
-    assert "BYOM demo" in text
-    assert "`zh-tw`" in text
-    assert "Website field" in text
-
-
-def test_owner_actions_records_private_historical_space_verification() -> None:
-    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
+def test_release_files_record_private_historical_space_verification() -> None:
+    evidence = (ROOT / "release" / "evidence.json").read_text(encoding="utf-8")
     checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
-    assert "Space API and page both returned anonymous HTTP `401`" in text
-    assert "`private: false`" not in text
-    assert "set the existing Space to **Private**" not in text
-    assert "the Space is absent" not in text
+    assert '"anonymous_api_http_status": 401' in evidence
+    assert '"anonymous_page_http_status": 401' in evidence
     assert "[x] Make the historical Hugging Face Space private" in checklist
     assert "one external owner blocker" not in checklist
     assert "still public and running" not in checklist
@@ -99,13 +82,9 @@ def test_owner_actions_records_private_historical_space_verification() -> None:
     assert "empty public GitHub repository" not in checklist
 
 
-def test_owner_actions_matches_current_public_github_metadata() -> None:
-    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
+def test_release_checklist_matches_current_public_github_state() -> None:
     checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
 
-    assert "currently reports an empty topics list" not in text
-    assert "already the default branch" in text
-    assert "before changing the default branch" not in text
+    assert "already the default branch" in checklist
+    assert "before changing the default branch" not in checklist
     assert "before changing\n  the default branch" not in checklist
-    for topic in ("computer-vision", "javascript", "webassembly", "yolo", "zh-tw"):
-        assert f"`{topic}`" in text

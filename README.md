@@ -235,8 +235,7 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
   自行提供且 checksum 相符的 checkpoint，validation-only 補回三類指標；不下載模型、不重新訓練。
 
 **Accepted evidence：**[evidence.json](release/evidence.json) ·
-[per_class_metrics.json](docs/per_class_metrics.json) · [training_results](docs/training_results.md) ·
-[owner actions](docs/OWNER_ACTIONS.md)
+[per_class_metrics.json](docs/per_class_metrics.json) · [training_results](docs/training_results.md)
 
 ### 3. 瀏覽器 BYOM Demo
 
@@ -255,8 +254,7 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
   仍受 Ultralytics 各自的 AGPL／Enterprise 授權路線約束。
 - 這份 code-only candidate 不含 DOTA 圖像、標註、衍生 render、訓練權重或匯出模型。DOTA 仍限
   學術用途；使用者自行提供的模型仍受其資料集、上游軟體與權重條款約束，本專案不主張取得商用許可。
-- Artifact hash、第三方條款與 owner actions：見 [artifact manifest](release/artifact-manifest.json)、
-  [third-party notices](THIRD_PARTY_NOTICES.md)、[owner actions](docs/OWNER_ACTIONS.md) 與
-  [release checklist](RELEASE_CHECKLIST.md)。
+- Artifact hash、第三方條款與 release gates：見 [artifact manifest](release/artifact-manifest.json)、
+  [third-party notices](THIRD_PARTY_NOTICES.md) 與 [release checklist](RELEASE_CHECKLIST.md)。
 
 *English version: [README.en.md](README.en.md)*

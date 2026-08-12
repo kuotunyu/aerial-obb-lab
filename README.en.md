@@ -243,8 +243,7 @@ frozen and must not be rerun merely to improve the numbers.
   does not download a model or retrain.
 
 **Accepted evidence:** [evidence.json](release/evidence.json) ·
-[per_class_metrics.json](docs/per_class_metrics.json) · [training results](docs/training_results.md) ·
-[owner actions](docs/OWNER_ACTIONS.md)
+[per_class_metrics.json](docs/per_class_metrics.json) · [training results](docs/training_results.md)
 
 ### 3. Browser BYOM Demo
 
@@ -266,6 +265,6 @@ frozen and must not be rerun merely to improve the numbers.
   weights, or exported models. DOTA remains restricted to non-commercial academic use; user-supplied
   models remain subject to their upstream dataset, software, and weight licenses, and this project
   makes no claim of commercial rights.
-- Artifact hashes, third-party notices, and owner actions: see [artifact manifest](release/artifact-manifest.json),
-  [third-party notices](THIRD_PARTY_NOTICES.md), [owner actions](docs/OWNER_ACTIONS.md), and
-  [release checklist](RELEASE_CHECKLIST.md).
+- Artifact hashes, third-party notices, and release gates: see
+  [artifact manifest](release/artifact-manifest.json), [third-party notices](THIRD_PARTY_NOTICES.md),
+  and [release checklist](RELEASE_CHECKLIST.md).

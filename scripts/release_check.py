@@ -48,12 +48,10 @@ CLAIM_FILES = {
 PUBLIC_PRESENTATION_FILES = (
     "README.md",
     "README.en.md",
-    "README.zh-TW.md",
     "THIRD_PARTY_NOTICES.md",
     "docs/training_results.md",
     "docs/analysis_results.md",
     "docs/model_card.md",
-    "docs/OWNER_ACTIONS.md",
     "docs/per_class_metrics.json",
     "release/evidence.json",
     "demo/web/README.md",
@@ -359,17 +357,10 @@ def verify_readme_language_structure(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     canonical = (root / "README.md").read_text(encoding="utf-8")
     english = (root / "README.en.md").read_text(encoding="utf-8")
-    compatibility = (root / "README.zh-TW.md").read_text(encoding="utf-8")
     if not canonical.startswith("正體中文 | [English](README.en.md)"):
         errors.append("README.md: canonical zh-TW language navigation is missing")
     if not english.startswith("[正體中文](README.md) | English"):
         errors.append("README.en.md: English language navigation is missing")
-    if (
-        len(compatibility) >= 500
-        or "[README.md](README.md)" not in compatibility
-        or "<!-- claim:" in compatibility
-    ):
-        errors.append("README.zh-TW.md: expected a short canonical-README pointer")
     return errors
 
 

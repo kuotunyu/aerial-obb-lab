@@ -10,8 +10,8 @@ All notable changes to this project are documented here.
   hashes and provenance as excluded historical audit records.
 - Converted browser and Python demos to bring-your-own-model operation with no model download,
   named-weight fallback, implicit export, or GPU default.
-- Removed public dependencies on owner-hosted Hugging Face artifacts and added explicit owner-only
-  handoff steps for remote visibility and GitHub publication.
+- Removed public dependencies on owner-hosted Hugging Face artifacts and retained anonymous
+  visibility findings in the machine-readable evidence registry.
 - Added release gates that reject model binaries, DOTA-derived visuals, owner artifact links,
   remote demo acquisition, private paths, and runtime output in both Git and clean exports.
 - Republished the public default branch through an explicitly authorized clean-history publication;
@@ -21,7 +21,7 @@ All notable changes to this project are documented here.
 - Updated the official checkout, Python, and Node setup actions to their Node 24-compatible v7
   majors after verifying the upstream releases.
 - Made the complete Traditional Chinese `README.md` the canonical GitHub and package landing page,
-  with a complete `README.en.md` and a short compatibility pointer.
+  with a complete `README.en.md` and no duplicate compatibility-pointer file.
 - Removed the duplicate server-side UI and made one 34/66 browser-native workbench canonical,
   with explicit Detect, 19px base type, 15px minimum secondary text, square-edged controls,
   responsive Playwright smoke, safe errors, polygon-only overlays, and no model inference in the
@@ -31,6 +31,12 @@ All notable changes to this project are documented here.
   historical experiment identifiers.
 - Recorded anonymous `401` verification for both the Private model archive and the formerly public
   historical Space after the owner completed the visibility change.
+- Added default-false acknowledgements before every historical GPU/DOTA/HF workflow, removed the
+  smoke test's remote-write path, and removed the unused default Hugging Face client dependency.
+- Pinned the browser runtime to ONNX Runtime Web 1.20.1 with SHA-384 SRI while documenting that
+  model/image bytes stay local but runtime code is fetched from jsDelivr.
+- Removed obsolete planning, one-time owner-instruction, language-pointer, and remote-checkpoint
+  helper files from the public release surface.
 
 ### Remaining evidence limitations
 

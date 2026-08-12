@@ -118,20 +118,14 @@ def test_owner_hf_artifacts_are_anonymously_private() -> None:
     assert follow_up["remote_mutation_performed_by_local_workflow"] is False
 
 
-def test_public_owner_actions_redacts_private_hf_identifiers() -> None:
-    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
-    retired_handle = "steven" + "0226"
-
-    assert f"{retired_handle}/" not in text
-    assert "Hugging Face identifiers are intentionally redacted" in text
-
-
 def test_tracked_text_tree_omits_retired_owner_handle() -> None:
     retired_handle = "steven" + "0226"
     hits: list[str] = []
 
     for relative in load_release_check().committed_paths(ROOT):
         path = ROOT / relative
+        if not path.is_file():
+            continue
         if path.suffix.casefold() not in {
             ".css",
             ".html",
@@ -162,6 +156,8 @@ def test_tracked_text_tree_omits_private_hf_repo_identifiers() -> None:
 
     for relative in load_release_check().committed_paths(ROOT):
         path = ROOT / relative
+        if not path.is_file():
+            continue
         if path.suffix.casefold() not in {
             ".css",
             ".html",
@@ -355,35 +351,19 @@ def test_code_only_manifest_bundles_only_licensed_display_font() -> None:
     assert len(manifest["excluded_historical_artifacts"]) == 6
 
 
-def test_owner_actions_records_completed_clean_history_publication() -> None:
-    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
+def test_release_checklist_records_completed_clean_history_publication() -> None:
     checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
 
     for token in (
-        "clean-history publication",
-        "one clean root commit",
-        "Admin enforcement is enabled",
-        "Force pushes and branch deletion are disabled",
-        "Core CPU / ubuntu-latest",
-        "Core CPU / windows-latest",
-        "Synthetic browser smoke / Ubuntu CPU",
+        "clean root commit",
+        "admin enforcement and linear history enabled",
+        "force pushes",
+        "branch deletion are disabled",
+        "Hosted Ubuntu CPU, Windows CPU, and synthetic browser checks pass",
     ):
-        assert token in text
+        assert token in checklist
     assert "[x] Publish the reviewed code-only tree from a clean root commit" in checklist
     assert "[x] Restore branch protection" in checklist
-
-
-def test_owner_actions_discloses_cleaned_public_history_boundary() -> None:
-    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
-
-    for token in (
-        "Public history boundary",
-        "no longer references the superseded release history",
-        "Private notes and interview material never entered",
-        "unreferenced Git objects may remain temporarily recoverable",
-    ):
-        assert token in text
-    assert "GH006" not in text
 
 
 def test_committed_tree_contains_no_model_or_dota_visual() -> None:
