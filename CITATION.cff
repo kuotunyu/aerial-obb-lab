@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use this project, cite this software and the DOTA papers listed below."
+title: "Aerial OBB Lab: YOLO26 Oriented Detection from Honest Evaluation to Browser Deployment"
+type: software
+authors:
+  - family-names: "kuotunyu"
+version: "1.0.0-rc.2"
+date-released: 2026-08-12
+license: AGPL-3.0-or-later
+keywords:
+  - computer-vision
+  - object-detection
+  - oriented-bounding-boxes
+  - yolo26
+  - dota
+references:
+  - type: article
+    title: "Object Detection in Aerial Images: A Large-Scale Benchmark and Challenges"
+    authors:
+      - family-names: "Ding"
+        given-names: "Jian"
+      - family-names: "Xue"
+        given-names: "Nan"
+      - family-names: "Xia"
+        given-names: "Gui-Song"
+    year: 2021
+    doi: "10.1109/TPAMI.2021.3117983"
+  - type: conference-paper
+    title: "DOTA: A Large-Scale Dataset for Object Detection in Aerial Images"
+    authors:
+      - family-names: "Xia"
+        given-names: "Gui-Song"
+      - family-names: "Bai"
+        given-names: "Xiang"
+      - family-names: "Ding"
+        given-names: "Jian"
+    year: 2018
+    conference:
+      name: "IEEE/CVF Conference on Computer Vision and Pattern Recognition"

@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Ultralytics / training artifacts (weights & datasets stay out of git)
+runs/
+datasets/
+*.pt
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+*.mlpackage
+# Data / cache
+/boats.jpg
+*.zip
+*.tar
+*.tar.gz
+wandb/
+
+# Secrets, agent workspaces, & local config
+.env
+*.token
+notes.private.md
+*interview*
+*面試*
+.agents/
+.claude/
+.impeccable/
+docs/superpowers/
+PRODUCT.md
+DESIGN.md
+CLAUDE.md
+PLAN.md
+PROGRESS.md
+PROJECT_PLAN.md
+INTERVIEW_PREP.md
+*.private.md
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

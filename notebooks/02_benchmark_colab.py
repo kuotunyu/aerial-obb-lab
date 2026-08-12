@@ -1,0 +1,294 @@
+# %% [markdown]
+# # YOLO26m-OBB 部署 benchmark — PyTorch vs ONNX Runtime vs TensorRT FP16
+#
+# 從 HF 下載 fine-tune 好的 `best.pt` → 匯出 **ONNX** 與 **TensorRT FP16 engine** →
+# 驗證匯出精度沒有掉（防 YOLO26 e2e 匯出已知 issue）→ 量測三種後端的 latency / FPS。
+#
+# ## 使用步驟
+# 1. 執行階段 → **T4 GPU**（建議：Turing 世代、省運算單元、官方 speed 基準也用 T4；A100 亦可）
+# 2. 左側 🔑 Secrets：`HF_TOKEN`（與訓練 notebook 相同，且開啟這份 notebook 的存取權）
+# 3. **建議先手動上傳權重**：左側 📁 檔案總管，把本機 `runs/yolo26m-obb-dotav1/weights/best.pt`
+#    拖進去（會出現在 `/content/best.pt`）——跳過已知會失敗的 HF 下載步驟，省時間
+# 4. 全部執行（TensorRT 安裝 + engine build 約 10–20 分鐘）
+# 5. 把最後的 `=== PASTE BACK ===` 區塊貼回 Claude Code
+# 6. 跑完記得中斷連線並刪除執行階段
+#
+# ## 如果中途卡住/報錯怎麼辦？
+# 第 2 格（下載/匯出）寫成「檔案已存在就跳過」，**斷線或報錯後不用整個刪除執行階段重來**
+# （那樣連已經匯出好的檔案也會沒了）——只要重新連線、直接「全部執行」，已經做好的步驟會
+# 自動跳過，只補做還沒完成的部分。真的需要整個重來時才刪除執行階段。
+#
+# > 注意:TensorRT engine 綁定 build 時的 GPU 型號與 TensorRT 版本，benchmark 數字都會標注環境。
+
+# %% [markdown]
+# ## 0. 設定
+
+# %%
+HF_MODEL_REPO_NAME = "SET_YOUR_PRIVATE_MODEL_REPO"  # 自行填寫；不要提交 owner identifier
+WEIGHT_FILE = "best.pt"                  # 訓練 notebook 上傳的檔名
+IMGSZ = 1024
+N_WARMUP = 20
+N_RUNS = 100
+PARITY_DATA = "dota8.yaml"               # 匯出精度 parity 檢查用（小而快；抓大趨勢）
+PARITY_TOL = 0.01                        # exported vs PyTorch 的 mAP50 容許差距（1 個百分點）
+
+# %% [markdown]
+# ## 1. 安裝與登入
+
+# %%
+# 2026-07-14 實測：Colab 當下預裝的 torch 內部版本不一致（torch/_dynamo/config.py 呼叫
+# Config(deprecated=True,...) 但引用的 Config 類別不支援這個參數，TypeError）。
+# 明確重裝一個乾淨的穩定版 torch，不依賴 Colab 當下預裝的（可能是壞掉的）版本。
+# %pip install -q -U torch
+# %pip install -q ultralytics==8.4.93
+
+# %%
+import os
+
+# 2026-07-14 實測：HF Hub 的 Xet 傳輸在 Colab 上有時候會在接近完成時卡死不動（下載進度停在
+# 97% 不動,不是慢,是真的卡住)。強制關掉 Xet、改走傳統 HTTP 下載,比較穩定。
+os.environ["HF_HUB_DISABLE_XET"] = "1"
+
+from google.colab import userdata
+from huggingface_hub import HfApi, hf_hub_download, login
+
+login(userdata.get("HF_TOKEN"))
+api = HfApi()
+HF_USER = api.whoami()["name"]
+MODEL_REPO = f"{HF_USER}/{HF_MODEL_REPO_NAME}"
+
+import torch
+
+assert torch.cuda.is_available(), "沒有 GPU！請確認執行階段類型"
+GPU = torch.cuda.get_device_name(0)
+print("GPU:", GPU, "| repo:", MODEL_REPO)
+
+# %% [markdown]
+# ## 2. 下載權重、匯出 ONNX 與 TensorRT FP16
+
+# %%
+from pathlib import Path
+
+from ultralytics import YOLO
+
+# 2026-07-14 實測踩過的坑,這一整格改成「產出檔案已存在就跳過」的寫法因應：
+# 1) hf_hub_download 不管有沒有 local_dir,連續 6 次都撞到同一個 403 "invalid key pair
+#    id"——best.pt 在 HF Xet CDN 上的簽章基礎設施壞掉,不是下載程式碼問題,重試/換寫法沒用。
+#    繞過法：優先用手動上傳到 Colab 的本機檔案（左側 📁 檔案總管把本機
+#    runs/yolo26m-obb-dotav1/weights/best.pt 拖進去,會出現在 /content/best.pt）,
+#    找不到才 fallback 去嘗試 HF 下載。
+# 2) TensorRT/ONNX 套件安裝過程會提示 "Restart runtime or rerun command"，Colab 執行階段
+#    可能因此中途重啟,把 Python 變數清空但磁碟上已匯出的檔案還在。「已存在就跳過」讓
+#    「全部執行」不管重跑幾次都安全,不會浪費時間重做已完成的匯出。
+# 斷線/重啟後的正確復原方式：**不要**整個刪除執行階段（那樣連磁碟上的檔案也會沒了）,
+# 只要重新連線、直接「全部執行」，這格會自動偵測哪些檔案已經做好、跳過重做。
+import time
+
+WEIGHTS_PT = "/content/best.pt"
+WEIGHTS_ONNX = "/content/best.onnx"
+WEIGHTS_ENGINE = "/content/best.engine"
+
+if Path(WEIGHTS_PT).is_file():
+    best = WEIGHTS_PT
+    print("weights already present:", best)
+else:
+    best = None
+    for attempt in range(3):
+        try:
+            best = hf_hub_download(MODEL_REPO, WEIGHT_FILE)
+            break
+        except Exception as e:
+            print(f"download attempt {attempt + 1} failed: {e}")
+            if attempt < 2:
+                time.sleep(10)
+    if best is None:
+        raise RuntimeError(
+            f"best.pt 下載重試 3 次都失敗，且 {WEIGHTS_PT} 也不存在。"
+            "請把本機 runs/yolo26m-obb-dotav1/weights/best.pt 手動上傳到 Colab 的 /content/ 後重跑這格。"
+        )
+    print("weights:", best)
+
+if Path(WEIGHTS_ONNX).is_file():
+    onnx_path = WEIGHTS_ONNX
+    print("onnx already present:", onnx_path)
+else:
+    onnx_path = YOLO(best).export(format="onnx", imgsz=IMGSZ, device=0)
+    print("onnx:", onnx_path)
+
+# TensorRT：ultralytics 會自動 pip 安裝 tensorrt 並 build engine（需要幾分鐘）
+if Path(WEIGHTS_ENGINE).is_file():
+    engine_path = WEIGHTS_ENGINE
+    print("engine already present:", engine_path)
+else:
+    engine_path = YOLO(best).export(format="engine", imgsz=IMGSZ, half=True, device=0)
+    print("engine:", engine_path)
+
+# %% [markdown]
+# ## 2b. 隔離子行程工具（防止 ONNX/TensorRT GPU 推論的原生崩潰拖垮整個 Colab）
+#
+# 2026-07-14 實測：`Using ONNX Runtime ... with CUDAExecutionProvider` 印出來之後，整個
+# Colab 執行階段直接斷線、沒有任何 Python traceback——這是原生函式庫層級的崩潰（很可能是
+# 這個環境的 CUDA 13 跟 onnxruntime-gpu/TensorRT 版本兜不起來），`try/except` 接不住，因為
+# 崩潰的是整個 process。解法：把 ONNX/TensorRT 的推論丟到獨立子行程執行，子行程崩潰只會讓
+# 那一個 `subprocess.run` 回傳非 0 或逾時，主程式跟 Colab 執行階段都不會被拖下水。
+
+# %%
+import json
+import subprocess
+import sys
+import textwrap
+import time
+
+WORKER_SCRIPT = "/content/_isolated_worker.py"
+Path(WORKER_SCRIPT).write_text(textwrap.dedent("""
+    import json, sys, time
+    import numpy as np
+    from ultralytics import YOLO
+
+    mode, weights = sys.argv[1], sys.argv[2]
+    m = YOLO(weights, task="obb")
+
+    if mode == "val":
+        data, imgsz = sys.argv[3], int(sys.argv[4])
+        r = m.val(data=data, imgsz=imgsz, device=0, verbose=False)
+        print("RESULT:" + json.dumps({"map50": float(r.box.map50), "map": float(r.box.map)}))
+    elif mode == "bench":
+        imgsz, n_warmup, n_runs = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+        img = np.random.randint(0, 255, (imgsz, imgsz, 3), dtype=np.uint8)
+        for _ in range(n_warmup):
+            m.predict(img, imgsz=imgsz, device=0, verbose=False)
+        times = []
+        for _ in range(n_runs):
+            t0 = time.perf_counter()
+            m.predict(img, imgsz=imgsz, device=0, verbose=False)
+            times.append((time.perf_counter() - t0) * 1000)
+        times = np.array(times)
+        print("RESULT:" + json.dumps({
+            "mean_ms": float(times.mean()),
+            "p50_ms": float(np.percentile(times, 50)),
+            "p95_ms": float(np.percentile(times, 95)),
+        }))
+"""))
+
+def _run_worker(args, timeout=300):
+    proc = subprocess.run(
+        [sys.executable, WORKER_SCRIPT, *args],
+        capture_output=True, text=True, timeout=timeout,
+    )
+    for line in proc.stdout.splitlines():
+        if line.startswith("RESULT:"):
+            return json.loads(line[len("RESULT:"):])
+    print(f"  [isolated] worker crashed or produced no result (exit={proc.returncode})")
+    if proc.stderr:
+        print("  stderr tail:", proc.stderr[-800:])
+    return None
+
+def run_isolated_val(weights, data, imgsz):
+    r = _run_worker(["val", weights, data, str(imgsz)])
+    return (r["map50"], r["map"]) if r else (None, None)
+
+def run_isolated_bench(weights, imgsz, n_warmup, n_runs):
+    return _run_worker(["bench", weights, str(imgsz), str(n_warmup), str(n_runs)])
+
+# %% [markdown]
+# ## 3. 匯出精度 parity 檢查
+#
+# YOLO26 end-to-end 匯出有已知 issue（ultralytics#23397 等），先確認 exported 模型
+# 的 mAP 沒有崩掉再看速度。這裡用 dota8 val 快速比對（同工具同條件的相對比較）。
+# PyTorch 直接在本行程跑（沒出過問題）；ONNX/TensorRT 透過上面的隔離子行程執行。
+
+# %%
+def val_map50(weights):
+    m = YOLO(weights, task="obb")
+    r = m.val(data=PARITY_DATA, imgsz=IMGSZ, device=0, verbose=False)
+    return float(r.box.map50), float(r.box.map)
+
+pt_map50, pt_map = val_map50(best)
+onnx_map50, onnx_map = run_isolated_val(onnx_path, PARITY_DATA, IMGSZ)
+trt_map50, trt_map = run_isolated_val(engine_path, PARITY_DATA, IMGSZ)
+
+def _fmt(v):
+    return f"{v:>8.4f}" if v is not None else f"{'CRASHED':>8}"
+
+print(f"{'backend':<12}{'mAP50':>8}{'mAP50-95':>10}")
+for name, m50, m in [("PyTorch", pt_map50, pt_map), ("ONNX", onnx_map50, onnx_map), ("TensorRT", trt_map50, trt_map)]:
+    print(f"{name:<12}{_fmt(m50)}{_fmt(m):>10}")
+
+parity_ok = (
+    onnx_map50 is not None and trt_map50 is not None
+    and abs(onnx_map50 - pt_map50) < PARITY_TOL and abs(trt_map50 - pt_map50) < PARITY_TOL
+)
+print("PARITY:", "OK" if parity_ok else "⚠️ 至少一個後端在這個環境崩潰或精度不合，速度表要標注清楚")
+
+# %% [markdown]
+# ## 4. Latency / FPS benchmark（batch=1）
+
+# %%
+import numpy as np
+
+img = np.random.randint(0, 255, (IMGSZ, IMGSZ, 3), dtype=np.uint8)
+
+def bench(weights, label, isolated):
+    size_mb = round(Path(weights).stat().st_size / 1e6, 1)
+    if isolated:
+        stats = run_isolated_bench(weights, IMGSZ, N_WARMUP, N_RUNS)
+        if stats is None:
+            return {"backend": label, "size_mb": size_mb, "mean_ms": None, "p50_ms": None, "p95_ms": None, "fps": None}
+    else:
+        m = YOLO(weights, task="obb")
+        for _ in range(N_WARMUP):
+            m.predict(img, imgsz=IMGSZ, device=0, verbose=False)
+        times = []
+        for _ in range(N_RUNS):
+            t0 = time.perf_counter()
+            m.predict(img, imgsz=IMGSZ, device=0, verbose=False)
+            times.append((time.perf_counter() - t0) * 1000)
+        times = np.array(times)
+        stats = {
+            "mean_ms": round(float(times.mean()), 2),
+            "p50_ms": round(float(np.percentile(times, 50)), 2),
+            "p95_ms": round(float(np.percentile(times, 95)), 2),
+        }
+    return {**{"backend": label, "size_mb": size_mb}, **stats, "fps": round(1000 / stats["mean_ms"], 1)}
+
+rows = [
+    bench(best, "PyTorch (FP32)", isolated=False),
+    bench(onnx_path, "ONNX Runtime GPU", isolated=True),
+    bench(engine_path, "TensorRT FP16", isolated=True),
+]
+
+import polars as pl  # ultralytics 相依已含 polars
+
+print(pl.DataFrame(rows))
+
+# %% [markdown]
+# ## 5. 上傳 ONNX 到 HF、輸出結果區塊
+
+# %%
+api.upload_file(path_or_fileobj=onnx_path, path_in_repo=Path(onnx_path).name,
+                repo_id=MODEL_REPO, repo_type="model")
+print("uploaded", Path(onnx_path).name, "->", MODEL_REPO)
+
+# %%
+import onnxruntime
+import tensorrt
+
+def _fmt_row(v, width):
+    # 2026-07-14 修正：之前少了小數位數限制，多個全精度浮點數黏在一起印出來看不懂
+    return f"{v:>{width}.2f}" if v is not None else f"{'crashed':>{width}}"
+
+print("=" * 50)
+print("=== PASTE BACK TO CLAUDE CODE ===")
+print(f"gpu: {GPU} | imgsz: {IMGSZ} | torch {torch.__version__} | ort {onnxruntime.__version__} | trt {tensorrt.__version__}")
+print(f"parity({PARITY_DATA}): PT mAP50={pt_map50:.4f} / ONNX {onnx_map50 if onnx_map50 is not None else 'crashed'} / "
+      f"TRT {trt_map50 if trt_map50 is not None else 'crashed'} -> {'OK' if parity_ok else 'SEE ABOVE'}")
+print(f"{'backend':<18}{'size(MB)':>9}{'mean ms':>9}{'p50 ms':>8}{'p95 ms':>8}{'FPS':>7}")
+for r in rows:
+    print(f"{r['backend']:<18}{r['size_mb']:>9}{_fmt_row(r['mean_ms'], 9)}{_fmt_row(r['p50_ms'], 8)}"
+          f"{_fmt_row(r['p95_ms'], 8)}{_fmt_row(r['fps'], 7)}")
+print("=" * 50)
+
+# %% [markdown]
+# ## 完成後
+# 1. 複製 `PASTE BACK` 區塊貼回 Claude Code
+# 2. 執行階段 → 中斷連線並刪除執行階段

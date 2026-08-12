@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "release_candidate": "v1.0.0-rc.2",
+  "last_reviewed": "2026-08-12",
+  "matched_evaluation": {
+    "scope": "Same re-tiled DOTAv1 validation split, image size, Ultralytics evaluator, and validation conditions.",
+    "official_test_context": {
+      "mAP50": 0.81,
+      "mAP50_95": 0.553,
+      "directly_comparable": false,
+      "source_url": "https://docs.ultralytics.com/tasks/obb"
+    },
+    "baseline": {
+      "model": "official yolo26m-obb.pt",
+      "mAP50": 0.7821,
+      "mAP50_95": 0.6327,
+      "precision": "accepted historical result reported to four decimals"
+    },
+    "fine_tuned": {
+      "model": "best.pt at epoch 13",
+      "mAP50": 0.7816142568252565,
+      "mAP50_95": 0.6314216725888359,
+      "precision": "checksum-gated validation recovery"
+    },
+    "delta_percentage_points": {
+      "mAP50": -0.05,
+      "mAP50_95": -0.13
+    },
+    "interpretation": "near-tie/slight regression",
+    "evidence_kind": "accepted historical matched baseline plus committed checksum-gated fine-tuned recovery",
+    "raw_baseline_log_committed": false,
+    "source_files": [
+      "docs/per_class_metrics.json",
+      "docs/per_class_metrics.csv",
+      "docs/training_results.md",
+      "notebooks/01_train_dotav1_a100.py",
+      "notebooks/03_recover_per_class_metrics_colab.py"
+    ],
+    "limitations": [
+      "The baseline raw console log is not committed; its four-decimal values and rounded deltas are preserved accepted historical results.",
+      "The official DOTAv1 test result uses full-image stitching and the DOTA evaluation toolkit and is context only, not a matched comparator.",
+      "No fresh training or full validation was run for release hardening."
+    ]
+  },
+  "official_model_profile": {
+    "model": "yolo26m-obb",
+    "imgsz": 1024,
+    "parameters_millions": 21.2,
+    "gflops": 183.3,
+    "dotav1_test_mAP50": 0.81,
+    "dotav1_test_mAP50_95": 0.553,
+    "source_url": "https://docs.ultralytics.com/tasks/obb",
+    "verified_anonymously_on": "2026-08-12"
+  },
+  "export_smoke": {
+    "dataset": "DOTA8 val",
+    "imgsz": 1024,
+    "backend_mAP50": {
+      "PyTorch FP32": 0.995,
+      "ONNX": 0.995,
+      "TensorRT FP16": 0.995
+    },
+    "reported_decimals": 4,
+    "parity_tolerance_percentage_points": 1.0,
+    "production_certification": false,
+    "evidence_kind": "accepted historical export-smoke transcription",
+    "raw_log_committed": false,
+    "source_files": [
+      "notebooks/02_benchmark_colab.py",
+      "docs/DESIGN_NOTES.md"
+    ],
+    "limitations": [
+      "Identical 0.9950 values to four reported decimals establish export-smoke parity only.",
+      "DOTA8 is a tiny smoke dataset and is not full DOTAv1 production certification.",
+      "No export or inference was rerun for release hardening."
+    ]
+  },
+  "t4_benchmark": {
+    "device": "NVIDIA Tesla T4",
+    "platform": "Google Colab Linux runtime",
+    "batch": 1,
+    "imgsz": 1024,
+    "warmup_runs": 20,
+    "timed_runs": 100,
+    "input": "synthetic random uint8 image",
+    "ultralytics": "8.4.93",
+    "exact_torch_onnxruntime_tensorrt_versions_committed": false,
+    "results": [
+      {
+        "backend": "PyTorch FP32",
+        "size_mb_decimal": 48.7,
+        "mean_ms": 71.54,
+        "p50_ms": 71.49,
+        "p95_ms": 74.08,
+        "fps": 14.0
+      },
+      {
+        "backend": "ONNX Runtime GPU",
+        "size_mb_decimal": 85.3,
+        "mean_ms": 79.09,
+        "p50_ms": 79.67,
+        "p95_ms": 81.43,
+        "fps": 12.6
+      },
+      {
+        "backend": "TensorRT FP16",
+        "size_mb_decimal": 45.0,
+        "mean_ms": 20.22,
+        "p50_ms": 20.14,
+        "p95_ms": 21.09,
+        "fps": 49.4
+      }
+    ],
+    "universal_performance_claim": false,
+    "evidence_kind": "accepted historical benchmark table",
+    "raw_log_committed": false,
+    "source_files": [
+      "notebooks/02_benchmark_colab.py",
+      "docs/DESIGN_NOTES.md"
+    ],
+    "limitations": [
+      "The numbers apply only to the recorded T4, batch-1, 1024 px, FP16 TensorRT/Colab environment.",
+      "The exact Torch, ONNX Runtime, CUDA, and TensorRT version strings printed by the run are not preserved in a committed raw log.",
+      "The FPS values are preserved from the accepted table and are not recomputed from rounded mean latency.",
+      "These numbers are not a browser, CPU, other GPU, throughput, or production SLA claim."
+    ]
+  },
+  "geometry_analysis": {
+    "dataset": "DOTAv1 validation labels",
+    "images": 456,
+    "objects": 28853,
+    "overall_inflation_mean": 1.7621562944789584,
+    "inflation": {
+      "bridge": {"mean": 2.4311912992862177, "p90": 3.709948652639407},
+      "harbor": {"mean": 2.1527525931512335, "p90": 3.6615638336415084},
+      "large vehicle": {"mean": 2.1374474709196956, "p90": 3.212706004017337},
+      "ship": {"mean": 1.9535154150224177, "p90": 2.694635878489724},
+      "roundabout": {"mean": 1.0155479621694734, "p90": 1.0000000000003757},
+      "storage tank": {"mean": 1.0002656604987825, "p90": 1.0000000000016547}
+    },
+    "phantom_overlap": {
+      "large vehicle": {"hbb_iou_ge_0_3": 810, "obb_iou_lt_0_1": 810, "display_percent": 100},
+      "ship": {"hbb_iou_ge_0_3": 736, "obb_iou_lt_0_1": 732, "display_percent": 99},
+      "harbor": {"hbb_iou_ge_0_3": 43, "obb_iou_lt_0_1": 42, "display_percent": 98},
+      "small vehicle": {"hbb_iou_ge_0_3": 42, "obb_iou_lt_0_1": 39, "display_percent": 93}
+    },
+    "evidence_kind": "committed analysis output plus recorded image count",
+    "source_files": [
+      "docs/analysis_results.json",
+      "docs/analysis_results.md",
+      "scripts/obb_analysis.py"
+    ],
+    "limitations": [
+      "This is ground-truth geometry analysis, not a detector benchmark.",
+      "The images and derived visual assets remain subject to the DOTA academic-only restriction."
+    ]
+  },
+  "browser_demo": {
+    "distribution_mode": "bring-your-own-model",
+    "model": "user-supplied compatible YOLO26 OBB ONNX",
+    "format": "User-supplied ONNX with the documented end-to-end output contract",
+    "runtime": "ONNX Runtime Web 1.20.1 WASM",
+    "model_bundled": false,
+    "language": "zh-TW",
+    "layout": "workbench-34-66",
+    "base_font_px": 19,
+    "minimum_secondary_text_px": 15,
+    "desktop_max_width_px": 1760,
+    "responsive_breakpoint_px": 900,
+    "corner_style": "square",
+    "primary_action_first_viewport": true,
+    "dense_canvas_labels": false,
+    "represents_fine_tuned_medium_accuracy": false,
+    "represents_t4_latency": false,
+    "source_files": [
+      "demo/web/app.js",
+      "demo/web/fonts/IBM-Plex-OFL.txt",
+      "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
+      "demo/web/index.html",
+      "demo/web/obb.js",
+      "demo/web/style.css",
+      "docs/assets/browser-workbench.png",
+      "tests/fixtures/browser-smoke.svg"
+    ],
+    "limitations": [
+      "The public repository distributes no model binary; the user must supply a compatible local ONNX file.",
+      "The browser demo is a usability/integration demonstration and has no committed accuracy benchmark.",
+      "Browser latency varies by client and is unrelated to the recorded T4 TensorRT result."
+    ]
+  },
+  "owner_visibility_follow_up": {
+    "checked_anonymously_on": "2026-08-12",
+    "historical_model_archive": {
+      "visibility": "private",
+      "anonymous_http_status": 401
+    },
+    "historical_space": {
+      "visibility": "private",
+      "anonymous_api_http_status": 401,
+      "anonymous_page_http_status": 401
+    },
+    "remote_mutation_performed_by_local_workflow": false,
+    "limitations": [
+      "HTTP 401 verifies anonymous denial at the recorded time; authenticated owner settings remain the source of truth.",
+      "The local release workflow performed read-only verification and did not mutate either Hugging Face repository."
+    ]
+  },
+  "historical_remote_read_only_audit": {
+    "checked_anonymously_on": "2026-08-12",
+    "model_artifact": {
+      "owner_identifier_redacted": true,
+      "historical_revision": "3f5705719a6e161fd105118fa8ba80b9a6cb1536",
+      "visibility_at_audit": "public",
+      "gated": false,
+      "license_metadata": "agpl-3.0",
+      "best_pt_bytes": 48718384,
+      "best_pt_sha256": "59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188"
+    },
+    "browser_artifact": {
+      "owner_identifier_redacted": true,
+      "historical_revision": "23211d473c0aa9f424f19a7a3c40fc1931356a0d",
+      "visibility_at_audit": "public",
+      "sdk": "static",
+      "license_metadata": "agpl-3.0"
+    },
+    "remote_mutation_performed": false
+  }
+}

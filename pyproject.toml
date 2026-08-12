@@ -1,0 +1,72 @@
+[project]
+name = "aerial-obb-lab"
+version = "1.0.0rc2"
+description = "Aerial OBB engineering lab for honest YOLO26 evaluation and browser deployment"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "AGPL-3.0-or-later" }
+dependencies = [
+    "huggingface_hub>=0.30",
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "pillow>=10",
+    "shapely>=2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/kuotunyu/aerial-obb-lab"
+
+[dependency-groups]
+# Optional local inference/export stack. Full training and deployment benchmarks run in
+# the self-contained Colab notebooks and do not consume this environment.
+local-ml = [
+    "ultralytics==8.4.93",
+    # Conservative Windows-compatible range for the optional local reference demo.
+    # Colab notebooks manage their own newer GPU stack independently.
+    "torch>=2.6,<2.9",
+    "torchvision>=0.21,<0.24",
+    "onnx>=1.16",
+    "onnxslim",
+    "onnxruntime>=1.20,<1.21",
+]
+dev = [
+    "jupytext>=1.19.4",
+    "playwright>=1.55,<2",
+    "pytest>=8.0",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+link-mode = "copy"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/obbkit"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/CHANGELOG.md",
+    "/CITATION.cff",
+    "/LICENSE",
+    "/README.en.md",
+    "/README.md",
+    "/THIRD_PARTY_NOTICES.md",
+    "/pyproject.toml",
+    "/src/obbkit",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

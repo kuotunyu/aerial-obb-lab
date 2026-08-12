@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>Aerial OBB Lab · Browser-native rotated detection</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+</head>
+<body>
+<div class="page-shell">
+  <header class="product-header">
+    <div class="product-copy">
+      <h1>Aerial OBB Lab</h1>
+      <p>在瀏覽器中完成航拍影像 rotated detection；模型與影像不會上傳。</p>
+    </div>
+    <ul class="trust-signals" aria-label="執行方式">
+      <li><span aria-hidden="true"></span>Browser</li>
+      <li><span aria-hidden="true"></span>WASM</li>
+      <li><span aria-hidden="true"></span>Local-only</li>
+    </ul>
+  </header>
+
+  <main>
+    <section id="workbench" class="workbench" aria-label="OBB inference workbench">
+      <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
+        <div class="rail-heading">
+          <h2 id="controlsTitle">輸入與設定</h2>
+          <p>選好 ONNX model 與航拍影像後，再明確執行 Detect。</p>
+        </div>
+
+        <div class="file-stack">
+          <label class="file-control model-picker" id="modelDrop" for="modelInput">
+            <input type="file" id="modelInput" accept=".onnx,application/octet-stream" />
+            <span class="file-kind">ONNX model</span>
+            <strong id="modelLabel">選擇相容的 <code>.onnx</code> model</strong>
+            <small>檔案只會由目前的 browser session 讀取</small>
+          </label>
+
+          <label class="file-control image-picker" id="fileDrop" for="fileInput">
+            <input type="file" id="fileInput" accept="image/*" />
+            <span class="file-kind">Aerial image</span>
+            <strong id="fileLabel">選擇或拖放一張影像</strong>
+            <small>支援 browser 可解碼的常見 image formats</small>
+          </label>
+        </div>
+
+        <div class="control-block threshold-control">
+          <div class="control-label-row">
+            <label for="confSlider">Confidence threshold</label>
+            <output id="confVal" for="confSlider">0.25</output>
+          </div>
+          <input
+            type="range"
+            id="confSlider"
+            min="0.05"
+            max="0.9"
+            step="0.05"
+            value="0.25"
+          />
+          <div class="range-scale" aria-hidden="true"><span>0.05</span><span>0.90</span></div>
+        </div>
+
+        <fieldset id="classFilter" class="class-filter">
+          <legend>Class filter</legend>
+          <p>未選擇時顯示全部 classes</p>
+          <div id="classList" class="class-list"></div>
+        </fieldset>
+
+        <div class="action-zone">
+          <p id="status" class="status" role="status" aria-live="polite">
+            等待 local ONNX model 與影像。
+          </p>
+          <button id="detectBtn" type="button" disabled>開始 Detect</button>
+        </div>
+      </aside>
+
+      <section id="resultWorkspace" class="result-workspace" aria-labelledby="resultTitle">
+        <div class="result-heading">
+          <div>
+            <h2 id="resultTitle">Detection result</h2>
+            <p>Rotated polygons 保留在影像上，完整數值列於下方。</p>
+          </div>
+          <dl class="result-summary" aria-label="Detection summary">
+            <div>
+              <dt>Detections</dt>
+              <dd id="summaryCount">0</dd>
+            </div>
+            <div>
+              <dt>Top confidence</dt>
+              <dd id="summaryTop">—</dd>
+            </div>
+            <div>
+              <dt>本次 browser 執行</dt>
+              <dd id="runtimeValue">—</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="canvas-frame" id="canvasFrame">
+          <canvas id="canvas" aria-label="Oriented detection result"></canvas>
+          <p class="canvas-empty" aria-hidden="true">RESULT VIEWPORT</p>
+        </div>
+
+        <section class="detections" aria-labelledby="tableTitle">
+          <div class="table-heading">
+            <h3 id="tableTitle">Detection list</h3>
+            <span>依 confidence 排序</span>
+          </div>
+          <div class="table-scroll" tabindex="0" aria-label="Detection results table">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th scope="col">class</th>
+                  <th scope="col">conf</th>
+                  <th scope="col">w(px)</th>
+                  <th scope="col">h(px)</th>
+                  <th scope="col">angle(°)</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <span>BYOM · <code>output0 [1,N,7]</code></span>
+    <span>Local browser processing</span>
+    <span>Code AGPL-3.0-or-later</span>
+  </footer>
+</div>
+<script src="obb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
