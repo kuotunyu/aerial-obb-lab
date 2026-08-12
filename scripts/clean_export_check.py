@@ -21,7 +21,7 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = ROOT / "dist" / "yolo26-dota-obb-v1.0.0rc1.zip"
+DEFAULT_OUTPUT = ROOT / "dist" / "yolo26-dota-obb-v1.0.0rc2.zip"
 
 REQUIRED_MEMBERS = {
     ".github/workflows/release-gates.yml",
@@ -32,9 +32,11 @@ REQUIRED_MEMBERS = {
     "README.zh-TW.md",
     "RELEASE_CHECKLIST.md",
     "THIRD_PARTY_NOTICES.md",
+    "demo/model_source.py",
     "demo/space-static/app.js",
     "demo/space-static/index.html",
     "demo/space-static/obb.js",
+    "docs/OWNER_ACTIONS.md",
     "pyproject.toml",
     "release/artifact-manifest.json",
     "release/evidence.json",
@@ -307,7 +309,7 @@ def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object
                 [
                     str(package_python),
                     "-c",
-                    "import obbkit; assert obbkit.__version__ == '1.0.0rc1'; print(obbkit.__version__)",
+                    "import obbkit; assert obbkit.__version__ == '1.0.0rc2'; print(obbkit.__version__)",
                 ],
                 export,
             )

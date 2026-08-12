@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "release_candidate": "v1.0.0rc1",
+  "release_candidate": "v1.0.0-rc.2",
   "distribution_mode": "code-only-byom",
   "generated_from_committed_files": true,
   "policy": {

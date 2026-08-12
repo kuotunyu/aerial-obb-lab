@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 
 from scripts.clean_export_check import (
+    DEFAULT_OUTPUT,
     REQUIRED_MEMBERS,
     archive_policy_errors,
     distribution_paths,
@@ -55,10 +56,18 @@ def test_archive_policy_accepts_code_only_release_files() -> None:
 
 def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
     assert {
+        "demo/model_source.py",
+        "demo/space-static/app.js",
+        "demo/space-static/index.html",
+        "docs/OWNER_ACTIONS.md",
         "scripts/clean_export_check.py",
         "scripts/browser_smoke.py",
         "tests/fixtures/browser-smoke.svg",
     } <= REQUIRED_MEMBERS
+
+
+def test_clean_export_default_is_rc2() -> None:
+    assert DEFAULT_OUTPUT.name == "yolo26-dota-obb-v1.0.0rc2.zip"
 
 
 def test_distribution_selector_accepts_uv_build_marker_only(tmp_path) -> None:

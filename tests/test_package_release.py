@@ -6,7 +6,7 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "1.0.0rc1"
+EXPECTED_VERSION = "1.0.0rc2"
 
 
 def test_package_metadata_and_runtime_version_match_release_candidate() -> None:

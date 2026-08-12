@@ -1,4 +1,4 @@
-# v1.0.0-rc.1 Release Checklist
+# v1.0.0-rc.2 Release Checklist
 
 **State:** Local feature-frozen release candidate. No push, tag, GitHub Release, pull request, or
 Hugging Face mutation is part of this checklist run.
@@ -12,7 +12,8 @@ Hugging Face mutation is part of this checklist run.
 - [x] Browser synthetic preprocess, output schema, decode, angle, and corners match Python.
 - [x] Headless Chromium exercises upload, preprocess, canvas drawing, and result rendering with a
   deterministic output stub; it performs no model inference or external network request.
-- [x] Bundled artifact size/SHA-256 values match `release/artifact-manifest.json`.
+- [x] The distributable artifact inventory is empty; excluded historical hashes remain audit-only.
+- [x] Committed and archived paths contain no model binary or DOTA-derived comparison render.
 - [x] Notebooks have zero outputs/execution counts and remain synchronized with Jupytext sources.
 - [x] Tracked files and Git history pass token-pattern/privacy checks.
 - [x] Local Markdown links, static assets, loopback HTTP, and JavaScript syntax pass.
@@ -24,8 +25,9 @@ Hugging Face mutation is part of this checklist run.
 - [x] Fine-tuning is described as about -0.05pt mAP50 and -0.13pt mAP50-95, not an improvement.
 - [x] DOTA8 0.9950 is described only as export-smoke parity.
 - [x] TensorRT 20.22 ms / 49.4 FPS is limited to the recorded T4/batch-1/1024px environment.
-- [x] Browser demo is identified as official `yolo26n-obb`, not fine-tuned `yolo26m-obb` evidence.
-- [x] DOTA academic-only, underlying image-source, AGPL/Enterprise, and external HF boundaries are
+- [x] Browser and Python demos require user-supplied local models and inherit no checkpoint accuracy
+  or T4 latency claim.
+- [x] DOTA academic-only, underlying image-source, AGPL/Enterprise, and external-artifact boundaries are
   visible in `THIRD_PARTY_NOTICES.md`.
 - [x] Branch, HEAD, status, refs, author, committer, trailers, ignored/private paths, and remotes are
   audited after the final commit.
@@ -37,14 +39,12 @@ matrix.
 
 ## Owner actions required before public release
 
-1. Decide whether the repository should include the five DOTA-derived JPEGs and bundled ONNX model.
-   For commercial or unrestricted redistribution, obtain written DOTA/underlying-image permission
-   or remove the restricted artifacts and their claims.
-2. Confirm the intended distribution satisfies AGPL-3.0, or obtain an applicable Ultralytics
-   Enterprise license for closed-source/commercial use.
-3. Have qualified counsel review the combined DOTA, underlying imagery, weights, and AGPL boundary.
-4. After reviewing the final local diff, create the repository, push the branch, configure branch
-   protection/CI, and require successful Ubuntu and Windows jobs before merge. Optionally create a
-   signed tag and Release after those gates pass. None of these actions is automated.
-5. If the local model card/demo changes are desired on Hugging Face, update the model repository and
-   static Space manually only after the source release decision; verify the pinned revisions again.
+- [ ] Make the historical Hugging Face model repository private and verify anonymous access fails.
+- [ ] Make the historical Space private until its contents are replaced by the BYOM static folder;
+  verify anonymous access fails.
+- [ ] Create the empty public GitHub repository `yolo26-dota-obb` without generated starter files.
+- [ ] Add and review the remote URL, push only this branch, and require Ubuntu/Windows CPU gates.
+- [ ] Create a tag or GitHub Release only after hosted CI and the public file inventory are green.
+
+Exact authenticated instructions are in [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md). None of
+these external actions is completed by the local release workflow.

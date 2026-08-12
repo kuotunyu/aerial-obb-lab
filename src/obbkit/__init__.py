@@ -6,4 +6,4 @@ Modules (added phase by phase):
 - viz: HBB vs OBB side-by-side comparison plots (Phase 4)
 """
 
-__version__ = "1.0.0rc1"
+__version__ = "1.0.0rc2"

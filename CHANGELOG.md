@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.0-rc.2] - 2026-08-12
+
+### Code-only portfolio candidate
+
+- Removed the bundled ONNX model and five DOTA-derived comparison renders while preserving their
+  hashes and provenance as excluded historical audit records.
+- Converted browser and Python demos to bring-your-own-model operation with no model download,
+  named-weight fallback, implicit export, or GPU default.
+- Removed public dependencies on owner-hosted Hugging Face artifacts and added explicit owner-only
+  handoff steps for remote visibility and GitHub publication.
+- Added release gates that reject model binaries, DOTA-derived visuals, owner artifact links,
+  remote demo acquisition, private paths, and runtime output in both Git and clean exports.
+
+### Remaining evidence limitations
+
+- Fine-tuning remains a near-tie/slight regression; no retraining or full validation was run.
+- DOTA8 values remain export-smoke parity only, and the T4 latency is limited to its recorded
+  batch-1, 1024px historical environment.
+- The checkpoint and DOTA-derived imagery are not distributed; independent reproduction requires
+  owner-supplied artifacts and the applicable permissions.
+
 ## [1.0.0-rc.1] - 2026-08-12
 
 ### Release hardening
