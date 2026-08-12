@@ -1,20 +1,23 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "release_candidate": "v1.0.0rc1",
+  "distribution_mode": "code-only-byom",
   "generated_from_committed_files": true,
   "policy": {
     "maximum_unlisted_tracked_file_bytes": 25000000,
     "commercial_use_cleared": false,
-    "notes": "Bundled model and DOTA-derived visuals are retained for academic, research, and portfolio review only."
+    "notes": "The public release bundles no third-party model binary or DOTA-derived raster image. Historical artifact records are retained only as exclusion audit metadata."
   },
-  "artifacts": [
+  "bundled_third_party_artifacts": [],
+  "excluded_historical_artifacts": [
     {
       "path": "demo/space-static/yolo26n-obb.onnx",
       "bytes": 10153682,
       "sha256": "cfb97e7fab004b13c89f53a75089e23574bb2103b1e508aab9e0a3001484603b",
       "kind": "bundled model",
       "provenance": "Official Ultralytics yolo26n-obb exported to ONNX opset 19 without simplification; copied from the pinned static Space artifact, then sanitized only to remove an embedded upstream build path from description metadata.",
-      "source_url": "https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection/blob/23211d473c0aa9f424f19a7a3c40fc1931356a0d/yolo26n-obb.onnx",
+      "source_url": "https://docs.ultralytics.com/tasks/obb/",
+      "historical_distribution_location_redacted": true,
       "upstream_revision": "23211d473c0aa9f424f19a7a3c40fc1931356a0d",
       "upstream_sha256_before_metadata_sanitization": "12572cc068417329f3e1874e3e1013368820cb48ae6b143356cdfccdb6b9511e",
       "graph_sha256_before_and_after_sanitization": "a08efeba0a5297f0ff02ff5125153384d4f9e26d861a9863c29dd683e667690b",

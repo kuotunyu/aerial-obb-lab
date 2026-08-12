@@ -35,7 +35,6 @@ REQUIRED_MEMBERS = {
     "demo/space-static/app.js",
     "demo/space-static/index.html",
     "demo/space-static/obb.js",
-    "demo/space-static/yolo26n-obb.onnx",
     "pyproject.toml",
     "release/artifact-manifest.json",
     "release/evidence.json",
@@ -65,6 +64,8 @@ LOCAL_PATH_BYTES_RE = re.compile(
     rb'''(?i)(?:[A-Z]:[\\/](?:Users|Documents and Settings)[\\/]|/(?:Users|home)/[^/\x00\s"']+/)'''
 )
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
+FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlpackage"}
+DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
 def _normalized_member(raw: str) -> str:
@@ -97,6 +98,10 @@ def archive_policy_errors(member_names: list[str]) -> list[str]:
             errors.append(f"private path: {relative}")
         elif lowered.startswith(RUNTIME_PREFIXES) or any(part in PurePosixPath(lowered).parts for part in RUNTIME_PARTS):
             errors.append(f"runtime/model path: {relative}")
+        elif PurePosixPath(lowered).suffix in FORBIDDEN_MODEL_SUFFIXES:
+            errors.append(f"model binary path: {relative}")
+        elif DOTA_DERIVED_VISUAL_RE.match(relative):
+            errors.append(f"DOTA-derived visual path: {relative}")
     return errors
 
 
@@ -116,7 +121,7 @@ def inspect_archive(archive: Path) -> list[str]:
                 return errors
 
             manifest = json.loads(bundle.read("release/artifact-manifest.json").decode("utf-8"))
-            artifacts = manifest.get("artifacts", [])
+            artifacts = manifest.get("bundled_third_party_artifacts", [])
             listed = {entry.get("path") for entry in artifacts}
             maximum = int(manifest.get("policy", {}).get("maximum_unlisted_tracked_file_bytes", 0))
             for entry in artifacts:
@@ -129,6 +134,11 @@ def inspect_archive(archive: Path) -> list[str]:
                     errors.append(f"{name}: byte size differs from manifest")
                 if hashlib.sha256(payload).hexdigest() != entry.get("sha256"):
                     errors.append(f"{name}: SHA-256 differs from manifest")
+
+            for entry in manifest.get("excluded_historical_artifacts", []):
+                name = entry.get("path", "")
+                if name in names:
+                    errors.append(f"excluded historical artifact is still archived: {name}")
 
             if maximum > 0:
                 for info in infos:

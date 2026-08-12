@@ -18,10 +18,6 @@ datasets/
 *.torchscript
 *.tflite
 *.mlpackage
-# ...except the static Space's bundled model — it's a required deployable asset, not a
-# transient training artifact (small nano model, ~10MB)
-!demo/space-static/yolo26n-obb.onnx
-
 # Data / cache
 /boats.jpg
 *.zip

@@ -71,6 +71,8 @@ LOCAL_PATH_BYTES_RE = re.compile(
     rb'''(?i)(?:[A-Z]:[\\/](?:Users|Documents and Settings)[\\/]|/(?:Users|home)/[^/\x00\s"']+/)'''
 )
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
+FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlpackage"}
+DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
 def load_json(path: Path) -> dict:
@@ -151,18 +153,15 @@ def verify_evidence(root: Path = ROOT) -> list[str]:
 def verify_artifacts(root: Path = ROOT) -> list[str]:
     errors: list[str] = []
     manifest = load_json(root / "release" / "artifact-manifest.json")
-    if manifest.get("schema_version") != 1:
+    if manifest.get("schema_version") != 2:
         errors.append("release/artifact-manifest.json: unsupported schema_version")
         return errors
-    entries = manifest.get("artifacts", [])
+    if manifest.get("distribution_mode") != "code-only-byom":
+        errors.append("artifact manifest must declare code-only-byom distribution")
+    entries = manifest.get("bundled_third_party_artifacts", [])
     paths = [entry.get("path") for entry in entries]
     if len(paths) != len(set(paths)):
         errors.append("artifact manifest contains duplicate paths")
-
-    expected = {"demo/space-static/yolo26n-obb.onnx"}
-    expected.update(path.relative_to(root).as_posix() for path in (root / "assets").glob("*.jpg"))
-    if set(paths) != expected:
-        errors.append("artifact manifest does not exactly cover bundled model and visuals")
 
     for entry in entries:
         relative = entry.get("path", "")
@@ -179,10 +178,23 @@ def verify_artifacts(root: Path = ROOT) -> list[str]:
         if digest != entry.get("sha256"):
             errors.append(f"{relative}: SHA-256 differs from manifest")
 
-    evidence = load_json(root / "release" / "evidence.json")["browser_demo"]
-    model = next((entry for entry in entries if entry.get("path", "").endswith(".onnx")), None)
-    if model and (model["bytes"] != evidence["model_bytes"] or model["sha256"] != evidence["model_sha256"]):
-        errors.append("browser model identity differs between manifest and evidence")
+    errors.extend(verify_code_only_paths(committed_paths(root), manifest))
+    return errors
+
+
+def verify_code_only_paths(relative_paths: list[str], manifest: dict) -> list[str]:
+    """Reject model binaries and known DOTA-derived visuals from public distributions."""
+    errors: list[str] = []
+    normalized = {path.replace("\\", "/") for path in relative_paths}
+    for relative in sorted(normalized):
+        if Path(relative).suffix.casefold() in FORBIDDEN_MODEL_SUFFIXES:
+            errors.append(f"code-only release contains model binary: {relative}")
+        if DOTA_DERIVED_VISUAL_RE.match(relative):
+            errors.append(f"code-only release contains DOTA-derived visual: {relative}")
+    for entry in manifest.get("excluded_historical_artifacts", []):
+        relative = str(entry.get("path", "")).replace("\\", "/")
+        if relative in normalized:
+            errors.append(f"excluded historical artifact is still distributed: {relative}")
     return errors
 
 
@@ -236,7 +248,11 @@ def committed_paths(root: Path = ROOT) -> list[str]:
 def verify_committed_privacy(root: Path = ROOT) -> list[str]:
     relative_paths = committed_paths(root)
     files = [root / relative for relative in relative_paths]
-    binary_paths = [root / entry["path"] for entry in load_json(root / "release" / "artifact-manifest.json")["artifacts"]]
+    manifest = load_json(root / "release" / "artifact-manifest.json")
+    binary_paths = [
+        root / entry["path"]
+        for entry in manifest.get("bundled_third_party_artifacts", [])
+    ]
     return (
         verify_privacy_paths(relative_paths)
         + verify_text_privacy(root, files)

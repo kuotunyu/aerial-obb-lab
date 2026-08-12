@@ -82,9 +82,24 @@ def test_release_checker_rejects_causal_nms_overclaims() -> None:
     ) == ["unsupported causal NMS outcome claim"]
 
 
-def test_manifest_hashes_every_redistributed_binary() -> None:
-    release_check = load_release_check()
+def test_code_only_manifest_bundles_no_third_party_artifacts() -> None:
+    manifest = json.loads(
+        (ROOT / "release" / "artifact-manifest.json").read_text(encoding="utf-8")
+    )
 
+    assert manifest["schema_version"] == 2
+    assert manifest["distribution_mode"] == "code-only-byom"
+    assert manifest["bundled_third_party_artifacts"] == []
+    assert len(manifest["excluded_historical_artifacts"]) == 6
+
+
+def test_committed_tree_contains_no_model_or_dota_visual() -> None:
+    release_check = load_release_check()
+    manifest = release_check.load_json(ROOT / "release" / "artifact-manifest.json")
+
+    assert release_check.verify_code_only_paths(
+        release_check.committed_paths(ROOT), manifest
+    ) == []
     assert release_check.verify_artifacts(ROOT) == []
 
 
@@ -114,10 +129,12 @@ def test_private_runtime_and_absolute_user_paths_fail_closed(tmp_path: Path) -> 
     ]
 
 
-def test_redistributed_binaries_contain_no_absolute_user_paths() -> None:
+def test_redistributed_binaries_contain_no_absolute_user_paths(tmp_path: Path) -> None:
     release_check = load_release_check()
+    binary = tmp_path / "artifact.bin"
+    binary.write_bytes(b"metadata=/home/alice/private/model.yaml")
 
     assert release_check.verify_binary_privacy(
-        ROOT,
-        [Path("demo/space-static/yolo26n-obb.onnx")],
-    ) == []
+        tmp_path,
+        [binary],
+    ) == ["artifact.bin: absolute local user path"]
