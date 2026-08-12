@@ -43,14 +43,16 @@ def test_owner_actions_recommends_zh_tw_about_metadata() -> None:
     assert "Website field" in text
 
 
-def test_owner_actions_records_public_historical_space_as_a_blocker() -> None:
+def test_owner_actions_records_private_historical_space_verification() -> None:
     text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
     checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
 
-    assert "`private: false`" in text
-    assert "`RUNNING`" in text
-    assert "set the existing Space to **Private**" in text
+    assert "Space API and page both returned anonymous HTTP `401`" in text
+    assert "`private: false`" not in text
+    assert "set the existing Space to **Private**" not in text
     assert "the Space is absent" not in text
-    assert "[ ] Make the historical Hugging Face Space private" in checklist
+    assert "[x] Make the historical Hugging Face Space private" in checklist
+    assert "one external owner blocker" not in checklist
+    assert "still public and running" not in checklist
     assert "historical Space is not present" not in checklist
     assert "empty public GitHub repository" not in checklist

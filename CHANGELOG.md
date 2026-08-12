@@ -21,6 +21,8 @@ All notable changes to this project are documented here.
 - Adopted the `Aerial OBB Lab` release identity across the zh-TW-first presentation, Python
   distribution, citation metadata, and clean-export filename while preserving `obbkit` imports and
   historical experiment identifiers.
+- Recorded anonymous `401` verification for both the Private model archive and the formerly public
+  historical Space after the owner completed the visibility change.
 
 ### Remaining evidence limitations
 

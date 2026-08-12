@@ -74,6 +74,15 @@ def test_gradio_ui_evidence_is_model_free_and_zh_tw() -> None:
     assert evidence["responsive_breakpoint_px"] == 900
 
 
+def test_owner_hf_artifacts_are_anonymously_private() -> None:
+    follow_up = load_evidence()["owner_visibility_follow_up"]
+
+    assert follow_up["historical_model_archive"]["anonymous_http_status"] == 401
+    assert follow_up["historical_space"]["anonymous_api_http_status"] == 401
+    assert follow_up["historical_space"]["anonymous_page_http_status"] == 401
+    assert follow_up["remote_mutation_performed_by_local_workflow"] is False
+
+
 def test_release_evidence_and_claim_blocks_verify() -> None:
     release_check = load_release_check()
 

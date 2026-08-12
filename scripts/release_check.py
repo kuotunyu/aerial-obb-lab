@@ -178,6 +178,19 @@ def verify_evidence(root: Path = ROOT) -> list[str]:
     browser = evidence["browser_demo"]
     if browser["represents_fine_tuned_medium_accuracy"] or browser["represents_t4_latency"]:
         errors.append("browser demo must not inherit medium accuracy or T4 latency evidence")
+
+    owner_visibility = evidence.get("owner_visibility_follow_up", {})
+    model_archive = owner_visibility.get("historical_model_archive", {})
+    historical_space = owner_visibility.get("historical_space", {})
+    if model_archive.get("anonymous_http_status") != 401:
+        errors.append("historical model archive must deny anonymous access")
+    if (
+        historical_space.get("anonymous_api_http_status") != 401
+        or historical_space.get("anonymous_page_http_status") != 401
+    ):
+        errors.append("historical Space must deny anonymous API and page access")
+    if owner_visibility.get("remote_mutation_performed_by_local_workflow") is not False:
+        errors.append("owner visibility follow-up must remain read-only")
     return errors
 
 

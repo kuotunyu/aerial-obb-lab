@@ -191,6 +191,23 @@
       "Real inference requires an owner-supplied compatible local model."
     ]
   },
+  "owner_visibility_follow_up": {
+    "checked_anonymously_on": "2026-08-12",
+    "historical_model_archive": {
+      "visibility": "private",
+      "anonymous_http_status": 401
+    },
+    "historical_space": {
+      "visibility": "private",
+      "anonymous_api_http_status": 401,
+      "anonymous_page_http_status": 401
+    },
+    "remote_mutation_performed_by_local_workflow": false,
+    "limitations": [
+      "HTTP 401 verifies anonymous denial at the recorded time; authenticated owner settings remain the source of truth.",
+      "The local release workflow performed read-only verification and did not mutate either Hugging Face repository."
+    ]
+  },
   "historical_remote_read_only_audit": {
     "checked_anonymously_on": "2026-08-12",
     "model_artifact": {

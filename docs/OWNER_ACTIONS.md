@@ -16,12 +16,9 @@ Space, upload an artifact, or mutate Hugging Face.
 
 ### Historical Space
 
-- Anonymous read-only verification of
-  `steven0226/yolo26-obb-aerial-detection` on 2026-08-12 returned `private: false`, SDK `static`,
-  runtime stage `RUNNING`, and revision `23211d473c0aa9f424f19a7a3c40fc1931356a0d`.
-- **Owner blocker:** back up the Space privately if needed, then set the existing Space to **Private**
-  in Hugging Face settings. Confirm from a signed-out session that the page and files
-  return `401` or `404` before treating the code-only release boundary as complete.
+- The owner changed `steven0226/yolo26-obb-aerial-detection` to **Private**.
+- On 2026-08-12, the Space API and page both returned anonymous HTTP `401`; the formerly public
+  static Space and bundled ONNX artifact are no longer anonymously accessible.
 - No replacement Space is required for this release candidate. Do not create
   `aerial-obb-lab-browser` unless a separate public-hosting and rights review is completed later.
 
@@ -39,10 +36,8 @@ Space, upload an artifact, or mutate Hugging Face.
 
 ## Remaining owner actions
 
-1. Make the still-public historical Hugging Face Space private and verify anonymous denial.
-2. Add the suggested GitHub topics; the anonymous API currently reports an empty topics list.
-3. Confirm the latest pushed tip passes Ubuntu/Windows CPU and synthetic browser gates, then decide
-   whether to merge it or make it the repository's default branch.
+1. Add the suggested GitHub topics; the anonymous API currently reports an empty topics list.
+2. Decide whether to merge the release branch or make it the repository's default branch.
 
 ## Optional tag or Release after hosted CI
 
