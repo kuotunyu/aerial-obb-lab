@@ -139,4 +139,3 @@ private-HF boundary; human-facing documents carry the approved zh-TW-first brand
   authors/committers, no trailers, and ignored private/runtime paths without reading them.
 - [ ] Verify the empty GitHub repository read-only and state explicitly that no code, branch, tag,
   PR, Release, or HF mutation was performed by the local workflow.
-
