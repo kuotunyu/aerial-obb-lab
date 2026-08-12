@@ -1,7 +1,7 @@
 # Browser-Native UI Redesign
 
-**Status:** Approved on 2026-08-12  
-**Release:** Continue the `v1.0.0-rc.2` candidate  
+**Status:** Approved on 2026-08-12
+**Release:** Continue the `v1.0.0-rc.2` candidate
 **Branch:** `portfolio/obb-v1.0-release-hardening`
 
 ## Objective
