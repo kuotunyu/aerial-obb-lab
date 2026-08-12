@@ -12,6 +12,12 @@ Hugging Face mutation is part of this checklist run.
 - [x] Browser synthetic preprocess, output schema, decode, angle, and corners match Python.
 - [x] Headless Chromium exercises upload, preprocess, canvas drawing, and result rendering with a
   deterministic output stub; it performs no model inference or external network request.
+- [x] The canonical `README.md` is complete Traditional Chinese, `README.en.md` retains the complete
+  English claims, and `README.zh-TW.md` is only a compatibility pointer.
+- [x] The shared Gradio workbench uses an explicit Detect action, a 38/62 desktop layout, readable
+  type, and a responsive single-column layout below 900px.
+- [x] The loopback-only Gradio preview smoke loads the real UI with a synthetic PNG while Detect
+  remains disabled; it imports no Torch or Ultralytics and performs no model inference.
 - [x] The distributable artifact inventory is empty; excluded historical hashes remain audit-only.
 - [x] Committed and archived paths contain no model binary or DOTA-derived comparison render.
 - [x] Notebooks have zero outputs/execution counts and remain synchronized with Jupytext sources.
@@ -27,6 +33,8 @@ Hugging Face mutation is part of this checklist run.
 - [x] TensorRT 20.22 ms / 49.4 FPS is limited to the recorded T4/batch-1/1024px environment.
 - [x] Browser and Python demos require user-supplied local models and inherit no checkpoint accuracy
   or T4 latency claim.
+- [x] Gradio UI evidence is limited to layout and interaction state; it makes no accuracy, latency,
+  model-correctness, or production-deployment claim.
 - [x] DOTA academic-only, underlying image-source, AGPL/Enterprise, and external-artifact boundaries are
   visible in `THIRD_PARTY_NOTICES.md`.
 - [x] Branch, HEAD, status, refs, author, committer, trailers, ignored/private paths, and remotes are

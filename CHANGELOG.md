@@ -14,6 +14,10 @@ All notable changes to this project are documented here.
   handoff steps for remote visibility and GitHub publication.
 - Added release gates that reject model binaries, DOTA-derived visuals, owner artifact links,
   remote demo acquisition, private paths, and runtime output in both Git and clean exports.
+- Made the complete Traditional Chinese `README.md` the canonical GitHub and package landing page,
+  with a complete `README.en.md` and a short compatibility pointer.
+- Replaced duplicated Gradio layouts with a shared 38/62 wide workbench, explicit Detect flow,
+  model-free loopback preview, responsive Playwright smoke, and no ML runtime in the preview gate.
 
 ### Remaining evidence limitations
 

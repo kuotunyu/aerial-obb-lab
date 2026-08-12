@@ -172,6 +172,25 @@
       "Browser latency varies by client and is unrelated to the recorded T4 TensorRT result."
     ]
   },
+  "gradio_ui": {
+    "language": "zh-TW",
+    "layout": "wide-workbench-38-62",
+    "desktop_max_width_px": 1720,
+    "responsive_breakpoint_px": 900,
+    "preview_model_loaded": false,
+    "model_inference_run": false,
+    "network_scope": "loopback only",
+    "source_files": [
+      "demo/gradio.css",
+      "demo/gradio_preview.py",
+      "demo/gradio_ui.py",
+      "scripts/gradio_ui_smoke.py"
+    ],
+    "limitations": [
+      "UI smoke validates layout and interaction state, not model correctness, accuracy, or latency.",
+      "Real inference requires an owner-supplied compatible local model."
+    ]
+  },
   "historical_remote_read_only_audit": {
     "checked_anonymously_on": "2026-08-12",
     "model_artifact": {

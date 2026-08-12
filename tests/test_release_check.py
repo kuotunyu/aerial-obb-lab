@@ -64,6 +64,16 @@ def test_browser_demo_is_not_medium_checkpoint_evidence() -> None:
     assert browser["represents_t4_latency"] is False
 
 
+def test_gradio_ui_evidence_is_model_free_and_zh_tw() -> None:
+    evidence = load_evidence()["gradio_ui"]
+    assert evidence["language"] == "zh-TW"
+    assert evidence["layout"] == "wide-workbench-38-62"
+    assert evidence["preview_model_loaded"] is False
+    assert evidence["model_inference_run"] is False
+    assert evidence["desktop_max_width_px"] == 1720
+    assert evidence["responsive_breakpoint_px"] == 900
+
+
 def test_release_evidence_and_claim_blocks_verify() -> None:
     release_check = load_release_check()
 
