@@ -4,8 +4,8 @@
 `yolo26m-obb.pt` fine-tuned on a DOTAv1 re-split (`split_dota` rates `[0.8, 1.2]`, gap 500,
 62,030 train / 21,271 val tiles at 1024px) on a Colab A100, evaluated against the same
 official checkpoint on the identical val split. Full run config in `args.yaml` (archived to the
-HF model repo, [steven0226/yolo26m-obb-dota](https://huggingface.co/steven0226/yolo26m-obb-dota));
-training/eval scripts in `notebooks/01_train_dotav1_a100.ipynb`. The completed validation-only
+historical training artifact set but not distributed in this code-only release); training/eval
+scripts are in `notebooks/01_train_dotav1_a100.ipynb`. The completed validation-only
 recovery workflow is `notebooks/03_recover_per_class_metrics_colab.ipynb`; its accepted full
 15-class output is also stored as [CSV](per_class_metrics.csv) and [JSON](per_class_metrics.json).
 

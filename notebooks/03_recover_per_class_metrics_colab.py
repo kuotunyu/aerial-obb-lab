@@ -8,10 +8,10 @@
 # ## 使用方式
 # 1. Colab「執行階段 → 變更執行階段類型」選 GPU；建議 A100。T4 通常也能做 validation，
 #    若固定 batch=16 發生 OOM，請改用 A100，不要改 batch 後混用結果。
-# 2. 不需要 HF token。流程會從固定 model revision 下載公開權重，並從 Ultralytics 的固定
-#    DOTAv1 release asset 下載原始資料，再用原參數重切；請預留下載、切圖與完整驗證時間。
-# 3. 若 HF CDN 暫時無法下載權重，可在瀏覽器從固定 revision 的 model repo 下載 `best.pt`，
-#    手動上傳到 `/content/best.pt` 再重跑；專案擁有者也可使用本機 `runs/.../best.pt`。
+# 2. 不需要 HF token。請先將擁有者保存的原始 `best.pt` 上傳為 `/content/best.pt`；
+#    這份 code-only release 不提供或自動下載 checkpoint。
+# 3. 流程會從 Ultralytics 的固定 DOTAv1 release asset 下載原始資料，再用原參數
+#    重切；請預留下載、切圖與完整驗證時間。
 # 4. 「全部執行」。最後會下載 `per_class_metrics_bundle.zip`，並印出
 #    `=== PASTE BACK TO CODEX ===` 區塊。
 #
@@ -22,11 +22,9 @@
 # ## 0. 固定原始評估設定
 
 # %%
-MODEL_REPO = "steven0226/yolo26m-obb-dota"
-MODEL_REVISION = "3f5705719a6e161fd105118fa8ba80b9a6cb1536"
+HISTORICAL_MODEL_REVISION = "3f5705719a6e161fd105118fa8ba80b9a6cb1536"
 WEIGHT_FILE = "best.pt"
 EXPECTED_WEIGHT_SHA256 = "59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188"
-MODEL_DOWNLOAD_PAGE = f"https://huggingface.co/{MODEL_REPO}/blob/{MODEL_REVISION}/{WEIGHT_FILE}"
 
 RAW_DATA_URL = "https://github.com/ultralytics/assets/releases/download/v0.0.0/DOTAv1.zip"
 RAW_RELEASE_API_URL = "https://api.github.com/repos/ultralytics/assets/releases/tags/v0.0.0"
@@ -98,14 +96,9 @@ DOTA_NAMES = {
 # ## 1. 安裝與 GPU
 
 # %%
-# %pip install -q ultralytics==8.4.93 "huggingface_hub>=0.30"
+# %pip install -q ultralytics==8.4.93
 
 # %%
-import os
-
-# 過去這個專案曾遇到 HF Xet/CDN 卡住；先停用 Xet，且權重仍保留手動上傳 fallback。
-os.environ["HF_HUB_DISABLE_XET"] = "1"
-
 import torch
 import ultralytics
 import sys
@@ -128,16 +121,13 @@ print("Python:", sys.version.replace("\n", " "))
 # %% [markdown]
 # ## 2. 取得並驗證原始 `best.pt`
 #
-# 優先使用 `/content/best.pt`（方便避開 HF CDN 問題）；不存在才嘗試公開 model repo。
-# 無論來源為何，SHA-256 都必須與原始 epoch 13 checkpoint 完全一致。
+# 必須由擁有者先上傳 `/content/best.pt`。流程不會從遠端獲取權重。
+# SHA-256 必須與原始 epoch 13 checkpoint 完全一致。
 
 # %%
 import hashlib
 import shutil
-import time
 from pathlib import Path
-
-from huggingface_hub import hf_hub_download
 
 WEIGHTS = Path("/content/best.pt")
 
@@ -151,31 +141,9 @@ def sha256_file(path: Path) -> str:
 
 
 if not WEIGHTS.is_file():
-    errors = []
-    for attempt in range(1, 4):
-        try:
-            downloaded = Path(
-                hf_hub_download(
-                    repo_id=MODEL_REPO,
-                    filename=WEIGHT_FILE,
-                    revision=MODEL_REVISION,
-                    local_dir="/content",
-                    force_download=attempt > 1,
-                )
-            )
-            if downloaded.resolve() != WEIGHTS.resolve():
-                shutil.copy2(downloaded, WEIGHTS)
-            break
-        except Exception as exc:
-            errors.append(f"attempt {attempt}: {exc}")
-            print(errors[-1])
-            if attempt < 3:
-                time.sleep(5)
-    else:
-        raise RuntimeError(
-            "無法從 HF 下載 best.pt。請在瀏覽器開啟固定 revision 頁面下載後，手動上傳成 "
-            f"/content/best.pt，再從本格重跑：{MODEL_DOWNLOAD_PAGE}。最後錯誤：{errors[-1]}"
-        )
+    raise RuntimeError(
+        "請先上傳已校驗的原始 best.pt 到 /content/best.pt，再從本格重跑。"
+    )
 
 actual_weight_sha256 = sha256_file(WEIGHTS)
 assert actual_weight_sha256 == EXPECTED_WEIGHT_SHA256, (
@@ -692,8 +660,8 @@ with CSV_PATH.open("w", newline="", encoding="utf-8") as fh:
 
 payload = {
     "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-    "model_repo": MODEL_REPO,
-    "model_revision": MODEL_REVISION,
+    "model_distribution": "not included; owner-supplied checkpoint required",
+    "historical_model_revision": HISTORICAL_MODEL_REVISION,
     "weights": {
         "file": WEIGHT_FILE,
         "sha256": actual_weight_sha256,

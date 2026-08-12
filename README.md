@@ -5,16 +5,15 @@
 Fine-tuning **YOLO26-OBB** (oriented bounding boxes) on the **DOTAv1** aerial dataset, with a full lifecycle:
 train on Colab A100 → evaluate against the official baseline → quantify OBB-vs-HBB annotation
 geometry on aerial imagery → export ONNX / TensorRT FP16 with a 3-framework latency benchmark →
-Gradio demo + Hugging Face Space.
+code-only Gradio and browser BYOM demos.
 
-**🚀 Live demo (100% browser-side, no server): https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
-**Model card: https://huggingface.co/steven0226/yolo26m-obb-dota**
+**Browser demo source:** [`demo/space-static/`](demo/space-static/) · **Model card:**
+[`docs/model_card.md`](docs/model_card.md). This release ships code and evidence, not weights.
 
 <!-- claim:browser-scope -->
-> The live Space deliberately uses the lightweight official `yolo26n-obb` ONNX model so it can
-> run in a browser. It does not represent the fine-tuned `yolo26m-obb` checkpoint's accuracy or
-> its recorded T4 latency; those artifacts are published in the model repository above and power
-> the optional local demo.
+> The browser demo requires a compatible, user-supplied ONNX model and processes both the model
+> and image locally. It does not represent the fine-tuned `yolo26m-obb` checkpoint's accuracy or
+> its recorded T4 latency, and this repository does not distribute either model binary.
 <!-- /claim:browser-scope -->
 
 ## Project Flow
@@ -39,7 +38,7 @@ Detailed training, evaluation, analysis, and deployment branches are documented 
 | 3 | Evaluation vs. official baseline | Colab + local | ✅ |
 | 4 | "Why OBB" quantitative analysis | local | ✅ |
 | 5 | ONNX / TensorRT export + benchmark | Colab GPU | ✅ |
-| 6 | Local Gradio reference + static browser HF Space | local + HF | ✅ |
+| 6 | Local Gradio reference + static browser BYOM demo | local | ✅ |
 | 7 | Docs, model card, wrap-up | — | ✅ |
 
 ## Evaluation: Fine-tuned vs. Official Baseline
@@ -111,9 +110,9 @@ This ground-truth geometry result is a proxy, not a detector/NMS experiment. It 
 HBB view can substantially overstate overlap and therefore create suppression risk in dense
 scenes; it does not measure how many predictions a particular HBB detector would lose.
 
-**3. Seeing is believing** — same marina, same labels (all five comparisons in `assets/`):
-
-![HBB vs OBB, 535 ships in a marina](assets/hbb_vs_obb_1_P0706_ship.jpg)
+**3. Visual comparison provenance:** the five original HBB-versus-OBB renders were derived from
+DOTA imagery and are deliberately excluded from this public code-only release. The aggregate
+geometry measurements above remain available as reproducible, machine-readable evidence.
 <!-- /claim:analysis -->
 
 ## Deployment Benchmark: PyTorch vs. ONNX Runtime vs. TensorRT FP16
@@ -147,7 +146,7 @@ other-hardware, throughput, or production-SLA claim.
 graph-compilation backend like TensorRT behind it, ONNX Runtime's GPU execution provider doesn't
 automatically beat PyTorch's own cuDNN kernels. It's included for completeness and because the
 ONNX export is the common ancestor of both implementation paths below (server-side ONNX Runtime CPU
-in `demo/space/`, and ONNX Runtime **Web** running client-side in the actually-deployed
+in `demo/space/`, and ONNX Runtime **Web** running client-side in the static
 `demo/space-static/`) — not because GPU ONNX Runtime itself is the fastest option here.
 
 Getting these numbers took several rounds of environment debugging on Colab's side, none of it
@@ -200,14 +199,14 @@ and deterministic output stub, not model inference:
 
 ```powershell
 uv sync --frozen --no-install-project --group demo
-# HF_MODEL_REPO is optional; without it the app uses local best.pt, then official weights
+$env:MODEL_PATH = "C:/models/your-model.onnx"
+$env:MODEL_DEVICE = "cpu"
 .venv/Scripts/python.exe demo/app.py
 ```
 
 The optional group is for convenience only and deliberately uses CPU-only PyTorch wheels. GPU
-training, full evaluation, export, and benchmark remain Colab workflows; use a separate matching
-PyTorch environment if you intentionally want local GPU inference. `HF_TOKEN` is needed only for
-Hub upload/download operations, not for the default checks or static demo.
+training, full evaluation, export, and benchmark remain historical Colab workflows; no rerun is
+required for this release. The default checks and static demo require no token or network model.
 
 **Colab (training + evaluation recovery + benchmark)** — all three notebooks are
 self-contained; no repo clone is needed:
@@ -220,31 +219,22 @@ self-contained; no repo clone is needed:
    benchmarks all three backends.
 3. To reproduce and verify the three recovered per-class rows without retraining, upload
    [notebooks/03_recover_per_class_metrics_colab.ipynb](notebooks/03_recover_per_class_metrics_colab.ipynb)
-   → Colab GPU (A100 recommended) → Run all. It needs no token: it verifies the public checkpoint
-   from a fixed revision, verifies the exact DOTAv1 ZIP SHA-256, rebuilds the original tiling
-   settings, and records a val manifest. If automatic weight download fails, download `best.pt`
-   from the [pinned model revision](https://huggingface.co/steven0226/yolo26m-obb-dota/blob/3f5705719a6e161fd105118fa8ba80b9a6cb1536/best.pt)
-   and upload it as `/content/best.pt`; the project owner can alternatively use the ignored local
-   `runs/yolo26m-obb-dotav1/weights/best.pt`. It exports a complete 15-class CSV/JSON and verifies
+   → Colab GPU (A100 recommended), upload the owner's checksum-matching checkpoint as
+   `/content/best.pt`, then Run all. The notebook never fetches a model. It verifies the checkpoint
+   SHA-256, verifies the exact DOTAv1 ZIP SHA-256, rebuilds the original tiling settings, records a
+   val manifest, and exports a complete 15-class CSV/JSON. The project owner may source the file
+   from the ignored local `runs/yolo26m-obb-dotav1/weights/best.pt`. The workflow verifies
    the recovered rows against the historical aggregate and 12 previously preserved classes. The
    accepted run is already recorded in [docs/training_results.md](docs/training_results.md); no
    rerun is required unless you want to reproduce that evidence independently.
 4. Copy each notebook's final `=== PASTE BACK ===` block to wherever you're tracking results.
 
-**HF Space (live demo)**: push the contents of `demo/space-static/` to a new Space with the
-**static** SDK (each folder's `README.md` is already the Space's config frontmatter). This is
-what's actually deployed — see below for why. `demo/space/` (Gradio SDK, server-side ONNX
-Runtime CPU) is kept in the repo as a working, locally-tested reference implementation, but was
-never deployed as a Space.
-
-**Why two implementations exist**: at implementation time (2026-07-15), the HF API required a
-PRO subscription to host Gradio/Docker Spaces on `cpu-basic` (`Static Spaces are free for
-everyone, but hosting Gradio and Docker Spaces on free cpu-basic requires a PRO subscription`).
-Given that constraint, the no-cost public route was a **static** Space with inference running
-client-side. `demo/space-static/` reimplements
-the same detection pipeline as vanilla JS + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)
-(WASM) — the model downloads once (~10MB) and every prediction runs entirely in the visitor's
-browser, no server involved at all. The committed synthetic fixture now cross-checks letterbox
+**Browser BYOM demo:** serve `demo/space-static/` from any static HTTP server, then select a
+compatible local ONNX file and an image. Both remain in the browser. `demo/space/` is the optional
+Gradio/CPU reference and likewise requires an explicit local `MODEL_PATH`; neither implementation
+downloads, exports, or falls back to a named model. The static implementation uses vanilla JS +
+[ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/) (WASM). The committed fixture
+cross-checks letterbox
 preprocessing, RGB CHW conversion, `[N,7]` output decoding, angles, and rotated corners against an
 independent CPU Python reference without fetching DOTA or running a model.
 
@@ -252,10 +242,11 @@ independent CPU Python reference without fetching DOTA or running a model.
 
 - Repository code: **AGPL-3.0-or-later** as declared in `pyproject.toml`; Ultralytics components
   remain subject to Ultralytics' separate AGPL and Enterprise routes.
-- DOTA images/annotations: **academic use only; commercial use prohibited**. Underlying image-source
-  terms may also apply. This release treats DOTA-trained weights and DOTA-derived visuals as
-  academic/non-commercial unless the relevant rights holders confirm otherwise.
+- This code-only candidate includes no DOTA image, annotation, DOTA-derived render, trained weight,
+  or exported model. DOTA remains academic-use-only, and a user-supplied model remains subject to
+  its own dataset, upstream software, and weight terms; no commercial-use clearance is claimed.
 - Exact artifact hashes, third-party terms, and owner actions: [artifact manifest](release/artifact-manifest.json),
-  [third-party notices](THIRD_PARTY_NOTICES.md), and [release checklist](RELEASE_CHECKLIST.md).
+  [third-party notices](THIRD_PARTY_NOTICES.md), [owner actions](docs/OWNER_ACTIONS.md), and
+  [release checklist](RELEASE_CHECKLIST.md).
 
 *(中文版見 README.zh-TW.md)*

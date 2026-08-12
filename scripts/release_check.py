@@ -38,13 +38,35 @@ CLAIM_FILES = {
         "docs/analysis_results.md": ("28853", "456", "ground-truth geometry"),
     },
     "browser-scope": {
-        "README.md": ("yolo26n-obb", "yolo26m-obb", "does not represent"),
-        "README.zh-TW.md": ("yolo26n-obb", "yolo26m-obb", "不代表"),
-        "docs/model_card.md": ("yolo26n-obb", "yolo26m-obb", "does not represent"),
+        "README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
+        "README.zh-TW.md": ("使用者自行提供", "yolo26m-obb", "不代表"),
+        "docs/model_card.md": ("user-supplied", "yolo26m-obb", "does not represent"),
         "demo/space-static/README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
         "demo/space/README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
     },
 }
+
+PUBLIC_PRESENTATION_FILES = (
+    "README.md",
+    "README.zh-TW.md",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/training_results.md",
+    "docs/analysis_results.md",
+    "docs/model_card.md",
+    "docs/per_class_metrics.json",
+    "release/evidence.json",
+    "demo/space-static/README.md",
+    "demo/space-static/index.html",
+    "demo/space-static/app.js",
+    "demo/space/README.md",
+    "demo/space/app.py",
+    "notebooks/03_recover_per_class_metrics_colab.py",
+)
+OWNER_HF_ARTIFACT_RE = re.compile(
+    r"(?:https://huggingface\.co/(?:spaces/)?)?steven0226/"
+    r"(?:yolo26m-obb-dota|yolo26-obb-aerial-detection)",
+    re.I,
+)
 
 UNSUPPORTED_CAUSAL_NMS_PHRASES = (
     "why OBB beats horizontal boxes",
@@ -73,6 +95,12 @@ LOCAL_PATH_BYTES_RE = re.compile(
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlpackage"}
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
+DEMO_MODEL_SOURCE_FILES = ("demo/app.py", "demo/space/app.py")
+FORBIDDEN_DEMO_MODEL_PATTERNS = (
+    (re.compile(r"\b(?:hf_hub_download|HF_MODEL_REPO)\b"), "Hugging Face model download"),
+    (re.compile(r'''YOLO\s*\(\s*["']yolo26[^"']*["']''', re.I), "named model fallback"),
+    (re.compile(r"\.export\s*\("), "implicit model export"),
+)
 
 
 def load_json(path: Path) -> dict:
@@ -260,6 +288,31 @@ def verify_committed_privacy(root: Path = ROOT) -> list[str]:
     )
 
 
+def demo_model_source_errors(sources: dict[str, str]) -> list[str]:
+    """Reject automatic model acquisition in published Python demo entry points."""
+    errors: list[str] = []
+    for relative in sorted(sources):
+        text = sources[relative]
+        for pattern, label in FORBIDDEN_DEMO_MODEL_PATTERNS:
+            if pattern.search(text):
+                errors.append(f"{relative}: {label}")
+    return errors
+
+
+def verify_demo_model_sources(root: Path = ROOT) -> list[str]:
+    sources = {
+        relative: (root / relative).read_text(encoding="utf-8")
+        for relative in DEMO_MODEL_SOURCE_FILES
+    }
+    errors = demo_model_source_errors(sources)
+    for relative, text in sources.items():
+        if "require_model_path()" not in text:
+            errors.append(f"{relative}: explicit local model path is not required")
+        if 'os.environ.get("MODEL_DEVICE", "cpu")' not in text:
+            errors.append(f"{relative}: CPU is not the default model device")
+    return errors
+
+
 def _claim_block(text: str, claim_id: str) -> str | None:
     start = f"<!-- claim:{claim_id} -->"
     end = f"<!-- /claim:{claim_id} -->"
@@ -296,18 +349,30 @@ def verify_claims(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def verify_public_links(root: Path = ROOT) -> list[str]:
+    """Keep public product presentation independent of the owner's HF artifacts."""
+    errors: list[str] = []
+    for relative in PUBLIC_PRESENTATION_FILES:
+        text = (root / relative).read_text(encoding="utf-8")
+        if OWNER_HF_ARTIFACT_RE.search(text):
+            errors.append(f"{relative}: owner Hugging Face artifact reference")
+    return errors
+
+
 def main() -> int:
     errors = (
         verify_evidence(ROOT)
         + verify_claims(ROOT)
+        + verify_public_links(ROOT)
         + verify_artifacts(ROOT)
+        + verify_demo_model_sources(ROOT)
         + verify_committed_privacy(ROOT)
     )
     if errors:
         for error in errors:
             print(f"[FAIL] {error}", file=sys.stderr)
         return 1
-    print("[OK] Release evidence, claims, artifact hashes, and committed privacy")
+    print("[OK] Release evidence, claims, artifacts, local-model demos, and committed privacy")
     return 0
 
 

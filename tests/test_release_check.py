@@ -71,6 +71,45 @@ def test_release_evidence_and_claim_blocks_verify() -> None:
     assert release_check.verify_claims(ROOT) == []
 
 
+def test_python_demos_require_local_models_without_fallbacks() -> None:
+    release_check = load_release_check()
+
+    assert release_check.verify_demo_model_sources(ROOT) == []
+
+
+def test_demo_source_policy_rejects_remote_and_named_model_acquisition() -> None:
+    release_check = load_release_check()
+
+    assert release_check.demo_model_source_errors(
+        {
+            "remote.py": "from huggingface_hub import hf_hub_download\n",
+            "named.py": 'model = YOLO("yolo26n-obb.pt")\n',
+            "export.py": 'model.export(format="onnx")\n',
+        }
+    ) == [
+        "export.py: implicit model export",
+        "named.py: named model fallback",
+        "remote.py: Hugging Face model download",
+    ]
+
+
+def test_public_presentation_omits_owner_hf_artifact_links() -> None:
+    release_check = load_release_check()
+
+    assert release_check.verify_public_links(ROOT) == []
+
+
+def test_recovery_notebook_requires_owner_supplied_checkpoint() -> None:
+    source = (ROOT / "notebooks" / "03_recover_per_class_metrics_colab.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "steven0226" not in source
+    assert "hf_hub_download" not in source
+    assert 'WEIGHTS = Path("/content/best.pt")' in source
+    assert "請先上傳" in source
+
+
 def test_release_checker_rejects_causal_nms_overclaims() -> None:
     release_check = load_release_check()
 

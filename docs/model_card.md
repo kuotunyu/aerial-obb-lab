@@ -25,8 +25,8 @@ pipeline_tag: object-detection
 Fine-tuned [`yolo26m-obb`](https://docs.ultralytics.com/) (oriented bounding box detection) on
 a re-split of the [DOTAv1](https://captain-whu.github.io/DOTA/) aerial imagery dataset. Part of
 a companion training-to-deployment source project containing the notebooks, HBB-vs-OBB
-analysis, deployment code, and ONNX/TensorRT benchmarks. Try the live browser-side demo:
-https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
+analysis, deployment code, and ONNX/TensorRT benchmarks. This code-only release records the
+historical model evidence but does not distribute the checkpoint, exports, or DOTA-derived images.
 
 ## Model description
 
@@ -75,14 +75,14 @@ directly comparable to the top row, only to each other.
 
 ## Deployment
 
-Also exported to ONNX and a TensorRT FP16 engine (Tesla T4). The Hugging Face model repository
-contains `results.png`, `confusion_matrix_normalized.png`, and `results.csv`; the source project
-README contains the latency/FPS benchmark table.
+The accepted historical run also produced ONNX and TensorRT FP16 exports on a Tesla T4. Those
+model binaries and training renders are not distributed here; the source README and committed
+machine-readable registry retain the bounded latency and parity evidence.
 
 <!-- claim:browser-scope -->
-**Live demo** (official `yolo26n-obb`; it does not represent the fine-tuned `yolo26m-obb`
-checkpoint's accuracy or T4 latency; 100% browser-side via ONNX Runtime Web, no server):
-https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
+The browser demo accepts a compatible, user-supplied ONNX file and runs locally through ONNX
+Runtime Web. It does not represent the fine-tuned `yolo26m-obb` checkpoint's accuracy or T4
+latency, and no model file is bundled.
 <!-- /claim:browser-scope -->
 
 ## Intended use & limitations
@@ -97,20 +97,18 @@ https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection
 
 ## Usage
 
-Install `ultralytics==8.4.93` and `huggingface_hub>=0.30`, then download the published checkpoint:
+Supply a local, trusted `.pt` or compatible `.onnx` file. Verify its provenance and checksum
+before loading it; PyTorch checkpoints may execute code during deserialization.
 
-```python
-from huggingface_hub import hf_hub_download
-from ultralytics import YOLO
-
-weights = hf_hub_download("steven0226/yolo26m-obb-dota", "best.pt")
-model = YOLO(weights)
-results = model.predict("aerial_image.jpg", imgsz=1024)
-results[0].show()  # draws rotated boxes
+```powershell
+uv sync --frozen --no-install-project --group demo
+$env:MODEL_PATH = "C:/models/your-model.onnx"
+$env:MODEL_DEVICE = "cpu"
+.venv/Scripts/python.exe demo/app.py
 ```
 
 ## License
 
 - Code: AGPL-3.0 ([Ultralytics](https://github.com/ultralytics/ultralytics))
-- Weights: AGPL route plus unresolved DOTA/underlying-image commercial-use boundary
+- User-supplied weights: their own upstream software, dataset, and weight terms apply
 - Training data (DOTA): academic use only; commercial use prohibited

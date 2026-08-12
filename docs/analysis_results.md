@@ -51,11 +51,9 @@ potential HBB suppression risk rather than observed lost detections.
 | soccer ball field | 18 | 0 | 0 | - |
 | swimming pool | 15 | 0 | 0 | - |
 
-## Rendered comparisons (assets/)
+## Rendered-comparison boundary
 
-- `hbb_vs_obb_1_P0706_ship.jpg` — P0706, dominant class: ship (score 393)
-- `hbb_vs_obb_2_P2726_ship.jpg` — P2726, dominant class: ship (score 95)
-- `hbb_vs_obb_3_P2124_large-vehicle.jpg` — P2124, dominant class: large vehicle (score 82)
-- `hbb_vs_obb_4_P1957_large-vehicle.jpg` — P1957, dominant class: large vehicle (score 75)
-- `hbb_vs_obb_5_P2781_large-vehicle.jpg` — P2781, dominant class: large vehicle (score 68)
+Five historical HBB-versus-OBB comparison renders were derived from DOTA validation imagery.
+They are intentionally excluded from this public code-only release. The aggregate values above
+remain available in machine-readable form and do not depend on redistributing those images.
 <!-- /claim:analysis -->

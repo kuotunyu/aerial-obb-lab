@@ -172,21 +172,21 @@
       "Browser latency varies by client and is unrelated to the recorded T4 TensorRT result."
     ]
   },
-  "remote_read_only_audit": {
+  "historical_remote_read_only_audit": {
     "checked_anonymously_on": "2026-08-12",
-    "model_repository": {
-      "id": "steven0226/yolo26m-obb-dota",
-      "revision": "3f5705719a6e161fd105118fa8ba80b9a6cb1536",
-      "public": true,
+    "model_artifact": {
+      "owner_identifier_redacted": true,
+      "historical_revision": "3f5705719a6e161fd105118fa8ba80b9a6cb1536",
+      "visibility_at_audit": "public",
       "gated": false,
       "license_metadata": "agpl-3.0",
       "best_pt_bytes": 48718384,
       "best_pt_sha256": "59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188"
     },
-    "space": {
-      "id": "steven0226/yolo26-obb-aerial-detection",
-      "revision": "23211d473c0aa9f424f19a7a3c40fc1931356a0d",
-      "public": true,
+    "browser_artifact": {
+      "owner_identifier_redacted": true,
+      "historical_revision": "23211d473c0aa9f424f19a7a3c40fc1931356a0d",
+      "visibility_at_audit": "public",
       "sdk": "static",
       "license_metadata": "agpl-3.0"
     },

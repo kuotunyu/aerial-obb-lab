@@ -12,8 +12,8 @@ short_description: Bring-your-own-model rotated detection on CPU
 
 # YOLO26 OBB — Bring Your Own Model CPU Demo
 
-> **Reference implementation only.** This Gradio/CPU version is not the deployed Space. The live
-> demo is the static browser implementation in `demo/space-static/`.
+> **Reference implementation only.** For a serverless browser path, use the BYOM implementation
+> in `demo/space-static/`.
 
 Set `MODEL_PATH` to an existing local `.pt` or `.onnx` file, then upload an image to get
 **oriented (rotated) bounding boxes**. `MODEL_DEVICE` defaults to `cpu`.
@@ -29,7 +29,7 @@ Set `MODEL_PATH` to an existing local `.pt` or `.onnx` file, then upload an imag
   YOLO26m-OBB on DOTAv1, ONNX/TensorRT benchmarks, HBB-vs-OBB analysis)
 
 ```powershell
-$env:MODEL_PATH = "C:\\path\\to\\your-model.onnx"
+$env:MODEL_PATH = "C:/models/your-model.onnx"
 $env:MODEL_DEVICE = "cpu"
 python app.py
 ```

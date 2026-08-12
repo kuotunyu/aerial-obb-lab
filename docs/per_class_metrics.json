@@ -4,8 +4,8 @@
   "reviewed_on": "2026-07-15",
   "provenance": {
     "model": {
-      "repository": "steven0226/yolo26m-obb-dota",
-      "revision": "3f5705719a6e161fd105118fa8ba80b9a6cb1536",
+      "distribution": "not included; owner-supplied checkpoint required",
+      "historical_revision": "3f5705719a6e161fd105118fa8ba80b9a6cb1536",
       "weights_file": "best.pt",
       "weights_sha256": "59727b5eccf16c07bde8535606da7f0b54c144266ed893cbb545ffe08789f188"
     },

@@ -4,15 +4,15 @@
 
 以 **YOLO26-OBB**（旋轉框）在 **DOTAv1** 航拍資料集上 fine-tune，展示完整生命週期：
 Colab A100 訓練 → 與官方 baseline 對照評估 → 量化航拍標註中的 OBB／HBB 幾何差異 →
-ONNX / TensorRT FP16 匯出與三框架 latency benchmark → Gradio demo + Hugging Face Space。
+ONNX / TensorRT FP16 匯出與三框架 latency benchmark → code-only Gradio 與瀏覽器 BYOM demo。
 
-**🚀 線上 demo（100% 瀏覽器端運算，無伺服器）：https://huggingface.co/spaces/steven0226/yolo26-obb-aerial-detection**
-**Model card：https://huggingface.co/steven0226/yolo26m-obb-dota**
+**瀏覽器 demo 原始碼：**[`demo/space-static/`](demo/space-static/) · **Model card：**
+[`docs/model_card.md`](docs/model_card.md)。本 release 只發布程式碼與證據，不發布權重。
 
 <!-- claim:browser-scope -->
-> 線上 Space 刻意使用輕量的官方 `yolo26n-obb` ONNX 模型在瀏覽器內執行；它不代表
-> fine-tuned `yolo26m-obb` checkpoint 的準確度或 T4 latency。後者的 artifacts 放在上方
-> model repo，並供選配的本機 demo 使用。
+> 瀏覽器 demo 需要使用者自行提供相容的 ONNX 模型，模型與圖片都只在本機瀏覽器處理。
+> 它不代表 fine-tuned `yolo26m-obb` checkpoint 的準確度或 T4 latency；本 repo 也不發布
+> 這兩種模型檔。
 <!-- /claim:browser-scope -->
 
 ## 專案流程
@@ -37,7 +37,7 @@ flowchart LR
 | 3 | 對照官方 baseline 評估 | Colab + 本機 | ✅ |
 | 4 | 「為什麼需要 OBB」量化分析 | 本機 | ✅ |
 | 5 | ONNX / TensorRT 匯出與 benchmark | Colab GPU | ✅ |
-| 6 | 本機 Gradio 參考版 + 瀏覽器 static HF Space | 本機 + HF | ✅ |
+| 6 | 本機 Gradio 參考版 + static BYOM 瀏覽器 demo | 本機 | ✅ |
 | 7 | 文件、model card、收尾 | — | ✅ |
 
 ## 評估：Fine-tuned vs 官方 Baseline
@@ -104,9 +104,8 @@ delta 是保留的正式歷史結果。Fine-tuned aggregate、證據強度與限
 這是 ground-truth 幾何 proxy，不是 detector/NMS 實驗。結果顯示 HBB 會大幅高估密集同類物件
 的重疊，因而形成 suppression 風險；它沒有量測特定 HBB detector 實際少掉多少 predictions。
 
-**3. 一圖勝千言** —— 同一個碼頭、同一份標註（5 組對照圖都在 `assets/`）：
-
-![HBB vs OBB，碼頭 535 艘船](assets/hbb_vs_obb_1_P0706_ship.jpg)
+**3. 視覺比較來源：**原有五張 HBB 與 OBB 比較圖衍生自 DOTA 影像，因此刻意不納入
+這份公開的 code-only release。上方彙總幾何數據仍以可重現、機器可讀的證據保留。
 <!-- /claim:analysis -->
 
 ## 部署 Benchmark：PyTorch vs ONNX Runtime vs TensorRT FP16
@@ -186,14 +185,14 @@ inference：
 
 ```powershell
 uv sync --frozen --no-install-project --group demo
-# HF_MODEL_REPO 可省略；未設定時會依序使用本機 best.pt、官方權重
+$env:MODEL_PATH = "C:/models/your-model.onnx"
+$env:MODEL_DEVICE = "cpu"
 .venv/Scripts/python.exe demo/app.py
 ```
 
 此群組只為方便本機展示，並刻意使用 CPU-only PyTorch wheel。GPU 訓練、完整評估、匯出與
-benchmark 仍固定使用 Colab；若真的要使用本機 GPU 推論，請另建符合自己 GPU 的 PyTorch
-環境。只有 Hub 上傳／下載需要
-`HF_TOKEN`，預設檢查與 static demo 都不需要。
+benchmark 是歷史 Colab 工作流；本 release 不需要重跑。預設檢查與 static demo 都不需要
+token 或網路模型。
 
 **Colab（訓練 + 評估補值 + benchmark）**——三份 notebook 都是自包含的，不需要 clone
 這個 repo：
@@ -206,27 +205,18 @@ benchmark 仍固定使用 Colab；若真的要使用本機 GPU 推論，請另�
    benchmark 三種後端
 3. 若要免重訓重現並驗證已補回的三類指標，上傳
    [notebooks/03_recover_per_class_metrics_colab.ipynb](notebooks/03_recover_per_class_metrics_colab.ipynb)
-   → Colab GPU（建議 A100）→ 全部執行，不需要 token。它會核對固定 revision 的公開權重，
-   核對 DOTAv1 ZIP 的完整 SHA-256，再依原參數重切並記錄 val manifest；若權重自動下載失敗，
-   可從[固定 model revision](https://huggingface.co/steven0226/yolo26m-obb-dota/blob/3f5705719a6e161fd105118fa8ba80b9a6cb1536/best.pt)
-   下載後上傳成 `/content/best.pt`。專案擁有者也可使用未納入 Git 的本機
-   `runs/yolo26m-obb-dotav1/weights/best.pt`。它會匯出完整 15 類 CSV/JSON，並用歷史 aggregate
+   → Colab GPU（建議 A100），先把 owner 持有且 checksum 相符的 checkpoint 上傳成
+   `/content/best.pt`，再全部執行。Notebook 不會下載模型；它會核對 checkpoint 與 DOTAv1 ZIP
+   的 SHA-256，再依原參數重切並記錄 val manifest。Owner 可從未納入 Git 的本機
+   `runs/yolo26m-obb-dotav1/weights/best.pt` 取得該檔。它會匯出完整 15 類 CSV/JSON，並用歷史 aggregate
    與原先保存的 12 類驗證補值。通過審核的結果已記錄在
    [docs/training_results.md](docs/training_results.md)；除非要獨立重現證據，否則不需要再跑一次
 4. 把每份 notebook 最後印出的 `=== PASTE BACK ===` 區塊複製下來記錄
 
-**HF Space（線上 demo）**：把 `demo/space-static/` 資料夾內容推到一個新的 **static** SDK
-Space（兩個資料夾裡的 `README.md` 都已經是 Space 需要的設定檔頭）。實際部署的是這個版本，
-原因見下方。`demo/space/`（Gradio SDK、伺服器端 ONNX Runtime CPU）保留在 repo 裡當作本機驗證
-過能跑的參考實作，但沒有真的部署成 Space。
-
-**為什麼會有兩份實作**：本專案部署當時（2026-07-15），HF API 回應顯示 `cpu-basic` 上的
-Gradio/Docker Space 需要 PRO 訂閱（`Static Spaces are free for everyone, but hosting Gradio
-and Docker Spaces on free cpu-basic requires a PRO subscription`）。在這個限制下，不需付費後端的
-公開 demo 路線是 **static** Space +
-瀏覽器端推論。`demo/space-static/` 把同一套偵測流程用純 JavaScript +
-[ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）重新實作一遍——模型
-只下載一次（~10MB），之後每次推論都在訪客的瀏覽器裡跑完，完全不經過任何伺服器。Committed
+**瀏覽器 BYOM demo：**用任一 static HTTP server 提供 `demo/space-static/`，再選擇相容的本機
+ONNX 檔與圖片；兩者都留在瀏覽器。`demo/space/` 是選配的 Gradio／CPU 參考實作，同樣強制指定
+本機 `MODEL_PATH`。兩個版本都不會下載、export 或 fallback 到具名模型。Static 版本使用純
+JavaScript + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）；committed
 synthetic fixture 會在不下載 DOTA、不執行模型的條件下，把 letterbox、RGB CHW、`[N,7]` decode、
 angle 與 rotated corners 和獨立 CPU Python reference 交叉比對。
 
@@ -234,10 +224,10 @@ angle 與 rotated corners 和獨立 CPU Python reference 交叉比對。
 
 - Repository code：依 `pyproject.toml` 宣告為 **AGPL-3.0-or-later**；Ultralytics components
   仍受 Ultralytics 各自的 AGPL／Enterprise 授權路線約束。
-- DOTA 圖像／標註：**限學術用途，禁止商業使用**，且可能另受原始影像來源條款限制。本 release
-  把 DOTA-trained weights 與 DOTA-derived visuals 視為 academic/non-commercial，除非相關權利人
-  另行書面確認。
+- 這份 code-only candidate 不含 DOTA 圖像、標註、衍生 render、訓練權重或匯出模型。DOTA 仍限
+  學術用途；使用者自行提供的模型仍受其資料集、上游軟體與權重條款約束，本專案不主張取得商用許可。
 - Artifact hash、第三方條款與 owner actions：見 [artifact manifest](release/artifact-manifest.json)、
-  [third-party notices](THIRD_PARTY_NOTICES.md) 與 [release checklist](RELEASE_CHECKLIST.md)。
+  [third-party notices](THIRD_PARTY_NOTICES.md)、[owner actions](docs/OWNER_ACTIONS.md) 與
+  [release checklist](RELEASE_CHECKLIST.md)。
 
 *（English version: README.md）*
