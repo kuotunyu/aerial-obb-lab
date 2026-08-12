@@ -1,9 +1,8 @@
 # v1.0.0-rc.2 Release Checklist
 
-**State:** Local feature-frozen release candidate. Historical Hugging Face artifacts were made
-Private and the public GitHub repository already exists, but the current local hardening commits
-remain intentionally unpushed. This workflow performs no tag, GitHub Release, pull request, Space
-creation, or Hugging Face mutation.
+**State:** Public feature-frozen, code-only release candidate. The default GitHub branch was
+republished from a clean root after explicit owner authorization; historical Hugging Face artifacts
+remain Private. No tag, GitHub Release, replacement Space, model weight, or dataset was published.
 
 ## Automated gates
 
@@ -29,6 +28,8 @@ creation, or Hugging Face mutation.
 - [x] Local Markdown links, static assets, loopback HTTP, and JavaScript syntax pass.
 - [x] Wheel and source distribution build and contain only intended package files.
 - [x] Clean committed export repeats tests, package, link, privacy, artifact, and browser gates.
+- [x] Hosted Ubuntu CPU, Windows CPU, and synthetic browser checks pass on the clean publication;
+  official JavaScript actions use their current Node 24-compatible v7 majors.
 
 ## Manual release audit
 
@@ -43,15 +44,15 @@ creation, or Hugging Face mutation.
   visible in `THIRD_PARTY_NOTICES.md`.
 - [x] Branch, HEAD, status, refs, author, committer, trailers, ignored/private paths, and remotes are
   audited after the final commit.
-- [x] The clean tree/archive and the pre-existing public Git history are distinguished explicitly;
-  private notes and interview material never entered any commit.
+- [x] The public branch begins at a clean code-only root and contains no model binary, DOTA-derived
+  comparison image, private document, owner handle, or private Hugging Face repo identifier.
 
 No Dockerfile or service was added: the release paths are a static browser site and a Python
 package, so Docker would not remove a product-path dependency. The local Docker daemon was
 unavailable during final verification; hosted Ubuntu execution remains part of the checked-in CI
 matrix.
 
-## Owner actions required before public release
+## Owner publication actions
 
 - [x] Rename the historical Hugging Face model to a neutral archive name, keep it Private, and
   verify anonymous access fails; the public tree does not record its owner identifier or repo name.
@@ -59,14 +60,12 @@ matrix.
   `401`; do not create a replacement Space for this release candidate.
 - [x] Create the public GitHub repository `aerial-obb-lab` and, after explicit authorization, push
   only `portfolio/obb-v1.0-release-hardening`.
-- [ ] Push the reviewed release-candidate commits only after the final local branch audit.
-- [ ] Decide whether discoverable legacy non-secret Git history is acceptable. Any clean-history
-  migration requires separate explicit authorization and is outside this no-rewrite candidate.
-- [ ] Clear `enforce_admins` temporarily for the existing protected branch, retry the ordinary
-  push without rewriting history, then immediately restore the protection.
-- [ ] Confirm the pushed tip passes Ubuntu/Windows CPU and synthetic browser gates, then review the
-  public file inventory against that exact SHA; the release branch is already the default branch.
+- [x] Publish the reviewed code-only tree from a clean root commit after explicit authorization.
+- [x] Restore branch protection with admin enforcement and linear history enabled; force pushes and
+  branch deletion are disabled.
+- [x] Confirm the published tip passes Ubuntu/Windows CPU and synthetic browser gates, then review
+  the public file inventory; the release branch is already the default branch.
 - [ ] Create a tag or GitHub Release only after hosted CI and the public file inventory are green.
 
-Exact authenticated instructions are in [`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md). None of
-these external actions is completed by the local release workflow.
+The completed remote actions and residual limits are recorded in
+[`docs/OWNER_ACTIONS.md`](docs/OWNER_ACTIONS.md).

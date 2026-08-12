@@ -351,30 +351,35 @@ def test_code_only_manifest_bundles_only_licensed_display_font() -> None:
     assert len(manifest["excluded_historical_artifacts"]) == 6
 
 
-def test_owner_actions_records_protected_branch_push_blocker() -> None:
+def test_owner_actions_records_completed_clean_history_publication() -> None:
+    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
+    checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
+
+    for token in (
+        "clean-history publication",
+        "one clean root commit",
+        "Admin enforcement is enabled",
+        "Force pushes and branch deletion are disabled",
+        "Core CPU / ubuntu-latest",
+        "Core CPU / windows-latest",
+        "Synthetic browser smoke / Ubuntu CPU",
+    ):
+        assert token in text
+    assert "[x] Publish the reviewed code-only tree from a clean root commit" in checklist
+    assert "[x] Restore branch protection" in checklist
+
+
+def test_owner_actions_discloses_cleaned_public_history_boundary() -> None:
     text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
 
     for token in (
-        "GH006",
-        "71f4358340c5de8a1fab6281666af5eb95b3906c",
-        "Require linear history",
-        "required status checks",
-        "Do not rebase",
+        "Public history boundary",
+        "no longer references the superseded release history",
+        "Private notes and interview material never entered",
+        "unreferenced Git objects may remain temporarily recoverable",
     ):
         assert token in text
-
-
-def test_owner_actions_discloses_legacy_public_history_boundary() -> None:
-    text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
-
-    for token in (
-        "Existing public Git history",
-        "does not erase earlier commits",
-        "notes.private.md",
-        "interview.md",
-        "separate explicit authorization",
-    ):
-        assert token in text
+    assert "GH006" not in text
 
 
 def test_committed_tree_contains_no_model_or_dota_visual() -> None:

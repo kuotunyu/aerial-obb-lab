@@ -54,6 +54,16 @@ def test_ci_runs_core_cpu_gates_on_ubuntu_and_windows() -> None:
         assert forbidden not in text.casefold()
 
 
+def test_ci_uses_current_node24_action_majors() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert workflow.count("actions/checkout@v7") == 2
+    assert workflow.count("actions/setup-python@v7") == 2
+    assert workflow.count("actions/setup-node@v7") == 1
+
+
 def test_ci_runs_a_headless_synthetic_browser_smoke() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
         encoding="utf-8"

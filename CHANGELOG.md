@@ -14,6 +14,12 @@ All notable changes to this project are documented here.
   handoff steps for remote visibility and GitHub publication.
 - Added release gates that reject model binaries, DOTA-derived visuals, owner artifact links,
   remote demo acquisition, private paths, and runtime output in both Git and clean exports.
+- Republished the public default branch through an explicitly authorized clean-history publication;
+  its reachable history begins at a code-only root with no weights or DOTA-derived visuals.
+- Replaced private Hugging Face repo names in executable notebooks with explicit owner-supplied
+  placeholders and made the privacy gate reject known private repo identifiers across tracked text.
+- Updated the official checkout, Python, and Node setup actions to their Node 24-compatible v7
+  majors after verifying the upstream releases.
 - Made the complete Traditional Chinese `README.md` the canonical GitHub and package landing page,
   with a complete `README.en.md` and a short compatibility pointer.
 - Removed the duplicate server-side UI and made one 34/66 browser-native workbench canonical,
