@@ -25,12 +25,20 @@ datasets/
 *.tar.gz
 wandb/
 
-# Secrets & local config
+# Secrets, agent workspaces, & local config
 .env
 *.token
 notes.private.md
 *interview*
 *面試*
+.agents/
+.claude/
+CLAUDE.md
+PLAN.md
+PROGRESS.md
+PROJECT_PLAN.md
+INTERVIEW_PREP.md
+*.private.md
 
 # OS / editor
 Thumbs.db

@@ -2,16 +2,16 @@
 
 # Aerial OBB Lab
 
-## YOLO26 Oriented Detection：從誠實評估到 Browser Deployment
+[![CI](https://github.com/kuotunyu/aerial-obb-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/kuotunyu/aerial-obb-lab/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
+![Colab Ready](https://img.shields.io/badge/Colab-A100%20%7C%20T4-F9AB00?logo=googlecolab&logoColor=white)
+![ONNX Runtime Web](https://img.shields.io/badge/ONNX%20Runtime-Web%20WASM-005CED?logo=onnx&logoColor=white)
+![BYOM Demo](https://img.shields.io/badge/Demo-Browser%20BYOM-green)
 
-> ✅ 已完成（Phase 0–7）— 完整計畫見 [docs/PLAN.md](docs/PLAN.md)。
+以 **YOLO26-OBB**（旋轉目標檢測）在 **DOTAv1** 航拍資料集上進行 Fine-tuning，展示完整端到端工程生命週期：Colab A100 雲端訓練 → 與官方 Baseline 同條件對照評估 → 量化航拍標註中 OBB 與 HBB 幾何差異 → ONNX / TensorRT FP16 匯出與三框架 Latency Benchmark → 純前端靜態瀏覽器 BYOM Demo。
 
-以 **YOLO26-OBB**（旋轉框）在 **DOTAv1** 航拍資料集上 fine-tune，展示完整生命週期：
-Colab A100 訓練 → 與官方 baseline 對照評估 → 量化航拍標註中的 OBB／HBB 幾何差異 →
-ONNX / TensorRT FP16 匯出與三框架 latency benchmark → code-only Gradio 與瀏覽器 BYOM demo。
-
-**瀏覽器 demo 原始碼：**[`demo/space-static/`](demo/space-static/) · **Model card：**
-[`docs/model_card.md`](docs/model_card.md)。本 release 只發布程式碼與證據，不發布權重。
+**瀏覽器 demo 原始碼：**[`demo/space-static/`](demo/space-static/) · **Model card：**[`docs/model_card.md`](docs/model_card.md)。本 release 只發布程式碼與證據，不發布權重。
 
 <!-- claim:browser-scope -->
 > 瀏覽器 demo 需要使用者自行提供相容的 ONNX 模型，模型與圖片都只在本機瀏覽器處理。
@@ -19,30 +19,61 @@ ONNX / TensorRT FP16 匯出與三框架 latency benchmark → code-only Gradio �
 > 這兩種模型檔。
 <!-- /claim:browser-scope -->
 
+---
+
 ## 專案流程
 
 ```mermaid
-flowchart LR
-    A["1 · 資料準備<br/>DOTAv1 切圖"] --> B["2 · 模型訓練<br/>A100 + 可續跑 checkpoint"]
-    B --> C["3 · 公平評估<br/>同條件官方 baseline"]
-    C --> D["4 · 解釋 OBB<br/>量化幾何證據"]
-    D --> E["5 · 模型部署<br/>ONNX · TensorRT · demos"]
+%%{init: {'themeVariables': {'fontSize': '18px'}}}%%
+flowchart TD
+    subgraph DataStage ["階段一：資料工程與切圖 (Data Preparation)"]
+        direction LR
+        Raw[("DOTAv1 航拍影像集<br/>(15 大類航空目標)")] --> Split["多尺度切圖處理<br/>(split_dota [0.8, 1.2])"] --> ValSet[("凍結驗證集<br/>(456 張圖 · 28,853 物件)")]
+    end
+
+    subgraph TrainStage ["階段二：雲端訓練與公平基準評估 (Training & Evaluation)"]
+        direction LR
+        ValSet --> Train["YOLO26-OBB Fine-tune<br/>(Colab A100 · 28 Epochs)"] --> Best[("最佳權重 Checkpoint<br/>(best.pt / 可續跑機制)")] --> Eval["同條件官方 Baseline 評估<br/>(15 類指標精確復現)"]
+    end
+
+    subgraph DeployStage ["階段三：幾何量化分析與多框架部署 (Analysis & Deployment)"]
+        direction LR
+        Eval --> Geom["OBB 幾何優勢量化分析<br/>(面積膨脹率 2.43× · 幽靈重疊)"] --> Export[("ONNX / TensorRT FP16 匯出<br/>(Tesla T4 20.22ms 基準)")] --> Demo(["純瀏覽器端 BYOM Demo<br/>(ONNX Runtime Web / WASM)"])
+    end
+
+    DataStage --> TrainStage --> DeployStage
+
+    classDef srcStyle fill:#e7f5ff,stroke:#1971c2,stroke-width:2px,color:#212529
+    classDef procStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#212529
+    classDef pubStyle fill:#e6fcf5,stroke:#0ca678,stroke-width:2px,color:#212529
+
+    class Raw,ValSet,Best,Export srcStyle
+    class Split,Train,Eval,Geom procStyle
+    class Demo pubStyle
+
+    style DataStage fill:#f8f9fa,stroke:#1971c2,stroke-width:2px,color:#1971c2,stroke-dasharray: 4 4
+    style TrainStage fill:#faf5ff,stroke:#7b1fa2,stroke-width:2px,color:#7b1fa2,stroke-dasharray: 4 4
+    style DeployStage fill:#f4fbf7,stroke:#0ca678,stroke-width:2px,color:#0ca678,stroke-dasharray: 4 4
 ```
 
 更細的訓練、評估、分析與部署分支收錄在下方各節。
 
-## 進度
+---
 
-| Phase | 內容 | 位置 | 狀態 |
+## 執行進度
+
+| 階段 (Phase) | 實作內容 | 執行環境 | 交付狀態 |
 |---|---|---|---|
-| 0 | 環境與骨架 | 本機 | ✅ |
-| 1 | DOTA8 smoke test | 原開發電腦 | ✅ |
-| 2 | DOTAv1 正式 fine-tune | Colab A100 | ✅ |
-| 3 | 對照官方 baseline 評估 | Colab + 本機 | ✅ |
-| 4 | 「為什麼需要 OBB」量化分析 | 本機 | ✅ |
-| 5 | ONNX / TensorRT 匯出與 benchmark | Colab GPU | ✅ |
-| 6 | 本機 Gradio 參考版 + static BYOM 瀏覽器 demo | 本機 | ✅ |
-| 7 | 文件、model card、收尾 | — | ✅ |
+| Phase 0 | 專案骨架、依賴鎖定與開發環境設置 | 本機 CPU | 已完成 |
+| Phase 1 | DOTA8 Smoke Test（Train ➔ Val ➔ Predict ➔ Resume ➔ ONNX） | 原開發電腦 | 已完成 |
+| Phase 2 | DOTAv1 正式 Fine-tuning（28 Epochs Early-stop） | Google Colab A100 | 已完成 |
+| Phase 3 | 同條件對照官方 Baseline 評估與 15 類指標復現 | Colab + 本機 | 已完成 |
+| Phase 4 | 「為什麼需要 OBB」幾何膨脹率與幽靈重疊量化分析 | 本機 | 已完成 |
+| Phase 5 | ONNX / TensorRT FP16 匯出與三框架 Latency Benchmark | Colab Tesla T4 | 已完成 |
+| Phase 6 | 本機 Gradio 參考版 + 靜態 BYOM 純瀏覽器 Demo | 本機 / Web | 已完成 |
+| Phase 7 | 完整技術文件、Model Card、發布稽核門禁 | 本機 CI | 已完成 |
+
+---
 
 ## 評估：Fine-tuned vs 官方 Baseline
 
@@ -57,7 +88,7 @@ checksum 與來源證據閘門的 validation-only 補值，補回原 session 未
 逐類別對照、補值審核、訓練曲線分析與混淆矩陣發現見
 [docs/training_results.md](docs/training_results.md)。
 
-| 模型 | split | mAP50 | mAP50-95 |
+| 模型配置 | 評估資料劃分 (Split) | mAP50 | mAP50-95 |
 |---|---|---:|---:|
 | yolo26m-obb.pt（官方公布數字） | DOTAv1 test | 81.0 | 55.3 |
 | yolo26m-obb.pt（官方權重，本專案實測） | DOTAv1 val（本專案切法） | 78.2 | 63.3 |
@@ -71,10 +102,12 @@ checksum 與來源證據閘門的 validation-only 補值，補回原 session 未
 在同條件下比較，fine-tune 是**持平略降**（Δ mAP50 -0.05 個百分點、Δ mAP50-95 -0.13 個
 百分點），不是精度提升：`yolo26m-obb.pt` 本來就是官方在 DOTAv1 上訓練過
 的權重，這次等於是「繼續訓練一個已經收斂的模型」而不是「帶模型認識新領域」，這個結果量化
-的正是這種情境下的邊際效益上限。Baseline 原始 console log 未提交；四位小數與上述四捨五入
+的正是在這種情境下的邊際效益上限。Baseline 原始 console log 未提交；四位小數與上述四捨五入
 delta 是保留的正式歷史結果。Fine-tuned aggregate、證據強度與限制可由
 [`release/evidence.json`](release/evidence.json) 機器驗證。
 <!-- /claim:matched-evaluation -->
+
+---
 
 ## 為什麼需要旋轉框？（用數據說話）
 
@@ -85,12 +118,12 @@ delta 是保留的正式歷史結果。Fine-tuned aggregate、證據強度與限
 
 **1. 水平框吞掉大量背景。** 「軸對齊外接框面積 ÷ 旋轉框面積」：
 
-| 類別 | 平均 | p90 | | 對照組（圓形） | 平均 |
+| 目標類別 | 平均膨脹倍數 | p90 膨脹倍數 | | 對照組（圓形目標） | 平均膨脹倍數 |
 |---|---:|---:|---|---|---:|
-| bridge | **2.43×** | 3.71× | | roundabout | 1.02× |
-| harbor | **2.15×** | 3.66× | | storage tank | 1.00× |
-| large vehicle | **2.14×** | 3.21× | | | |
-| ship | **1.95×** | 2.69× | | | |
+| bridge | 2.43× | 3.71× | | roundabout | 1.02× |
+| harbor | 2.15× | 3.66× | | storage tank | 1.00× |
+| large vehicle | 2.14× | 3.21× | | | |
+| ship | 1.95× | 2.69× | | | |
 
 細長且任意旋轉的目標會讓水平框膨脹約 2 倍；而圓形類別（儲油槽、圓環）維持 1.0×，
 證明這個量測反映的是「方向性」而非標註雜訊。
@@ -98,12 +131,12 @@ delta 是保留的正式歷史結果。Fine-tuned aggregate、證據強度與限
 **2. 密集場景中，水平框的重疊多半是「幽靈重疊」。** 同類別相鄰物件中，
 水平框 IoU ≥ 0.3 的配對裡，實際旋轉框 IoU < 0.1 的比例：
 
-| 類別 | HBB IoU≥0.3 配對數 | 幽靈重疊率 |
+| 目標類別 | HBB IoU≥0.3 配對數 | 幽靈重疊率 |
 |---|---:|---:|
-| large vehicle | 810 | **100%** |
-| ship | 736 | **99%** |
-| harbor | 43 | **98%** |
-| small vehicle | 42 | **93%** |
+| large vehicle | 810 | 100% |
+| ship | 736 | 99% |
+| harbor | 43 | 98% |
+| small vehicle | 42 | 93% |
 
 這是 ground-truth 幾何 proxy，不是 detector/NMS 實驗。結果顯示 HBB 會大幅高估密集同類物件
 的重疊，因而形成 suppression 風險；它沒有量測特定 HBB detector 實際少掉多少 predictions。
@@ -111,6 +144,8 @@ delta 是保留的正式歷史結果。Fine-tuned aggregate、證據強度與限
 **3. 視覺比較來源：**原有五張 HBB 與 OBB 比較圖衍生自 DOTA 影像，因此刻意不納入
 這份公開的 code-only release。上方彙總幾何數據仍以可重現、機器可讀的證據保留。
 <!-- /claim:analysis -->
+
+---
 
 ## 部署 Benchmark：PyTorch vs ONNX Runtime vs TensorRT FP16
 
@@ -126,7 +161,7 @@ ONNX 0.9950、TensorRT 0.9950。三者在報告的四位小數相同並符合 <1
 這只是 export smoke，**不是完整 DOTAv1 production certification**，且原始 console log 未提交。
 <!-- /claim:export-smoke -->
 
-| 後端 | 檔案大小 (MB) | 平均延遲 | p50 | p95 | FPS |
+| 推論後端 (Backend) | 檔案大小 (MB) | 平均延遲 (Mean Latency) | 延遲中位數 (p50) | 95 分位延遲 (p95) | 輸送量 (FPS) |
 |---|---:|---:|---:|---:|---:|
 | PyTorch (FP32) | 48.7 | 71.54 ms | 71.49 ms | 74.08 ms | 14.0 |
 | ONNX Runtime GPU | 85.3 | 79.09 ms | 79.67 ms | 81.43 ms | 12.6 |
@@ -147,9 +182,11 @@ provider 會讓整個 Colab 執行階段原生崩潰（後來改用獨立子行�
 [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md)。
 <!-- /claim:t4-benchmark -->
 
+---
+
 ## 重現步驟
 
-**本機開發（CPU-only，不需訓練或模型推論）**
+### 1. 本機開發（CPU-only，不需訓練或模型推論）
 
 專案以 `.python-version` 固定 Python 3.11。虛擬環境只屬於建立它的那台電腦，請勿從其他電腦
 複製 `.venv`。
@@ -185,7 +222,7 @@ inference：
 .venv/Scripts/python.exe scripts/clean_export_check.py
 ```
 
-**選配：本機 ML／Gradio**
+### 2. 選配：本機 ML／Gradio
 
 ```powershell
 uv sync --frozen --no-install-project --group demo
@@ -198,8 +235,9 @@ $env:MODEL_DEVICE = "cpu"
 benchmark 是歷史 Colab 工作流；本 release 不需要重跑。預設檢查與 static demo 都不需要
 token 或網路模型。
 
-**Colab（訓練 + 評估補值 + benchmark）**——三份 notebook 都是自包含的，不需要 clone
-這個 repo：
+### 3. Colab 雲端流程（訓練 + 評估補值 + Benchmark）
+
+三份 notebook 都是自包含的，不需要 clone 這個 repo：
 1. 上傳 [notebooks/01_train_dotav1_a100.ipynb](notebooks/01_train_dotav1_a100.ipynb) →
    執行階段 → A100 GPU → 左側 🔑 Secrets 加 `HF_TOKEN`（write 權限）→ 全部執行。會自動下載
    DOTAv1、切圖、fine-tune，訓練過程中持續把 checkpoint push 到你的 HF model repo（斷線也
@@ -217,14 +255,18 @@ token 或網路模型。
    [docs/training_results.md](docs/training_results.md)；除非要獨立重現證據，否則不需要再跑一次
 4. 把每份 notebook 最後印出的 `=== PASTE BACK ===` 區塊複製下來記錄
 
-**瀏覽器 BYOM demo：**用任一 static HTTP server 提供 `demo/space-static/`，再選擇相容的本機
+### 4. 瀏覽器 BYOM Demo
+
+用任一 static HTTP server 提供 `demo/space-static/`，再選擇相容的本機
 ONNX 檔與圖片；兩者都留在瀏覽器。`demo/space/` 是選配的 Gradio／CPU 參考實作，同樣強制指定
 本機 `MODEL_PATH`。兩個版本都不會下載、export 或 fallback 到具名模型。Static 版本使用純
 JavaScript + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）；committed
 synthetic fixture 會在不下載 DOTA、不執行模型的條件下，把 letterbox、RGB CHW、`[N,7]` decode、
 angle 與 rotated corners 和獨立 CPU Python reference 交叉比對。
 
-## 授權
+---
+
+## 授權與聲明
 
 - Repository code：依 `pyproject.toml` 宣告為 **AGPL-3.0-or-later**；Ultralytics components
   仍受 Ultralytics 各自的 AGPL／Enterprise 授權路線約束。
