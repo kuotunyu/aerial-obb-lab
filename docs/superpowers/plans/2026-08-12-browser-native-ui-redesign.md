@@ -38,8 +38,9 @@
 
 ### Browser verification
 
-- `tests/test_browser_ui.py`: source-level semantic, language, typography, disclosure, and dense-label policy contract.
-- `scripts/browser_smoke.py`: end-to-end synthetic browser interaction, computed layout/a11y checks, desktop/mobile screenshots, and network boundary.
+- `scripts/browser_smoke.py`: end-to-end synthetic browser interaction, rendered semantic/language
+  checks, computed layout and typography, keyboard focus, canvas-call instrumentation, sanitized
+  error behavior, desktop/mobile screenshots, and the network boundary.
 - `tests/test_browser_parity.py`, `tests/js/browser_parity_runner.js`: unchanged numeric parity behavior with the new path.
 - `tests/fixtures/browser-smoke.svg`, `tests/fixtures/browser_parity.json`: deterministic model-free fixtures.
 
@@ -304,7 +305,6 @@ refactor: make web demo canonical
 ### Task 3: Build the readable, compact workbench shell
 
 **Files:**
-- Create: `tests/test_browser_ui.py`
 - Modify: `demo/web/index.html`
 - Modify: `demo/web/style.css`
 - Modify: `scripts/browser_smoke.py`
@@ -314,75 +314,50 @@ refactor: make web demo canonical
   canvas, and table.
 - Produces: semantic DOM and CSS tokens that Task 4 binds to live inference state.
 
-- [ ] **Step 1: Add failing source-level UI contracts**
+- [ ] **Step 1: Strengthen the real browser smoke with failing rendered-UI assertions**
 
-Create `tests/test_browser_ui.py`:
+In `scripts/browser_smoke.py`, set the desktop viewport to 1600×1000. After `networkidle`, assert
+the rendered document and computed styles rather than grepping implementation text:
 
 ```python
-from pathlib import Path
+assert page.locator("html").get_attribute("lang") == "zh-Hant-TW"
+header = page.locator("header").inner_text()
+for token in ("Aerial OBB Lab", "Browser", "WASM", "Local-only"):
+    assert token in header
+assert "模型與影像不會上傳" in page.locator("body").inner_text()
+assert "output0 [1,N,7]" in page.locator("footer").inner_text()
+assert page.locator("h1").count() == 1
 
+body_size = page.locator("body").evaluate("el => getComputedStyle(el).fontSize")
+title_size = page.locator("h1").evaluate("el => getComputedStyle(el).fontSize")
+button_height = page.locator("#detectBtn").evaluate(
+    "el => el.getBoundingClientRect().height"
+)
+assert body_size == "18px"
+assert float(title_size.removesuffix("px")) >= 38
+assert float(button_height) >= 44
 
-ROOT = Path(__file__).resolve().parents[1]
-WEB = ROOT / "demo" / "web"
-
-
-def source(name: str) -> str:
-    return (WEB / name).read_text(encoding="utf-8")
-
-
-def test_ui_is_zh_tw_and_explains_local_browser_execution() -> None:
-    html = source("index.html")
-    for token in (
-        'lang="zh-Hant-TW"',
-        "Aerial OBB Lab",
-        "Browser",
-        "WASM",
-        "Local-only",
-        "模型與影像不會上傳",
-        "output0 [1,N,7]",
-    ):
-        assert token in html
-
-
-def test_ui_has_one_compact_workbench_hierarchy() -> None:
-    html = source("index.html")
-    for token in (
-        'id="workbench"',
-        'id="controlRail"',
-        'id="resultWorkspace"',
-        'id="summaryCount"',
-        'id="summaryTop"',
-        'id="runtimeValue"',
-        'id="status"',
-    ):
-        assert token in html
-    assert html.count("<h1") == 1
-
-
-def test_css_enforces_readability_and_space_use() -> None:
-    css = source("style.css")
-    for token in (
-        "--font-body: 18px",
-        "--content-max: 1600px",
-        "grid-template-columns: minmax(340px, 34fr) minmax(0, 66fr)",
-        "min-height: 44px",
-        "@media (max-width: 900px)",
-        ":focus-visible",
-    ):
-        assert token in css
-    for forbidden in ("linear-gradient", "backdrop-filter", "text-shadow"):
-        assert forbidden not in css
+controls = page.locator("#controlRail").bounding_box()
+results = page.locator("#resultWorkspace").bounding_box()
+assert controls and results
+assert abs(controls["y"] - results["y"]) <= 2
+assert results["width"] > controls["width"]
 ```
+
+At an 820×1100 viewport, assert that the result workspace begins below the control rail and the
+Detect button occupies at least 95% of the rail's inner width. Focus the model picker with the
+keyboard and assert its visible outline width is at least 2px.
 
 - [ ] **Step 2: Run the UI contract and verify RED**
 
 Run:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests/test_browser_ui.py -q
+.venv\Scripts\python.exe scripts/browser_smoke.py
 ```
 
-Expected: failures for language, new hierarchy IDs, trust signals, and CSS tokens.
+Expected: failure because the existing page is English-first, 16px, narrow, and lacks the required
+semantic IDs, trust signals, and large controls.
 
 - [ ] **Step 3: Replace the HTML with one semantic workbench**
 
@@ -470,31 +445,16 @@ maximum table viewport height near 320px, visible `:focus-visible`, and one-colu
 900px. Do not add animation beyond short color/opacity transitions that respect
 `prefers-reduced-motion`.
 
-- [ ] **Step 5: Extend browser smoke with computed layout checks**
+- [ ] **Step 5: Run the rendered contract and verify GREEN**
 
-Set the desktop viewport to 1600×1000 and assert after `networkidle`:
+Run `scripts/browser_smoke.py` after the HTML and CSS changes. Expected: every semantic, typography,
+layout, focus, desktop, and mobile assertion from Step 1 passes against the rendered page.
 
-```python
-body_size = page.locator("body").evaluate("el => getComputedStyle(el).fontSize")
-title_size = page.locator("h1").evaluate("el => getComputedStyle(el).fontSize")
-assert body_size == "18px"
-assert float(title_size.removesuffix("px")) >= 38
-controls = page.locator("#controlRail").bounding_box()
-results = page.locator("#resultWorkspace").bounding_box()
-assert controls and results
-assert abs(controls["y"] - results["y"]) <= 2
-assert results["width"] > controls["width"]
-```
-
-At 820×1100, assert `resultWorkspace.y >= controlRail.y + controlRail.height` and that the Detect
-button width is at least 95% of the control rail's inner width.
-
-- [ ] **Step 6: Run source and browser tests and verify GREEN**
+- [ ] **Step 6: Capture and inspect the rendered workbench**
 
 Run:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests/test_browser_ui.py -q
 .venv\Scripts\python.exe scripts/browser_smoke.py --screenshot "$env:TEMP\browser-workbench-shell.png"
 ```
 
@@ -502,7 +462,7 @@ Expected: PASS, no browser/page errors, desktop result column wider than control
 
 - [ ] **Step 7: Commit the workbench shell**
 
-Stage the HTML, CSS, source test, and browser smoke only. Run `git diff --cached --check`, then
+Stage the HTML, CSS, and browser smoke only. Run `git diff --cached --check`, then
 commit:
 
 ```text
@@ -518,7 +478,6 @@ feat: redesign browser workbench
 - Modify: `demo/web/index.html`
 - Modify: `demo/web/style.css`
 - Modify: `scripts/browser_smoke.py`
-- Modify: `tests/test_browser_ui.py`
 
 **Interfaces:**
 - Consumes: `OBB.letterboxGeometry`, `OBB.rgbaToChw`, `OBB.selectEndToEndOutput`,
@@ -526,40 +485,49 @@ feat: redesign browser workbench
 - Produces: safe `setStatus(message, kind)`, `renderSummary(detections, elapsedMs)`, polygon-only
   `drawDetections(detections)`, and confidence-sorted table presentation.
 
-- [ ] **Step 1: Add failing behavior-source assertions**
+- [ ] **Step 1: Add failing browser behavior and canvas-call assertions**
 
-Append to `tests/test_browser_ui.py`:
+Before page navigation in `scripts/browser_smoke.py`, instrument the real Canvas API:
 
 ```python
-def test_dense_results_use_polygons_and_table_instead_of_canvas_text() -> None:
-    app = source("app.js")
-    assert "function drawDetections(dets)" in app
-    assert "OBB.rotatedCorners" in app
-    assert "fillText(" not in app
-    assert "function renderSummary(dets, elapsedMs)" in app
-    assert "summaryCount.textContent" in app
-    assert "summaryTop.textContent" in app
-
-
-def test_errors_are_sanitized_and_inference_is_explicit() -> None:
-    app = source("app.js")
-    assert 'detectBtn.addEventListener("click"' in app
-    assert 'setStatus("模型載入失敗' in app
-    assert 'setStatus("Inference 失敗' in app
-    assert '"error: " + e.message' not in app
-    assert ".upload(" not in app
+page.add_init_script(
+    """
+    globalThis.__obbFillTextCalls = 0;
+    const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (...args) {
+      globalThis.__obbFillTextCalls += 1;
+      return originalFillText.apply(this, args);
+    };
+    """
+)
 ```
+
+After the successful synthetic Detect, require actual UI state:
+
+```python
+assert page.locator("#summaryCount").inner_text() == "1"
+assert page.locator("#summaryTop").inner_text() == "0.900"
+assert "完成" in page.locator("#status").inner_text()
+assert page.locator("#status").get_attribute("data-kind") == "success"
+assert page.locator("#resultsBody tr").count() == 1
+assert page.evaluate("globalThis.__obbFillTextCalls") == 0
+```
+
+Extend the local ORT stub so model bytes beginning with zero raise
+`C:\\Users\\alice\\private-model.onnx`. On a second fresh page, upload those bytes and assert the
+rendered status is exactly `模型載入失敗，請確認 ONNX 格式與 output contract。` and does not contain
+`alice` or `private-model`.
 
 - [ ] **Step 2: Run the behavior contract and verify RED**
 
 Run:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests/test_browser_ui.py -q
+.venv\Scripts\python.exe scripts/browser_smoke.py
 ```
 
-Expected: failures because the current canvas calls `fillText`, has English/error-leaking status,
-and does not populate metric elements.
+Expected: failure because the current canvas calls `fillText`, exposes the stub exception text, has
+English status, and does not populate the metric elements.
 
 - [ ] **Step 3: Implement explicit UI state and safe copy**
 
@@ -605,27 +573,19 @@ setStatus(
 
 The runtime label in HTML must say `本次 browser 執行` so it cannot be read as the T4 benchmark.
 
-- [ ] **Step 5: Strengthen the Playwright interaction contract**
+- [ ] **Step 5: Complete the real interaction contract**
 
-After stubbed Detect, assert:
-
-```python
-assert page.locator("#summaryCount").inner_text() == "1"
-assert page.locator("#summaryTop").inner_text() == "0.900"
-assert "完成" in page.locator("#status").inner_text()
-assert page.locator("#resultsBody tr").count() == 1
-assert page.locator("#status").get_attribute("data-kind") == "success"
-```
-
-Capture browser console errors, retain the existing network allowlist, and verify the result canvas
-is visible at both viewports.
+Capture page errors and application console errors, retain the existing network allowlist, verify
+the canvas remains visible after successful inference at both viewports, and explicitly ignore only
+the expected console error generated by the isolated invalid-model page. No assertion may inspect
+`app.js` source text.
 
 - [ ] **Step 6: Verify behavior and numeric parity**
 
 Run:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests/test_browser_ui.py tests/test_browser_parity.py -q
+.venv\Scripts\python.exe -m pytest tests/test_browser_parity.py -q
 .venv\Scripts\python.exe scripts/browser_smoke.py --screenshot "$env:TEMP\browser-workbench-result.png"
 ```
 
