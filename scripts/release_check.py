@@ -42,7 +42,7 @@ CLAIM_FILES = {
         "README.md": ("使用者自行提供", "yolo26m-obb", "不代表"),
         "docs/model_card.md": ("user-supplied", "yolo26m-obb", "does not represent"),
         "demo/space-static/README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
-        "demo/space/README.md": ("user-supplied", "yolo26m-obb", "does not represent"),
+        "demo/space/README.md": ("使用者自行提供", "yolo26m-obb", "不代表"),
     },
 }
 
@@ -97,6 +97,8 @@ TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt",
 FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlpackage"}
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 DEMO_MODEL_SOURCE_FILES = ("demo/app.py", "demo/space/app.py")
+GRADIO_ENTRYPOINT_FILES = ("demo/app.py", "demo/space/app.py")
+GRADIO_UI_SOURCE_FILES = ("demo/gradio_ui.py",)
 FORBIDDEN_DEMO_MODEL_PATTERNS = (
     (re.compile(r"\b(?:hf_hub_download|HF_MODEL_REPO)\b"), "Hugging Face model download"),
     (re.compile(r'''YOLO\s*\(\s*["']yolo26[^"']*["']''', re.I), "named model fallback"),
@@ -314,6 +316,34 @@ def verify_demo_model_sources(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def gradio_interaction_source_errors(sources: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    for relative in sorted(sources):
+        if re.search(r"\.upload\s*\(", sources[relative]):
+            errors.append(f"{relative}: upload-triggered inference")
+    return errors
+
+
+def verify_gradio_interaction_sources(root: Path = ROOT) -> list[str]:
+    sources = {
+        relative: (root / relative).read_text(encoding="utf-8")
+        for relative in GRADIO_ENTRYPOINT_FILES + GRADIO_UI_SOURCE_FILES
+    }
+    errors = gradio_interaction_source_errors(sources)
+    for relative in GRADIO_ENTRYPOINT_FILES:
+        text = sources[relative]
+        if "build_demo(" not in text or "gr.Blocks(" in text:
+            errors.append(f"{relative}: shared Gradio builder is not used")
+    ui_text = sources["demo/gradio_ui.py"]
+    if (
+        ".click(" not in ui_text
+        or ".failure(" not in ui_text
+        or "interactive=False" not in ui_text
+    ):
+        errors.append("demo/gradio_ui.py: explicit disabled Detect flow is missing")
+    return errors
+
+
 def _claim_block(text: str, claim_id: str) -> str | None:
     start = f"<!-- claim:{claim_id} -->"
     end = f"<!-- /claim:{claim_id} -->"
@@ -386,6 +416,7 @@ def main() -> int:
         + verify_public_links(ROOT)
         + verify_artifacts(ROOT)
         + verify_demo_model_sources(ROOT)
+        + verify_gradio_interaction_sources(ROOT)
         + verify_committed_privacy(ROOT)
     )
     if errors:

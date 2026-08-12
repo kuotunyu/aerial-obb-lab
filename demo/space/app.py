@@ -11,11 +11,11 @@ import os
 from pathlib import Path
 import sys
 
-import gradio as gr
 from ultralytics import YOLO
 
 DEMO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEMO_ROOT))
+from gradio_ui import GRADIO_CSS, build_demo
 from model_source import require_model_path
 
 IMGSZ = 1024
@@ -45,26 +45,14 @@ def detect(image, conf: float, selected_classes: list[str]):
     return annotated, rows
 
 
-with gr.Blocks(title="YOLO26-OBB local-model detection") as demo:
-    gr.Markdown(
-        "# YOLO26 OBB — Local Model Demo\n"
-        f"Model: **local `{MODEL_PATH.name}`** | device: **{DEVICE}** | imgsz {IMGSZ}. "
-        "The user supplies the model and is responsible for its dataset and license terms. "
-        "No model is downloaded or bundled by this app."
-    )
-    with gr.Row():
-        with gr.Column(scale=1):
-            inp = gr.Image(type="numpy", label="Aerial image")
-            conf = gr.Slider(0.05, 0.9, value=0.25, step=0.05, label="Confidence")
-            classes = gr.Dropdown(choices=[str(n) for n in NAMES.values()],
-                                  multiselect=True, label="Class filter (empty = all)")
-            btn = gr.Button("Detect", variant="primary")
-        with gr.Column(scale=2):
-            out_img = gr.Image(label="Rotated boxes")
-            out_table = gr.Dataframe(headers=["class", "conf", "w(px)", "h(px)", "angle(°)"],
-                                     label="Detections")
-    btn.click(detect, [inp, conf, classes], [out_img, out_table])
-    inp.upload(detect, [inp, conf, classes], [out_img, out_table])
+app = build_demo(
+    detect_fn=detect,
+    class_names=[str(name) for name in NAMES.values()],
+    model_name=MODEL_PATH.name,
+    device=DEVICE,
+    imgsz=IMGSZ,
+)
+demo = app
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(show_error=False, css=GRADIO_CSS)

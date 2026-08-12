@@ -26,9 +26,12 @@ local-ml = [
     "onnxslim",
     "onnxruntime>=1.20,<1.21",
 ]
+ui-preview = [
+    "gradio==6.20.0",
+]
 demo = [
     { include-group = "local-ml" },
-    "gradio>=5.0",
+    { include-group = "ui-preview" },
 ]
 dev = [
     "jupytext>=1.19.4",

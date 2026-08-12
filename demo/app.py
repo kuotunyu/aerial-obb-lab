@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import math
 import os
+from pathlib import Path
+import sys
 
-import gradio as gr
 from ultralytics import YOLO
 
+DEMO_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(DEMO_ROOT))
+from gradio_ui import GRADIO_CSS, build_demo
 from model_source import require_model_path
 
 IMGSZ = 1024
@@ -47,31 +51,13 @@ def detect(image, conf: float, selected_classes: list[str]):
     return annotated, rows
 
 
-with gr.Blocks(title="YOLO26-OBB aerial demo") as app:
-    gr.Markdown(
-        f"# YOLO26-OBB 航拍旋轉框偵測\n"
-        f"model: **local `{MODEL_PATH.name}`** | device: **{DEVICE}** | imgsz {IMGSZ}"
-    )
-    with gr.Row():
-        with gr.Column(scale=1):
-            inp = gr.Image(type="numpy", label="上傳航拍影像")
-            conf = gr.Slider(0.05, 0.9, value=0.25, step=0.05, label="Confidence")
-            classes = gr.Dropdown(
-                choices=[str(n) for n in NAMES.values()],
-                multiselect=True, label="類別過濾（留空 = 全部）",
-            )
-            btn = gr.Button("偵測", variant="primary")
-        with gr.Column(scale=2):
-            out_img = gr.Image(label="旋轉框結果")
-            out_table = gr.Dataframe(
-                headers=["class", "conf", "w(px)", "h(px)", "angle(°)"],
-                label="偵測清單（依信心度排序）",
-            )
-    btn.click(detect, [inp, conf, classes], [out_img, out_table])
-    inp.upload(detect, [inp, conf, classes], [out_img, out_table])
+app = build_demo(
+    detect_fn=detect,
+    class_names=[str(name) for name in NAMES.values()],
+    model_name=MODEL_PATH.name,
+    device=DEVICE,
+    imgsz=IMGSZ,
+)
 
 if __name__ == "__main__":
-    import sys
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    app.launch()
+    app.launch(show_error=False, css=GRADIO_CSS)

@@ -181,3 +181,21 @@ def test_redistributed_binaries_contain_no_absolute_user_paths(tmp_path: Path) -
         tmp_path,
         [binary],
     ) == ["artifact.bin: absolute local user path"]
+
+
+def test_gradio_sources_use_shared_explicit_detect_flow() -> None:
+    checker = load_release_check()
+    assert checker.verify_gradio_interaction_sources(ROOT) == []
+
+
+def test_gradio_source_policy_rejects_upload_inference() -> None:
+    checker = load_release_check()
+    assert checker.gradio_interaction_source_errors(
+        {"legacy.py": "inp.upload(detect, [inp], [out])"}
+    ) == ["legacy.py: upload-triggered inference"]
+
+
+def test_preview_source_has_no_ml_or_remote_model_import() -> None:
+    text = (ROOT / "demo" / "gradio_preview.py").read_text(encoding="utf-8")
+    for forbidden in ("torch", "ultralytics", "huggingface_hub", "MODEL_PATH"):
+        assert forbidden not in text

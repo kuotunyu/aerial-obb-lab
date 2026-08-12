@@ -76,3 +76,13 @@ def test_sdist_explicitly_excludes_demo_models_and_dota_visuals() -> None:
         "/pyproject.toml",
         "/src/obbkit",
     }
+
+
+def test_ui_preview_dependency_group_excludes_ml_runtime() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    groups = project["dependency-groups"]
+    assert groups["ui-preview"] == ["gradio==6.20.0"]
+    assert {item["include-group"] for item in groups["demo"] if isinstance(item, dict)} == {
+        "local-ml",
+        "ui-preview",
+    }
