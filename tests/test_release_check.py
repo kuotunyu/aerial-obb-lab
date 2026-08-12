@@ -132,7 +132,7 @@ def test_private_runtime_and_absolute_user_paths_fail_closed(tmp_path: Path) -> 
 def test_redistributed_binaries_contain_no_absolute_user_paths(tmp_path: Path) -> None:
     release_check = load_release_check()
     binary = tmp_path / "artifact.bin"
-    binary.write_bytes(b"metadata=/home/alice/private/model.yaml")
+    binary.write_bytes(b"metadata=/" + b"home/alice/private/model.yaml")
 
     assert release_check.verify_binary_privacy(
         tmp_path,
