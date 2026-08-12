@@ -46,6 +46,7 @@ def test_owner_actions_recommends_zh_tw_about_metadata() -> None:
 def test_owner_actions_records_private_historical_space_verification() -> None:
     text = (ROOT / "docs" / "OWNER_ACTIONS.md").read_text(encoding="utf-8")
     checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 
     assert "Space API and page both returned anonymous HTTP `401`" in text
     assert "`private: false`" not in text
@@ -54,5 +55,7 @@ def test_owner_actions_records_private_historical_space_verification() -> None:
     assert "[x] Make the historical Hugging Face Space private" in checklist
     assert "one external owner blocker" not in checklist
     assert "still public and running" not in checklist
+    assert "historical Hugging Face Space still public" not in changelog
+    assert "owner must make it private" not in changelog
     assert "historical Space is not present" not in checklist
     assert "empty public GitHub repository" not in checklist

@@ -31,8 +31,6 @@ All notable changes to this project are documented here.
   batch-1, 1024px historical environment.
 - The checkpoint and DOTA-derived imagery are not distributed; independent reproduction requires
   owner-supplied artifacts and the applicable permissions.
-- Anonymous verification found the historical Hugging Face Space still public and running; the
-  owner must make it private before treating the code-only publication boundary as complete.
 
 ## [1.0.0-rc.1] - 2026-08-12
 
