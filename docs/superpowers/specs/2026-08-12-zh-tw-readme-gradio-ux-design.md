@@ -1,7 +1,7 @@
 # zh-TW-First README and Gradio UX Design
 
-**Status:** Approved for implementation on 2026-08-12  
-**Release:** Continue the unpushed `v1.0.0-rc.2` candidate  
+**Status:** Approved for implementation on 2026-08-12
+**Release:** Continue the unpushed `v1.0.0-rc.2` candidate
 **Branch:** `portfolio/obb-v1.0-release-hardening`
 
 ## Objective
