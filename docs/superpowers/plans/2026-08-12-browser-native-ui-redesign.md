@@ -120,20 +120,13 @@ Replace `test_gradio_ui_evidence_is_model_free_and_zh_tw` in
 ```python
 def test_browser_ui_evidence_is_model_free_and_zh_tw() -> None:
     browser = load_evidence()["browser_demo"]
-    assert browser["language"] == "zh-TW"
-    assert browser["layout"] == "workbench-34-66"
-    assert browser["base_font_px"] == 18
-    assert browser["desktop_max_width_px"] == 1600
-    assert browser["responsive_breakpoint_px"] == 900
     assert browser["model_bundled"] is False
-    assert browser["dense_canvas_labels"] is False
     assert "gradio_ui" not in load_evidence()
 ```
 
 Delete the three Gradio source-policy tests at the end of `tests/test_release_check.py`. Update
-`test_clean_export_keeps_its_own_gate_and_browser_fixture` so it requires `demo/web/index.html`,
-`demo/web/style.css`, `demo/web/app.js`, and `demo/web/obb.js`, and so no required member contains
-`gradio`.
+`test_clean_export_keeps_its_own_gate_and_browser_fixture` so it retains the four current
+`demo/space-static/` members until Task 2 and so no required member contains `gradio`.
 
 - [ ] **Step 2: Run the focused tests and record the expected RED state**
 
@@ -176,18 +169,9 @@ Gradio install and smoke steps from the browser CI job; keep one default `uv syn
 In `scripts/release_check.py`, remove `GRADIO_ENTRYPOINT_FILES`, `GRADIO_UI_SOURCE_FILES`,
 `gradio_interaction_source_errors`, `verify_gradio_interaction_sources`, the Python demo-model
 source gate that only covered deleted entry points, and their call sites. In
-`scripts/clean_export_check.py`, remove Gradio members and its second browser process. Replace the
-`gradio_ui` evidence block with these fields inside `browser_demo`:
-
-```json
-"language": "zh-TW",
-"layout": "workbench-34-66",
-"base_font_px": 18,
-"desktop_max_width_px": 1600,
-"responsive_breakpoint_px": 900,
-"model_bundled": false,
-"dense_canvas_labels": false
-```
+`scripts/clean_export_check.py`, remove Gradio members and its second browser process. Remove the
+`gradio_ui` evidence block and add only `"model_bundled": false` to `browser_demo`; Task 5 records
+the visual metadata after the rendered UI passes.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 
@@ -644,6 +628,16 @@ for forbidden in ("Gradio", "demo/space-static/", "demo/space/"):
 Add an English mirror assertion for `demo/web/`, `browser-native`, `local browser`, and no Gradio
 path. In `tests/test_release_check.py`, assert `browser_demo.source_files` contains the screenshot
 and that its limitations still reject medium-checkpoint accuracy and T4-latency representation.
+Also require the completed rendered-UI evidence:
+
+```python
+assert browser["language"] == "zh-TW"
+assert browser["layout"] == "workbench-34-66"
+assert browser["base_font_px"] == 18
+assert browser["desktop_max_width_px"] == 1600
+assert browser["responsive_breakpoint_px"] == 900
+assert browser["dense_canvas_labels"] is False
+```
 
 - [ ] **Step 2: Run documentation tests and verify RED**
 
