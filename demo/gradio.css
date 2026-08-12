@@ -123,7 +123,7 @@ body {
 }
 
 #workbench-grid {
-  align-items: stretch;
+  align-items: flex-start;
   gap: 20px;
 }
 
@@ -197,7 +197,7 @@ body {
   line-height: 1.5;
 }
 
-#detect-button button {
+#detect-button {
   min-height: 50px;
   border-radius: 12px;
   background: var(--obb-blue) !important;
@@ -206,11 +206,11 @@ body {
   font-weight: 800;
 }
 
-#detect-button button:hover:not(:disabled) {
+#detect-button:hover:not(:disabled) {
   background: var(--obb-blue-hover) !important;
 }
 
-#detect-button button:disabled {
+#detect-button:disabled {
   background: #aebdd0 !important;
   color: #f7f9fc !important;
   cursor: not-allowed;

@@ -57,12 +57,17 @@ def test_archive_policy_accepts_code_only_release_files() -> None:
 def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
     assert {
         "README.en.md",
+        "demo/gradio.css",
+        "demo/gradio_preview.py",
+        "demo/gradio_ui.py",
         "demo/model_source.py",
         "demo/space-static/app.js",
         "demo/space-static/index.html",
+        "demo/ui_contract.py",
         "docs/OWNER_ACTIONS.md",
         "scripts/clean_export_check.py",
         "scripts/browser_smoke.py",
+        "scripts/gradio_ui_smoke.py",
         "tests/fixtures/browser-smoke.svg",
     } <= REQUIRED_MEMBERS
 

@@ -39,10 +39,11 @@ def test_ci_runs_core_cpu_gates_on_ubuntu_and_windows() -> None:
         "python scripts/repo_check.py",
         "python scripts/release_check.py",
         "python scripts/clean_export_check.py",
+        "CUDA_VISIBLE_DEVICES",
         "uv build",
     ):
         assert token in text
-    for forbidden in ("cuda", "nvidia", "local-ml", "huggingface-token"):
+    for forbidden in ("nvidia", "local-ml", "huggingface-token"):
         assert forbidden not in text.casefold()
 
 
@@ -86,3 +87,15 @@ def test_ui_preview_dependency_group_excludes_ml_runtime() -> None:
         "local-ml",
         "ui-preview",
     }
+
+
+def test_ci_runs_model_free_gradio_ui_smoke() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
+        encoding="utf-8"
+    )
+    for token in (
+        "uv sync --frozen --no-install-project --group ui-preview",
+        "python scripts/gradio_ui_smoke.py",
+        'CUDA_VISIBLE_DEVICES: "-1"',
+    ):
+        assert token in workflow

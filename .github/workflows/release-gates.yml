@@ -17,6 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     env:
+      CUDA_VISIBLE_DEVICES: "-1"
       PYTHONUTF8: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
     steps:
@@ -46,6 +47,7 @@ jobs:
     name: Synthetic browser smoke / Ubuntu CPU
     runs-on: ubuntu-latest
     env:
+      CUDA_VISIBLE_DEVICES: "-1"
       PYTHONUTF8: "1"
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
     steps:
@@ -55,9 +57,11 @@ jobs:
           python-version: "3.11"
       - name: Install locked environment tool
         run: python -m pip install uv==0.11.18
-      - name: Install default and development dependencies
-        run: uv sync --frozen --no-install-project
+      - name: Install browser and model-free UI dependencies
+        run: uv sync --frozen --no-install-project --group ui-preview
       - name: Install headless Chromium
         run: uv run --no-sync playwright install --with-deps chromium
       - name: Exercise the static UI with a synthetic fixture and stubbed output
         run: uv run --no-sync python scripts/browser_smoke.py
+      - name: Exercise the model-free Gradio workbench
+        run: uv run --no-sync python scripts/gradio_ui_smoke.py

@@ -34,15 +34,20 @@ REQUIRED_MEMBERS = {
     "RELEASE_CHECKLIST.md",
     "THIRD_PARTY_NOTICES.md",
     "demo/model_source.py",
+    "demo/gradio.css",
+    "demo/gradio_preview.py",
+    "demo/gradio_ui.py",
     "demo/space-static/app.js",
     "demo/space-static/index.html",
     "demo/space-static/obb.js",
+    "demo/ui_contract.py",
     "docs/OWNER_ACTIONS.md",
     "pyproject.toml",
     "release/artifact-manifest.json",
     "release/evidence.json",
     "scripts/browser_smoke.py",
     "scripts/clean_export_check.py",
+    "scripts/gradio_ui_smoke.py",
     "scripts/release_check.py",
     "scripts/repo_check.py",
     "tests/fixtures/browser-smoke.svg",
@@ -280,6 +285,33 @@ def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object
                         "scripts/browser_smoke.py",
                         "--screenshot",
                         str(temp_root / "browser-smoke.png"),
+                    ],
+                    export,
+                )
+            )
+            steps.append(
+                _run(
+                    [uv, "sync", "--frozen", "--no-install-project", "--group", "ui-preview"],
+                    export,
+                )
+            )
+            steps.append(
+                _run(
+                    [
+                        str(python),
+                        "scripts/gradio_ui_smoke.py",
+                        "--screenshot",
+                        str(temp_root / "gradio-ui.png"),
+                    ],
+                    export,
+                )
+            )
+            steps.append(
+                _run(
+                    [
+                        str(python),
+                        "-c",
+                        "import importlib.util; assert importlib.util.find_spec('torch') is None; assert importlib.util.find_spec('ultralytics') is None",
                     ],
                     export,
                 )
