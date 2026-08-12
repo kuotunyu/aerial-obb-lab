@@ -73,7 +73,7 @@ def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
 
 
 def test_clean_export_default_is_rc2() -> None:
-    assert DEFAULT_OUTPUT.name == "yolo26-dota-obb-v1.0.0rc2.zip"
+    assert DEFAULT_OUTPUT.name == "aerial-obb-lab-v1.0.0rc2.zip"
 
 
 def test_distribution_selector_accepts_uv_build_marker_only(tmp_path) -> None:

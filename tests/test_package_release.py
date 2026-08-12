@@ -9,6 +9,13 @@ ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_VERSION = "1.0.0rc2"
 
 
+def test_release_identity_matches_aerial_obb_lab() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+    assert project["name"] == "aerial-obb-lab"
+    assert project["urls"]["Repository"] == "https://github.com/kuotunyu/aerial-obb-lab"
+
+
 def test_package_metadata_and_runtime_version_match_release_candidate() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["version"] == EXPECTED_VERSION

@@ -109,6 +109,19 @@ def test_public_presentation_omits_owner_hf_artifact_links() -> None:
     assert release_check.verify_public_links(ROOT) == []
 
 
+def test_public_presentation_rejects_current_private_hf_archive(tmp_path: Path) -> None:
+    release_check = load_release_check()
+    release_check.PUBLIC_PRESENTATION_FILES = ("README.md",)
+    (tmp_path / "README.md").write_text(
+        "https://huggingface.co/steven0226/aerial-obb-lab-model-archive",
+        encoding="utf-8",
+    )
+
+    assert release_check.verify_public_links(tmp_path) == [
+        "README.md: owner Hugging Face artifact reference"
+    ]
+
+
 def test_recovery_notebook_requires_owner_supplied_checkpoint() -> None:
     source = (ROOT / "notebooks" / "03_recover_per_class_metrics_colab.py").read_text(
         encoding="utf-8"
