@@ -1,7 +1,9 @@
 # Code-Only Portfolio Release Design
 
-**Date:** 2026-08-12  
-**State:** Approved design for the next local release-hardening pass  
+**Date:** 2026-08-12
+
+**State:** Approved design for the next local release-hardening pass
+
 **Target branch:** `portfolio/obb-v1.0-release-hardening`
 
 ## Purpose
