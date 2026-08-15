@@ -4,8 +4,8 @@ title: "Aerial OBB Lab: YOLO26 Oriented Detection from Honest Evaluation to Brow
 type: software
 authors:
   - family-names: "kuotunyu"
-version: "1.0.0-rc.2"
-date-released: 2026-08-12
+version: "1.0.0"
+date-released: 2026-08-16
 license: AGPL-3.0-or-later
 keywords:
   - computer-vision
