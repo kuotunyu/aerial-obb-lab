@@ -1,6 +1,6 @@
 [project]
 name = "aerial-obb-lab"
-version = "1.0.0rc2"
+version = "1.0.0"
 description = "Aerial OBB engineering lab for honest YOLO26 evaluation and browser deployment"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -14,6 +14,7 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/kuotunyu/aerial-obb-lab"
+Release = "https://github.com/kuotunyu/aerial-obb-lab/releases/tag/v1.0.0"
 
 [dependency-groups]
 dev = [
