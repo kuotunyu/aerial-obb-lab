@@ -21,7 +21,7 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = ROOT / "dist" / "aerial-obb-lab-v1.0.0rc2.zip"
+DEFAULT_OUTPUT = ROOT / "dist" / "aerial-obb-lab-v1.0.0.zip"
 
 REQUIRED_MEMBERS = {
     ".github/workflows/release-gates.yml",
@@ -333,7 +333,7 @@ def verify_snapshot(archive: Path, run_browser: bool = True) -> dict[str, object
                 [
                     str(package_python),
                     "-c",
-                    "import obbkit; assert obbkit.__version__ == '1.0.0rc2'; print(obbkit.__version__)",
+                    "import obbkit; assert obbkit.__version__ == '1.0.0'; print(obbkit.__version__)",
                 ],
                 export,
             )
