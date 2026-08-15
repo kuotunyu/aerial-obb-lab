@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## [1.0.0] - 2026-08-16
+
+### Evidence-first stable release
+
+- Promoted the validated `1.0.0-rc.2` code-only BYOM candidate to the stable `1.0.0` release without changing model, dataset, training, benchmark, or browser inference behavior.
+- Preserved the matched fine-tuning result as a near-tie/slight regression: Δ mAP50 **-0.05pt** and Δ mAP50-95 **-0.13pt**.
+- Preserved the DOTA8 result as export-smoke parity only, the T4 numbers as historical environment-bound latency evidence, and the geometry analysis as a ground-truth proxy rather than detector/NMS proof.
+- Kept the public distribution code-only: no model weights, ONNX/TensorRT binaries, DOTA-derived visual assets, or owner-hosted private artifact links are shipped.
+- Promoted Python package metadata, citation metadata, release URL, and version-consistency coverage to stable `1.0.0`.
+
+### Stable-release evidence boundary
+
+- No fresh training, full DOTAv1 validation, GPU benchmark, paid service call, or new model inference was run for the stable promotion.
+- Browser BYOM remains a local model/image integration demo; the synthetic browser gate does not establish model accuracy or T4-equivalent latency.
+- Historical baseline and T4 raw console logs remain unavailable; their accepted transcriptions and limitations stay explicit in `release/evidence.json`.
+
 ## [1.0.0-rc.2] - 2026-08-12
 
 ### Code-only portfolio candidate
