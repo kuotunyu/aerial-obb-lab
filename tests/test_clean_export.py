@@ -112,8 +112,8 @@ def test_clean_export_omits_obsolete_operational_surfaces() -> None:
         assert retired not in REQUIRED_MEMBERS
 
 
-def test_clean_export_default_is_rc2() -> None:
-    assert DEFAULT_OUTPUT.name == "aerial-obb-lab-v1.0.0rc2.zip"
+def test_clean_export_default_is_stable_v1() -> None:
+    assert DEFAULT_OUTPUT.name == "aerial-obb-lab-v1.0.0.zip"
 
 
 def test_distribution_selector_accepts_uv_build_marker_only(tmp_path) -> None:
