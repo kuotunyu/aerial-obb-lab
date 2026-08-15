@@ -1,0 +1,104 @@
+name: Publish v1.0.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-v1.0.0.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Validate and publish v1.0.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Resolve validated release commit
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_commit="$(git rev-parse "${GITHUB_SHA}^")"
+          echo "commit=${release_commit}" >> "$GITHUB_OUTPUT"
+          git show --no-patch --format='%H %s' "$release_commit"
+      - name: Validate stable release metadata
+        shell: bash
+        env:
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git show "${RELEASE_COMMIT}:pyproject.toml" | grep -F 'version = "1.0.0"'
+          git show "${RELEASE_COMMIT}:src/obbkit/__init__.py" | grep -F '__version__ = "1.0.0"'
+          git show "${RELEASE_COMMIT}:CITATION.cff" | grep -F 'version: "1.0.0"'
+          git show "${RELEASE_COMMIT}:uv.lock" | awk '
+            /^\[\[package\]\]$/ { in_pkg=1; name=""; version=""; next }
+            in_pkg && /^name = "aerial-obb-lab"$/ { name="aerial-obb-lab" }
+            in_pkg && name=="aerial-obb-lab" && /^version = "1.0.0"$/ { found=1; exit }
+            END { exit(found ? 0 : 1) }
+          '
+      - name: Refuse to overwrite an existing tag or release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin refs/tags/v1.0.0 >/dev/null 2>&1; then
+            echo "v1.0.0 tag already exists" >&2
+            exit 1
+          fi
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            echo "v1.0.0 release already exists" >&2
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Create annotated v1.0.0 tag at validated release commit
+        shell: bash
+        env:
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a v1.0.0 "$RELEASE_COMMIT" -m "aerial-obb-lab v1.0.0"
+          git push origin refs/tags/v1.0.0
+      - name: Write reviewed release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Aerial OBB Lab v1.0.0 — Evidence-First Stable Release
+
+          This stable release promotes the already-validated `1.0.0-rc.2` code-only BYOM candidate without changing model, dataset, training, benchmark, or browser inference behavior.
+
+          ### What is included
+          - YOLO26-OBB / DOTAv1 experiment code and reproducibility tooling.
+          - Matched baseline evaluation preserving the negative result: fine-tuning is a near-tie/slight regression, not an accuracy improvement.
+          - Ground-truth OBB/HBB geometry analysis with explicit scope boundaries.
+          - Historical ONNX / TensorRT deployment evidence, including the recorded Tesla T4 batch-1 1024 px TensorRT FP16 result.
+          - Browser-native BYOM demo with pinned ONNX Runtime Web and synthetic UI/integration smoke coverage.
+          - Cross-platform CPU release gates, clean-export rebuild verification, wheel/sdist packaging, privacy checks, and code-only publication policy.
+
+          ### Evidence boundaries
+          - Fine-tuning remains a near-tie/slight regression: Δ mAP50 `-0.05pt`, Δ mAP50-95 `-0.13pt` under the matched project validation conditions.
+          - The OBB geometry analysis is a ground-truth geometry proxy, not a detector or NMS benchmark.
+          - DOTA8 `0.9950` results are export-smoke parity only, not full DOTAv1 production certification.
+          - The Tesla T4 latency table is historical and scoped to its recorded environment; it is not a universal performance or SLA claim.
+          - The browser demo is bring-your-own-model and its synthetic smoke validates integration/rendering, not model accuracy or T4 latency.
+          - No model weights or DOTA-derived imagery are distributed in this release.
+          - No fresh training, full DOTAv1 validation, GPU benchmark, model export, or model inference was run for this stable promotion.
+
+          ### Verification
+          The stable source commit passed Ubuntu and Windows CPU gates, release/privacy checks, wheel/sdist builds, clean-export rebuild verification, and the synthetic browser smoke before this tag was created.
+          EOF
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.0.0 \
+            --verify-tag \
+            --title "Aerial OBB Lab v1.0.0 — Evidence-First Stable Release" \
+            --notes-file release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
