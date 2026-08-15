@@ -8,7 +8,7 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_VERSION = "1.0.0rc2"
+EXPECTED_VERSION = "1.0.0"
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
 OBSOLETE_PUBLIC_PATHS = (
     "README.zh-TW.md",
@@ -37,7 +37,7 @@ def test_release_identity_matches_aerial_obb_lab() -> None:
     assert project["urls"]["Repository"] == "https://github.com/kuotunyu/aerial-obb-lab"
 
 
-def test_package_metadata_and_runtime_version_match_release_candidate() -> None:
+def test_package_metadata_and_runtime_version_match_stable_release() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["version"] == EXPECTED_VERSION
     assert project["license"]["text"] == "AGPL-3.0-or-later"
