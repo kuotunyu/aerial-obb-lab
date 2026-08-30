@@ -413,6 +413,7 @@ detectBtn.addEventListener("click", async () => {
     state.cached = { results, geometry, provenance: "Local files", elapsedMs };
     state.elapsedMs = elapsedMs;
     state.phase = "result";
+    modeBadge.textContent = "BYOM · LOCAL BROWSER INFERENCE";
     const dets = renderCachedOutput();
     if (dets === null) return;
     setStatus(

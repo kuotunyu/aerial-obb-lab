@@ -539,6 +539,10 @@ def run_smoke(
                 "document.querySelector('#status').textContent.includes('完成')"
             )
 
+            if page.locator("#modeBadge").inner_text() != "BYOM · LOCAL BROWSER INFERENCE":
+                raise RuntimeError(
+                    "successful BYOM inference must expose the BYOM mode badge"
+                )
             row = page.locator("#resultsBody tr").first.locator("td").all_text_contents()
             if row != EXPECTED_ROW:
                 raise RuntimeError(f"unexpected browser result row: {row!r}")
