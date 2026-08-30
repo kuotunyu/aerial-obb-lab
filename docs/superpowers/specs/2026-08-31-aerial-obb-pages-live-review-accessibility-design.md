@@ -3,7 +3,7 @@
 - **Date:** 2026-08-31
 - **Repository:** `kuotunyu/aerial-obb-lab`
 - **Base commit:** `00d06f012acc9b4b52417374dd4c23ef84b9797c`
-- **Status:** Approved design; pending written-spec review before implementation planning
+- **Status:** Approved design with central runtime-refinement ruling; implementation plan separately approved
 - **Scope:** Gate D follow-up for the deployed dual-mode browser workbench
 
 ## Context and boundary
@@ -47,16 +47,17 @@ presentation cache and does not add a filter-handler-only repair.
 
 ### Runtime
 
-- When `state.mode === "synthetic"`, every invocation of the shared renderer displays exactly
-  `N/A · no inference`.
-- When `state.mode === "byom"` and cached inference elapsed time is numeric, it displays the existing
-  rounded numeric milliseconds form.
-- Initial state, reset state, and every error state display `—`.
+- The shared renderer displays exactly `N/A · no inference` only when the current active result identity is
+  synthetic: `state.mode === "synthetic" && state.phase === "result" && state.cached !== null`.
+- It displays rounded numeric milliseconds only when `state.mode === "byom"` and `elapsedMs` is a finite
+  numeric value.
+- Initial, loading, reset, error, and no-cache states display `—`, including a failed second Synthetic
+  Showcase load after an earlier successful synthetic result.
 - The BYOM measurement remains the elapsed time from its actual `session.run`; synthetic never creates a
   session and never receives a synthetic latency value.
 
-This makes the runtime claim a property of the active mode rather than an accidental consequence of a
-null elapsed-time sentinel.
+This makes the runtime claim a property of the current active result identity rather than an accidental
+consequence of a null elapsed-time sentinel or a stale mode value.
 
 ### Canvas textual alternative
 
@@ -105,7 +106,7 @@ cached output + current confidence/class controls
     -> decode current filtered detections
     -> draw oriented polygons from OBB.rotatedCorners
     -> sort detections for visible table and hidden canvas description
-    -> render summary with mode-derived runtime
+    -> render summary with active-result-derived runtime
     -> publish one non-live textual canvas alternative
 ```
 
@@ -126,6 +127,7 @@ source-text-only detector is sufficient.
 | --- | --- |
 | Synthetic confidence filter | After hiding and restoring the fixture row, mode/provenance remain synthetic, runtime is exactly `N/A · no inference` after each render, and ORT request count remains zero. |
 | Synthetic class filter | A non-matching class produces zero visible rows and the explicit empty canvas description; restoring the filter restores the row, its description, and `N/A · no inference`, without ORT. |
+| Synthetic retry after deterministic asset failure | A second Showcase selection after success clears the prior cached result and shows `—` while the fixture request deterministically fails, with zero ORT requests; a subsequent successful retry alone restores `N/A · no inference`. Task 2 additionally verifies that the new description has no stale text. |
 | BYOM cached filter | After stubbed local-browser inference, filter changes retain a numeric milliseconds runtime rather than `N/A · no inference` or `—`. |
 | Canvas alternative | Canvas has the exact `aria-describedby` target; populated text includes the rendered filtered class, confidence, centre coordinates, dimensions, and angle; it is ordered like the table. |
 | Reset and failures | Model/image transition, result-clearing inference/schema/render failures, and reset/showcase transitions leave no stale description; empty/error wording contains no private marker, path, raw exception, or stack. |
@@ -138,7 +140,8 @@ allowlist.
 
 ## Acceptance criteria
 
-- Synthetic runtime never changes from `N/A · no inference` during any cached filter re-render.
+- Synthetic runtime never changes from `N/A · no inference` during any active cached-filter re-render, and
+  returns to `—` for loading, reset, error, or no-cache state.
 - BYOM runtime remains a measured numeric value through cached filter re-renders.
 - The canvas has a current, non-live, filtered textual alternative with no stale result content.
 - Empty, reset, and error states have explicit safe canvas description text.
@@ -159,8 +162,8 @@ allowlist.
 ## Self-review record
 
 - **Placeholders:** none; all labels, IDs, values, base SHA, and target state are explicit.
-- **Consistency:** runtime is mode-derived in every shared cached render; no synthetic presentation cache
-  conflicts with the empty/reset/error state.
+- **Consistency:** runtime is derived from current active-result identity in every shared cached render; no
+  synthetic presentation cache conflicts with the loading/reset/error/no-cache state.
 - **Scope:** five Gate D findings plus their required browser regressions only; no release or remote change.
 - **Ambiguity resolved:** the canvas alternative uses centre coordinates, not four corners; it is hidden and
   non-live, while the visible table remains compact and the existing status region remains the announcer.

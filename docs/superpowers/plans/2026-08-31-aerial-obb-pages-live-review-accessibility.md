@@ -4,7 +4,7 @@
 
 **Goal:** Close the Gate D runtime-claim and canvas-text-equivalence findings while adding the approved keyboard and document metadata improvements without weakening the public artifact boundary.
 
-**Architecture:** Keep `renderCachedOutput()` as the sole cached decode/filter/presentation path. Derive runtime text from `state.mode`, and derive the hidden canvas alternative from the same confidence/class-filtered detections that feed the confidence-sorted table. Maintain the Pages artifact digest allowlist whenever a reviewed `demo/web` text file changes.
+**Architecture:** Keep `renderCachedOutput()` as the sole cached decode/filter/presentation path. Derive runtime text from current active-result identity (`mode`, `phase`, and cache presence), and derive the hidden canvas alternative from the same confidence/class-filtered detections that feed the confidence-sorted table. Maintain the Pages artifact digest allowlist whenever a reviewed `demo/web` text file changes.
 
 **Tech Stack:** Static HTML/CSS/JavaScript, Playwright through Python, pytest, `uv`, standard-library Pages artifact verifier.
 
@@ -12,9 +12,9 @@
 
 - Work only in `D:\AI-Portfolio\.worktrees\fix-pages-live-review-accessibility` on `fix/pages-live-review-accessibility`, based on `00d06f012acc9b4b52417374dd4c23ef84b9797c`.
 - Use strict TDD: add the named real browser assertion, run it and observe its stated RED failure, then make the smallest GREEN change and rerun it.
-- Synthetic cached rendering always displays exactly `N/A · no inference`; it never creates an ORT session or reports a numeric latency.
-- BYOM cached rendering retains its measured numeric `… ms` runtime through confidence and class re-filtering.
-- Reset and every result-clearing error display `—` and leave no old canvas-description text.
+- An active synthetic result (`state.mode === "synthetic" && state.phase === "result" && state.cached !== null`) displays exactly `N/A · no inference`; synthetic never creates an ORT session or reports a numeric latency.
+- An active BYOM result displays measured rounded `… ms` only when its elapsed value is finite; it retains that runtime through confidence and class re-filtering.
+- Loading, reset, error, and no-cache state display `—`; reset and every result-clearing error leave no old canvas-description text once Task 2 adds that descriptor.
 - The canvas description is hidden and non-live; do not add visible corner columns or a second live announcement channel.
 - Description records each filtered detection's class, confidence, centre x/y, width, height, and degree angle in confidence-descending order.
 - No user filename, local path, model metadata, tensor content, raw error, or stack may enter UI, hidden description, console, screenshot, or artifact.
@@ -27,7 +27,7 @@
 
 | File | Responsibility in this change |
 | --- | --- |
-| `demo/web/app.js` | Mode-derived runtime display, confidence-sorted detection view, non-live canvas-description text, and reset/error clearing. |
+| `demo/web/app.js` | Active-result-derived runtime display, confidence-sorted detection view, non-live canvas-description text, and reset/error clearing. |
 | `demo/web/index.html` | Skip-link/main target, theme metadata, stable control names, canvas-description node, and `aria-describedby`. |
 | `demo/web/style.css` | Visually-hidden description and skip-link focus presentation without changing notice order. |
 | `scripts/browser_smoke.py` | Deterministic real-browser RED/GREEN assertions using the existing ORT stub and local HTTP server. |
@@ -39,7 +39,7 @@ Shared implementation interfaces introduced by this plan:
 
 ```javascript
 function sortedDetections(detections) // returns a new confidence-descending array
-function renderSummary(detections, elapsedMs) // writes mode-derived runtime text
+function renderSummary(detections, elapsedMs) // writes active-result-derived runtime text
 function renderCanvasDescription(detections) // writes non-live current/empty text
 ```
 
@@ -48,26 +48,27 @@ filtered-empty text. `fillTable()` consumes `sortedDetections(detections)`, and 
 same helper so its order matches the table. `renderCachedOutput()` invokes canvas drawing, table rendering,
 summary rendering, and description rendering only after successful decode.
 
-## Task 1: Make synthetic and BYOM cached runtime rendering mode-derived
+## Task 1: Make synthetic and BYOM cached runtime rendering active-result-derived
 
 **Files:**
-- Modify: `scripts/browser_smoke.py:423-454` and the successful-BYOM result section after line 541
+- Modify: `scripts/browser_smoke.py:423-454`, the successful-BYOM result section after line 541, and the isolated flaky-showcase scenario near line 889
 - Modify: `demo/web/app.js:106-112` and `demo/web/app.js:174-199`
 - Modify: `scripts/pages_artifact_check.py:REVIEWED_TEXT_DIGESTS["app.js"]`
 - Test: `scripts/browser_smoke.py`
 - Test: `tests/test_pages_artifact_check.py::test_current_pages_tree_passes`
 
 **Interfaces:**
-- Consumes: existing `state.mode`, `state.cached.elapsedMs`, and cached result filtering in `renderCachedOutput()`.
+- Consumes: existing `state.mode`, `state.phase`, `state.cached`, `state.cached.elapsedMs`, and cached result filtering in `renderCachedOutput()`.
 - Produces: `renderSummary(detections, elapsedMs)` whose runtime cell is exact synthetic text, numeric BYOM text, or reset/error `—`.
 
 - [ ] **Step 1: Add the Task 1 runtime batch RED assertions**
 
-In one edit, add the three named checkpoints
+In one edit, add the three named cached-filter checkpoints
 `synthetic_confidence_refilter_preserves_no_inference_runtime`,
 `synthetic_class_refilter_preserves_no_inference_runtime`, and
-`byom_cached_refilter_retains_numeric_runtime`. Place the confidence assertion immediately after the
-existing confidence `0.95` and restored `0.25` cached-showcase checks:
+`byom_cached_refilter_retains_numeric_runtime`, plus the deterministic retry checkpoint
+`synthetic_asset_failure_clears_runtime_before_retry`. Place the confidence assertion immediately after
+the existing confidence `0.95` and restored `0.25` cached-showcase checks:
 
 ```python
 if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
@@ -105,6 +106,15 @@ if page.locator("#runtimeValue").inner_text() != byom_runtime:
 
 Restore `0.25` before later smoke scenarios. Import `re` at the script's existing import block.
 
+Extend the existing isolated `flaky_showcase` page so its first fixture request succeeds, its second request
+deterministically aborts, and its third succeeds. Wait for each terminal status before the next click; do not
+use a timeout as evidence. The new checkpoint first proves a successful synthetic result, then on the second
+selection asserts status kind `error`, `#runtimeValue` exactly `—`, no synthetic table rows or canvas pixels
+remain, and its page-local ORT route has recorded zero requests. It then clicks Showcase once more and asserts
+only the successful retry restores exact `N/A · no inference`. Task 1 cannot assert `#canvasDescription`,
+because Task 2 is the first task that introduces that node; Task 2 extends this exact deterministic scenario
+to prove the description is also reset and error-clean.
+
 - [ ] **Step 2: Run the runtime batch and record the actual RED**
 
 Run:
@@ -115,23 +125,27 @@ uv run --no-sync python scripts/browser_smoke.py
 
 Expected and recordable RED: `RuntimeError: synthetic confidence refilter lost no-inference runtime`,
 because the current shared renderer writes `—` for synthetic `elapsedMs=None` after the first confidence
-filter event. Do not claim that the later class or BYOM checkpoints independently reached their assertions
-in this RED run; they are intentionally a single root-cause batch and are verified together after GREEN.
+filter event. Do not claim that later class, BYOM, or retry checkpoints independently reached their
+assertions in this RED run; they are intentionally one root-cause batch and are verified together after GREEN.
 
-- [ ] **Step 3: Implement the minimal mode-derived runtime change**
+- [ ] **Step 3: Implement the minimal active-result-derived runtime change**
 
 In `demo/web/app.js`, keep the existing `renderSummary(detections, elapsedMs)` call sites. Change only its
 runtime branch:
 
 ```javascript
-runtimeValue.textContent = state.mode === "synthetic"
+const activeSyntheticResult =
+  state.mode === "synthetic" && state.phase === "result" && state.cached !== null;
+runtimeValue.textContent = activeSyntheticResult
   ? "N/A · no inference"
-  : elapsedMs === null ? "—" : `${Math.round(elapsedMs)} ms`;
+  : state.mode === "byom" && Number.isFinite(elapsedMs)
+    ? `${Math.round(elapsedMs)} ms`
+    : "—";
 ```
 
 Do not add a `runtimeText` or other presentation value to `state.cached`, and do not add a post-filter
-override. `resetResult()` still calls `renderSummary([])` while mode is `none` or `byom` reset state, so it
-continues to display `—`.
+override. `resetResult()` can run while a prior synthetic mode value remains, so the active-result guard—not
+a mode-only condition—keeps loading, reset, error, and no-cache state at `—`.
 
 - [ ] **Step 4: Run the named runtime browser GREEN checks**
 
@@ -141,8 +155,9 @@ Run:
 uv run --no-sync python scripts/browser_smoke.py
 ```
 
-Expected GREEN: all three named runtime checkpoints pass; synthetic makes zero ORT requests and BYOM
-runtime matches `^\d+ ms$` before and after the cached filter.
+Expected GREEN: all four named runtime checkpoints pass; synthetic makes zero ORT requests, the deterministic
+second-load asset failure clears runtime/result state to `—` before retry, and BYOM runtime matches `^\d+ ms$`
+before and after the cached filter.
 
 - [ ] **Step 5: Observe the artifact verifier RED and refresh only the app digest**
 
@@ -248,8 +263,11 @@ Place it immediately after the Task 1 non-matching class-filter zero-row asserti
 `assert_fixed_failure()` helper to require exactly `尚無 detection result。` from `#canvasDescription` for
 every existing safe failure code, including `MODEL_CONTRACT`, `IMAGE_DECODE`, `RUNTIME_LOAD`,
 `INFERENCE_RUN`, `OUTPUT_SCHEMA`, `RENDER_RESULT`, and `SHOWCASE_ASSET`. Keep `assert_result_cleared()`
-for the three inference-result cases that also verify canvas pixels. Also assert that switching from BYOM
-back to Synthetic replaces any prior BYOM description with the synthetic fixture's `ship` description.
+for the three inference-result cases that also verify canvas pixels. Extend Task 1's deterministic
+second-showcase-load failure/retry page here—not in a separate timing-dependent scenario—to assert its
+`SHOWCASE_ASSET` error has exactly this reset description before the third-request retry restores the
+synthetic `ship` description. Also assert that switching from BYOM back to Synthetic replaces any prior
+BYOM description with the synthetic fixture's `ship` description.
 
 Run the same command.
 
