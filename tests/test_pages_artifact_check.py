@@ -290,6 +290,30 @@ def test_pages_tree_accepts_reviewed_readme_across_line_endings(
     assert verify_pages_tree(site) == []
 
 
+def test_pages_tree_accepts_archive_line_endings_for_all_reviewed_text(
+    tmp_path: Path,
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    for path in site.rglob("*"):
+        if path.is_file() and path.suffix.casefold() in {
+            ".css",
+            ".html",
+            ".js",
+            ".md",
+            ".svg",
+            ".txt",
+        }:
+            canonical = (
+                path.read_bytes()
+                .decode("utf-8")
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+            )
+            path.write_bytes(canonical.replace("\n", "\r\n").encode("utf-8"))
+
+    assert verify_pages_tree(site) == []
+
+
 @pytest.mark.parametrize(
     "payload",
     (

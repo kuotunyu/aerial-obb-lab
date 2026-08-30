@@ -101,16 +101,22 @@ ORT_INTEGRITY = (
     "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
 )
 REVIEWED_ASSET_DIGESTS = {
+    "fonts/IBMPlexSansCondensed-SemiBold.woff2": (
+        "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d",
+        "reviewed font bytes differ",
+    ),
+}
+REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "770c6e060aaa3f45ddb31fef78103e8eea74b3312ae9b87531f49644685c7301",
+        "afa24da9eb545ba09c0fea80afd80e0bbb6dd2256845758c5ca9403b9ae28feb",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "0291caaa351e84767b503843914b3decfb3a7f7dfc222e672e9c5faf6de96426",
+        "d8be7af74b51636d3a22599e0d9f20cb522a7887195b327ff546728f07114b9b",
         "reviewed application bytes differ",
     ),
     "obb.js": (
-        "1103fa4a6c9dd1b577a04e5f5f798cb9a6b1f66721a81650c6fa7511855514e1",
+        "c2c83882a1cb1b6d76ab48d12784af6c2ef526be08d4fe1b7ed23798b7350043",
         "reviewed geometry bytes differ",
     ),
     "showcase-fixture.js": (
@@ -118,23 +124,17 @@ REVIEWED_ASSET_DIGESTS = {
         "reviewed showcase data bytes differ",
     ),
     "style.css": (
-        "15de382abff56f6abf8c69f801f85650eb2e5ad22fd64437a863f5b7efc08df4",
+        "6ad2634891f79759702a20d5c03100ef9fb1fc84ac130f7eb75d21ebb82b5e68",
         "reviewed stylesheet bytes differ",
     ),
     "fixtures/showcase.svg": (
-        "c208b1a056555825d75f25a421403a11738fb2efa90a880845a79e3af5c35385",
+        "8dab1056011c99a21ad2a01d088956a444308f61cb57b0e6f5bafd3e2f0dd5bf",
         "reviewed synthetic fixture bytes differ",
     ),
-    "fonts/IBMPlexSansCondensed-SemiBold.woff2": (
-        "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d",
-        "reviewed font bytes differ",
-    ),
     "fonts/IBM-Plex-OFL.txt": (
-        "aaa43b32d5a6ea1aa1a8768ecb85899b22f94c05486c743838610f5e640abebc",
+        "9590325331b1975eac408dc78e7d369c042f565cee8aa9e34d6b40524f400972",
         "reviewed font license bytes differ",
     ),
-}
-REVIEWED_TEXT_DIGESTS = {
     "README.md": (
         "b2fdc5d47182a137b10c9756b137164728876643452316be3863dcb9210b59d5",
         "reviewed README bytes differ",
@@ -170,10 +170,11 @@ def _read_public_text(path: Path, relative: str, errors: list[str]) -> str | Non
         errors.append(f"{relative}: unexpected binary file")
         return None
     try:
-        return payload.decode("utf-8")
+        text = payload.decode("utf-8")
     except UnicodeDecodeError:
         errors.append(f"{relative}: unexpected binary file")
         return None
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def _scan_runtime_urls(relative: str, text: str, errors: list[str]) -> None:
