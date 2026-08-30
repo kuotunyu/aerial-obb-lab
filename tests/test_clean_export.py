@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
+import subprocess
+import zipfile
 
 from scripts.clean_export_check import (
     DEFAULT_OUTPUT,
@@ -9,6 +12,9 @@ from scripts.clean_export_check import (
     distribution_paths,
     verify_snapshot,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_archive_policy_rejects_private_and_runtime_paths() -> None:
@@ -81,7 +87,7 @@ def test_archive_policy_rejects_model_and_dota_visuals() -> None:
 
 def test_archive_policy_accepts_code_only_release_files() -> None:
     assert archive_policy_errors(
-        ["README.md", "src/obbkit/__init__.py", "tests/fixtures/browser-smoke.svg"]
+        ["README.md", "src/obbkit/__init__.py", "demo/web/fixtures/showcase.svg"]
     ) == []
 
 
@@ -97,9 +103,52 @@ def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
         "docs/assets/browser-workbench.png",
         "scripts/clean_export_check.py",
         "scripts/browser_smoke.py",
-        "tests/fixtures/browser-smoke.svg",
+        "demo/web/fixtures/showcase.svg",
     } <= REQUIRED_MEMBERS
     assert not any("gradio" in member.casefold() for member in REQUIRED_MEMBERS)
+
+
+def test_release_archive_keeps_showcase_fixture_and_omits_internal_docs(
+    tmp_path: Path,
+) -> None:
+    attributes = ROOT / ".gitattributes"
+    assert attributes.is_file(), "release archive attributes are missing"
+
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    members = {
+        ".gitattributes": attributes.read_bytes(),
+        "README.md": b"public release\n",
+        "demo/web/fixtures/showcase.svg": b"<svg/>\n",
+        "docs/superpowers/plans/2026-08-31-aerial-obb-pages-showcase.md": b"internal plan\n",
+        "docs/superpowers/specs/2026-08-31-aerial-obb-pages-showcase-design.md": b"internal spec\n",
+    }
+    for relative, payload in members.items():
+        path = repository / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+    subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+    subprocess.run(["git", "config", "user.name", "Release Test"], cwd=repository, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "release-test@example.invalid"],
+        cwd=repository,
+        check=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=repository, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repository, check=True)
+    archive = tmp_path / "release.zip"
+    subprocess.run(
+        ["git", "archive", "--format=zip", f"--output={archive}", "HEAD"],
+        cwd=repository,
+        check=True,
+    )
+
+    with zipfile.ZipFile(archive) as bundle:
+        archived = {info.filename for info in bundle.infolist() if not info.is_dir()}
+
+    assert "demo/web/fixtures/showcase.svg" in archived
+    assert not any(name.startswith("docs/superpowers/") for name in archived)
 
 
 def test_clean_export_omits_obsolete_operational_surfaces() -> None:

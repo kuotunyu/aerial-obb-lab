@@ -46,7 +46,7 @@ REQUIRED_MEMBERS = {
     "scripts/clean_export_check.py",
     "scripts/release_check.py",
     "scripts/repo_check.py",
-    "tests/fixtures/browser-smoke.svg",
+    "demo/web/fixtures/showcase.svg",
     "tests/fixtures/browser_parity.json",
     "tests/js/browser_parity_runner.js",
     "uv.lock",

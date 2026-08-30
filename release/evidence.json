@@ -163,7 +163,14 @@
     "runtime_source": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js",
     "runtime_integrity": "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp",
     "runtime_crossorigin": "anonymous",
+    "runtime_load": "lazy-on-byom-selection",
     "model_bundled": false,
+    "showcase_enabled": true,
+    "showcase_fixture": "demo/web/fixtures/showcase.svg",
+    "showcase_image": "authored synthetic SVG",
+    "showcase_inference_performed": false,
+    "showcase_runtime_label": "N/A · no inference",
+    "showcase_external_runtime_requests": false,
     "language": "zh-TW",
     "layout": "workbench-34-66",
     "base_font_px": 19,
@@ -177,13 +184,14 @@
     "represents_t4_latency": false,
     "source_files": [
       "demo/web/app.js",
+      "demo/web/fixtures/showcase.svg",
       "demo/web/fonts/IBM-Plex-OFL.txt",
       "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
       "demo/web/index.html",
       "demo/web/obb.js",
+      "demo/web/showcase-fixture.js",
       "demo/web/style.css",
-      "docs/assets/browser-workbench.png",
-      "tests/fixtures/browser-smoke.svg"
+      "docs/assets/browser-workbench.png"
     ],
     "limitations": [
       "The public repository distributes no model binary; the user must supply a compatible local ONNX file.",

@@ -92,6 +92,23 @@ td,
   border-bottom: 1px solid var(--line-strong);
 }
 
+.claim-boundary {
+  border: 2px solid var(--ink);
+  background: #fff7d6;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.claim-boundary h2 {
+  margin: 0 0 6px;
+  font-size: 1.15rem;
+}
+
+.claim-boundary p {
+  margin: 0;
+  max-width: 92ch;
+}
+
 .product-copy {
   display: contents;
 }
@@ -215,7 +232,28 @@ h3 {
 .file-stack {
   display: grid;
   gap: 8px;
+  margin-top: 6px;
+}
+
+#showcaseBtn {
+  width: 100%;
+  min-height: 44px;
   margin-top: 12px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-weight: 780;
+  cursor: pointer;
+}
+
+#showcaseBtn:hover {
+  background: var(--accent-soft);
+}
+
+#showcaseBtn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
 }
 
 .file-control {
@@ -326,6 +364,7 @@ h3 {
 }
 
 input[type="range"] {
+  display: block;
   width: 100%;
   min-height: 44px;
   margin: 3px 0 -4px;
@@ -436,6 +475,27 @@ input[type="range"]:focus-visible {
   color: var(--danger);
 }
 
+.runtime-retry {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.runtime-retry:hover {
+  background: var(--accent-soft);
+}
+
+.runtime-retry:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 #detectBtn {
   width: 100%;
   min-height: 48px;
@@ -491,6 +551,11 @@ input[type="range"]:focus-visible {
 
 .result-summary div + div {
   border-left: 1px solid var(--line);
+}
+
+.mode-entry {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
 }
 
 .result-summary dt {
@@ -630,6 +695,26 @@ footer {
   font-size: 15px;
 }
 
+.source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  justify-content: flex-end;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.source-links a {
+  color: var(--accent-ink);
+  font-weight: 720;
+}
+
+.source-links a:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 footer code {
   color: var(--code-ink);
   font-family: Consolas, "Cascadia Mono", monospace;
@@ -719,6 +804,10 @@ footer code {
     grid-column: 1 / -1;
     border-top: 1px solid var(--line);
     border-left: 0;
+  }
+
+  .source-links {
+    justify-content: flex-start;
   }
 
   .canvas-frame,

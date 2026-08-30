@@ -67,17 +67,33 @@ def test_browser_demo_is_not_medium_checkpoint_evidence() -> None:
     assert browser["represents_t4_latency"] is False
 
 
+def test_browser_showcase_evidence_is_explicit_and_model_free() -> None:
+    browser = load_evidence()["browser_demo"]
+
+    assert browser["showcase_enabled"] is True
+    assert browser["showcase_fixture"] == "demo/web/fixtures/showcase.svg"
+    assert browser["showcase_image"] == "authored synthetic SVG"
+    assert browser["showcase_inference_performed"] is False
+    assert browser["showcase_runtime_label"] == "N/A · no inference"
+    assert browser["showcase_external_runtime_requests"] is False
+    assert browser["runtime_load"] == "lazy-on-byom-selection"
+    assert "demo/web/showcase-fixture.js" in browser["source_files"]
+    assert "demo/web/fixtures/showcase.svg" in browser["source_files"]
+    assert "tests/fixtures/browser-smoke.svg" not in browser["source_files"]
+
+
 def test_browser_demo_has_one_canonical_source_path() -> None:
     browser = load_evidence()["browser_demo"]
     assert browser["source_files"] == [
         "demo/web/app.js",
+        "demo/web/fixtures/showcase.svg",
         "demo/web/fonts/IBM-Plex-OFL.txt",
         "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "demo/web/index.html",
         "demo/web/obb.js",
+        "demo/web/showcase-fixture.js",
         "demo/web/style.css",
         "docs/assets/browser-workbench.png",
-        "tests/fixtures/browser-smoke.svg",
     ]
     assert (ROOT / "demo" / "web" / "index.html").is_file()
     assert not (ROOT / "demo" / "space-static").exists()

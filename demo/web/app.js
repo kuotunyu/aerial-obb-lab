@@ -5,6 +5,21 @@
 // [cx, cy, w, h, conf, cls, angle_rad] per detection in letterboxed pixel space.
 
 const IMGSZ = 1024;
+const ORT_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js";
+const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+const ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp";
+let ortPromise = null;
+
+const ERROR_COPY = Object.freeze({
+  SHOWCASE_ASSET: "Synthetic fixture 無法載入。請重新整理頁面，或改用 BYOM。",
+  RUNTIME_LOAD: "Browser runtime 無法載入。請檢查網路或 content blocker 後重試；Synthetic Showcase 仍可使用。",
+  MODEL_CONTRACT: "請選擇使用 images [1,3,1024,1024] 與 output0 [1,N,7] 的相容 ONNX。",
+  IMAGE_DECODE: "Browser 無法解碼影像。請改選 PNG、JPEG 或 WebP。",
+  INFERENCE_RUN: "推論未完成。請確認模型 contract、重新選擇影像後再試。",
+  OUTPUT_SCHEMA: "模型輸出不符合 output0 [1,N,7]。請改用相容的 end-to-end OBB export。",
+  RENDER_RESULT: "結果無法呈現。請重新載入 Synthetic Showcase，或重新執行 Detect。",
+});
+
 const CLASS_NAMES = [
   "plane", "ship", "storage tank", "baseball diamond", "tennis court",
   "basketball court", "ground track field", "harbor", "bridge", "large vehicle",
@@ -24,7 +39,9 @@ const fileLabel = document.getElementById("fileLabel");
 const confSlider = document.getElementById("confSlider");
 const confVal = document.getElementById("confVal");
 const classList = document.getElementById("classList");
+const showcaseBtn = document.getElementById("showcaseBtn");
 const detectBtn = document.getElementById("detectBtn");
+const runtimeRetryBtn = document.getElementById("runtimeRetryBtn");
 const statusEl = document.getElementById("status");
 const canvas = document.getElementById("canvas");
 const canvasFrame = document.getElementById("canvasFrame");
@@ -33,9 +50,16 @@ const resultsBody = document.getElementById("resultsBody");
 const summaryCount = document.getElementById("summaryCount");
 const summaryTop = document.getElementById("summaryTop");
 const runtimeValue = document.getElementById("runtimeValue");
+const modeBadge = document.getElementById("modeBadge");
+const provenanceValue = document.getElementById("provenanceValue");
+const resultTitle = document.getElementById("resultTitle");
+const MODEL_PROMPT_HTML = '選擇相容的 <code>.onnx</code> model';
+const IMAGE_PROMPT = "選擇或拖放一張影像";
 
-let session = null;
-let currentImage = null; // HTMLImageElement
+const state = {
+  mode: "none", phase: "idle", generation: 0,
+  session: null, image: null, cached: null, elapsedMs: null,
+};
 
 CLASS_NAMES.forEach((name, i) => {
   const label = document.createElement("label");
@@ -50,11 +74,33 @@ CLASS_NAMES.forEach((name, i) => {
 
 confSlider.addEventListener("input", () => {
   confVal.textContent = Number(confSlider.value).toFixed(2);
+  renderCachedOutput();
 });
+classList.addEventListener("change", renderCachedOutput);
 
 function setStatus(message, kind = "neutral") {
   statusEl.textContent = message;
   statusEl.dataset.kind = kind;
+  runtimeRetryBtn.hidden = true;
+}
+
+function reportFailure(code) {
+  const safe = Object.hasOwn(ERROR_COPY, code) ? code : "INFERENCE_RUN";
+  if (["INFERENCE_RUN", "OUTPUT_SCHEMA", "RENDER_RESULT"].includes(safe)) {
+    clearResultPresentation();
+  }
+  console.warn("[AERIAL_OBB:" + safe + "]");
+  setStatus(ERROR_COPY[safe], "error");
+  runtimeRetryBtn.hidden = safe !== "RUNTIME_LOAD";
+}
+
+function nextGeneration() {
+  state.generation += 1;
+  return state.generation;
+}
+
+function isCurrentGeneration(token) {
+  return token === state.generation;
 }
 
 function renderSummary(dets, elapsedMs = null) {
@@ -66,65 +112,199 @@ function renderSummary(dets, elapsedMs = null) {
 }
 
 function updateDetectEnabled() {
-  detectBtn.disabled = !(session && currentImage);
+  detectBtn.disabled = !(state.session && state.image);
+}
+
+function resetByomReadiness() {
+  modelInput.value = "";
+  fileInput.value = "";
+  modelLabel.innerHTML = MODEL_PROMPT_HTML;
+  fileLabel.textContent = IMAGE_PROMPT;
+}
+
+function loadOrtRuntime() {
+  if (globalThis.ort) return Promise.resolve(globalThis.ort);
+  if (ortPromise) return ortPromise;
+  ortPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = ORT_URL;
+    script.integrity = ORT_INTEGRITY;
+    script.crossOrigin = "anonymous";
+    script.onload = () => {
+      globalThis.ort.env.wasm.wasmPaths = ORT_WASM_BASE;
+      resolve(globalThis.ort);
+    };
+    script.onerror = () => {
+      script.remove();
+      ortPromise = null;
+      reject(new Error("RUNTIME_LOAD"));
+    };
+    document.head.appendChild(script);
+  });
+  return ortPromise;
 }
 
 async function releaseSession() {
-  if (session && typeof session.release === "function") await session.release();
-  session = null;
+  const current = state.session;
+  state.session = null;
+  if (current && typeof current.release === "function") await current.release();
 }
 
-async function loadModelFile(file) {
-  setStatus("正在載入 local ONNX model…", "running");
+function resetResult() {
+  state.cached = null;
+  state.elapsedMs = null;
+  resultsBody.innerHTML = "";
+  renderSummary([]);
+  modeBadge.textContent = "NO RESULT";
+  provenanceValue.textContent = "—";
+}
+
+function clearResultPresentation() {
+  canvasFrame.classList.remove("has-results");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (state.image) ctx.drawImage(state.image, 0, 0);
+  resetResult();
+}
+
+function decodeCachedOutput() {
+  if (!state.cached || !state.image) return [];
+  const classes = new Set(
+    Array.from(document.querySelectorAll(".class-cb:checked")).map((cb) => Number(cb.value))
+  );
+  const output = OBB.selectEndToEndOutput(state.cached.results);
+  const dets = OBB.decodeDetections(
+    output, state.cached.geometry, Number(confSlider.value), classes, CLASS_NAMES.length
+  );
+  return dets;
+}
+
+function renderCachedOutput() {
+  if (!state.cached || !state.image) return [];
+  let dets;
+  try {
+    dets = decodeCachedOutput();
+  } catch (_error) {
+    reportFailure("OUTPUT_SCHEMA");
+    return null;
+  }
+  try {
+    drawDetections(dets);
+    fillTable(dets);
+    renderSummary(dets, state.cached?.elapsedMs ?? null);
+  } catch (_error) {
+    reportFailure("RENDER_RESULT");
+    return null;
+  }
+  return dets;
+}
+
+function clearSyntheticResult() {
+  if (state.mode === "synthetic") state.image = null;
+  state.mode = "byom";
+  state.phase = "idle";
+  state.cached = null;
+  state.elapsedMs = null;
+  canvasFrame.classList.remove("has-results");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  resetResult();
+}
+
+function validateSessionContract(candidate) {
+  if (
+    !candidate?.inputNames?.includes("images") ||
+    !candidate?.outputNames?.includes("output0")
+  ) {
+    throw new Error("SESSION_CONTRACT");
+  }
+}
+
+async function replaceModelSession(file, generation) {
+  const runtime = await loadOrtRuntime();
+  if (!isCurrentGeneration(generation)) return false;
   const modelBytes = new Uint8Array(await file.arrayBuffer());
-  const nextSession = await ort.InferenceSession.create(modelBytes, {
+  if (!isCurrentGeneration(generation)) return false;
+  const candidate = await runtime.InferenceSession.create(modelBytes, {
     executionProviders: ["wasm"],
   });
-  await releaseSession();
-  session = nextSession;
-  modelLabel.textContent = file.name;
-  setStatus("Model ready · 請選擇影像。", "success");
-  updateDetectEnabled();
+  if (!isCurrentGeneration(generation)) {
+    if (typeof candidate.release === "function") await candidate.release();
+    if (!isCurrentGeneration(generation)) return false;
+  }
+
+  try {
+    validateSessionContract(candidate);
+  } catch (_error) {
+    if (typeof candidate.release === "function") await candidate.release();
+    if (!isCurrentGeneration(generation)) return false;
+    throw new Error("MODEL_CONTRACT");
+  }
+
+  const previous = state.session;
+  state.session = candidate;
+  modelLabel.textContent = "Local ONNX model ready";
+  if (previous && typeof previous.release === "function") {
+    await previous.release();
+    if (!isCurrentGeneration(generation)) return false;
+  }
+  return true;
 }
 
-modelInput.addEventListener("change", async () => {
-  const file = modelInput.files[0];
+async function handleModelSelection(file) {
   if (!file) return;
+  const generation = nextGeneration();
+  clearSyntheticResult();
   detectBtn.disabled = true;
+  setStatus("正在載入 local ONNX model…", "running");
   try {
-    await loadModelFile(file);
-  } catch (_error) {
-    await releaseSession();
-    console.warn("Model load failed: incompatible local ONNX input.");
-    modelLabel.textContent = "選擇相容的 .onnx model";
-    setStatus("模型載入失敗，請確認 ONNX 格式與 output contract。", "error");
+    const assigned = await replaceModelSession(file, generation);
+    if (!isCurrentGeneration(generation) || !assigned) return;
+    setStatus("Model ready · 請選擇影像。", "success");
+    updateDetectEnabled();
+  } catch (error) {
+    if (!isCurrentGeneration(generation)) return;
+    reportFailure(error?.message === "RUNTIME_LOAD" ? "RUNTIME_LOAD" : "MODEL_CONTRACT");
     updateDetectEnabled();
   }
+}
+
+modelInput.addEventListener("change", () => {
+  void handleModelSelection(modelInput.files[0]);
 });
 
-function loadImageFile(file) {
+runtimeRetryBtn.addEventListener("click", () => {
+  void handleModelSelection(modelInput.files[0]);
+});
+
+async function loadImageFile(file) {
+  const generation = nextGeneration();
+  clearSyntheticResult();
+  state.image = null;
+  updateDetectEnabled();
+  setStatus("正在解碼 local image…", "running");
   const url = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = () => {
-    currentImage = img;
+  try {
+    const img = await loadImageUrl(url);
+    if (!isCurrentGeneration(generation)) return;
+    state.image = img;
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     ctx.drawImage(img, 0, 0);
     updateDetectEnabled();
-    fileLabel.textContent = file.name;
-    resultsBody.innerHTML = "";
-    renderSummary([]);
+    fileLabel.textContent = "Local image ready";
     setStatus(
-      session ? "影像已載入 · 可以開始 Detect。" : "影像已載入 · 請選擇 ONNX model。",
-      session ? "success" : "neutral",
+      state.session ? "影像已載入 · 可以開始 Detect。" : "影像已載入 · 請選擇 ONNX model。",
+      state.session ? "success" : "neutral",
     );
+  } catch (_error) {
+    if (!isCurrentGeneration(generation)) return;
+    reportFailure("IMAGE_DECODE");
+  } finally {
     URL.revokeObjectURL(url);
-  };
-  img.src = url;
+  }
 }
 
 fileInput.addEventListener("change", () => {
-  if (fileInput.files[0]) loadImageFile(fileInput.files[0]);
+  if (fileInput.files[0]) void loadImageFile(fileInput.files[0]);
 });
 ["dragenter", "dragover"].forEach((evt) =>
   fileDrop.addEventListener(evt, (e) => {
@@ -140,7 +320,7 @@ fileInput.addEventListener("change", () => {
 );
 fileDrop.addEventListener("drop", (e) => {
   const file = e.dataTransfer.files[0];
-  if (file) loadImageFile(file);
+  if (file) void loadImageFile(file);
 });
 
 // Letterbox `img` into an IMGSZxIMGSZ canvas, gray-padded, centered.
@@ -174,7 +354,7 @@ function preprocess(img) {
 
 function drawDetections(dets) {
   canvasFrame.classList.remove("has-results");
-  ctx.drawImage(currentImage, 0, 0);
+  ctx.drawImage(state.image, 0, 0);
   ctx.lineWidth = Math.max(2, canvas.width / 500);
 
   for (const d of dets) {
@@ -204,43 +384,96 @@ function fillTable(dets) {
 }
 
 detectBtn.addEventListener("click", async () => {
-  if (!currentImage || !session) return;
+  if (!state.image || !state.session) return;
+  const generation = nextGeneration();
+  const image = state.image;
+  const session = state.session;
   detectBtn.disabled = true;
   try {
-    setStatus("正在準備 1024px RGB CHW input…", "running");
-    const { chw, geometry } = preprocess(currentImage);
-    const tensor = new ort.Tensor("float32", chw, [1, 3, IMGSZ, IMGSZ]);
+    let geometry;
+    let results;
+    let t0;
+    try {
+      setStatus("正在準備 1024px RGB CHW input…", "running");
+      const prepared = preprocess(image);
+      geometry = prepared.geometry;
+      const tensor = new ort.Tensor("float32", prepared.chw, [1, 3, IMGSZ, IMGSZ]);
 
-    setStatus("正在本機 browser 執行 inference…", "running");
-    const t0 = performance.now();
-    const feeds = { images: tensor };
-    const results = await session.run(feeds);
-    const output = OBB.selectEndToEndOutput(results);
+      setStatus("正在本機 browser 執行 inference…", "running");
+      t0 = performance.now();
+      const feeds = { images: tensor };
+      results = await session.run(feeds);
+      if (!isCurrentGeneration(generation)) return;
+    } catch (_error) {
+      if (!isCurrentGeneration(generation)) return;
+      reportFailure("INFERENCE_RUN");
+      return;
+    }
     const elapsedMs = performance.now() - t0;
-
-    const confThresh = Number(confSlider.value);
-    const classMask = new Set(
-      Array.from(document.querySelectorAll(".class-cb:checked")).map((cb) => Number(cb.value))
-    );
-    const dets = OBB.decodeDetections(
-      output,
-      geometry,
-      confThresh,
-      classMask,
-      CLASS_NAMES.length,
-    );
-
-    drawDetections(dets);
-    fillTable(dets);
-    renderSummary(dets, elapsedMs);
+    state.cached = { results, geometry, provenance: "Local files", elapsedMs };
+    state.elapsedMs = elapsedMs;
+    state.phase = "result";
+    modeBadge.textContent = "BYOM · LOCAL BROWSER INFERENCE";
+    provenanceValue.textContent = state.cached.provenance;
+    const dets = renderCachedOutput();
+    if (dets === null) return;
     setStatus(
       dets.length ? `完成 · ${dets.length} 個 detections` : "完成 · 沒有符合條件的 detections",
       "success",
     );
-  } catch (_error) {
-    console.warn("Inference failed: incompatible model input or output contract.");
-    setStatus("Inference 失敗，請確認模型使用 images input 與 output0 [1,N,7]。", "error");
   } finally {
-    updateDetectEnabled();
+    if (isCurrentGeneration(generation)) updateDetectEnabled();
   }
+});
+
+function loadImageUrl(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("SHOWCASE_ASSET"));
+    image.src = url;
+  });
+}
+
+async function activateShowcase() {
+  const generation = nextGeneration();
+  state.phase = "loading";
+  detectBtn.disabled = true;
+  resetByomReadiness();
+  setStatus("正在載入 Synthetic Showcase…", "running");
+  try {
+    await releaseSession();
+    if (!isCurrentGeneration(generation)) return;
+    state.image = null;
+    canvasFrame.classList.remove("has-results");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    resetResult();
+    const image = await loadImageUrl(OBB_SHOWCASE.imageUrl);
+    if (!isCurrentGeneration(generation)) return;
+    state.mode = "synthetic";
+    state.phase = "result";
+    state.image = image;
+    state.cached = {
+      results: OBB_SHOWCASE.results,
+      geometry: OBB.letterboxGeometry(400, 200, 1024),
+      provenance: OBB_SHOWCASE.provenance,
+      elapsedMs: null,
+    };
+    modeBadge.textContent = "SYNTHETIC FIXTURE · NO INFERENCE";
+    provenanceValue.textContent = OBB_SHOWCASE.provenance;
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    if (renderCachedOutput() === null) return;
+    runtimeValue.textContent = "N/A · no inference";
+    resultTitle.focus();
+    setStatus("Synthetic fixture 已載入 · 沒有執行模型推論。", "success");
+  } catch (_error) {
+    if (!isCurrentGeneration(generation)) return;
+    state.phase = "error";
+    reportFailure("SHOWCASE_ASSET");
+  }
+}
+
+showcaseBtn.addEventListener("click", () => {
+  void activateShowcase();
 });

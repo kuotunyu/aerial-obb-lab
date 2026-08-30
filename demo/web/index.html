@@ -6,11 +6,6 @@
   <meta name="color-scheme" content="light" />
   <title>Aerial OBB Lab · Browser-native rotated detection</title>
   <link rel="stylesheet" href="style.css" />
-  <script
-    src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
-    integrity="sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
-    crossorigin="anonymous"
-  ></script>
 </head>
 <body>
 <div class="page-shell">
@@ -26,6 +21,11 @@
     </ul>
   </header>
 
+  <section id="claimBoundary" class="claim-boundary" aria-labelledby="claimTitle">
+    <h2 id="claimTitle">Synthetic Showcase — 沒有執行模型推論</h2>
+    <p>此展示使用本 repository 提交的 synthetic SVG 與固定 output，僅驗證 UI、decode、filter、rotated-corner 計算與 rendering。它不是 accuracy、evaluation 或 latency evidence。實際推論請使用 BYOM，自行提供相容 ONNX model 與影像。</p>
+  </section>
+
   <main>
     <section id="workbench" class="workbench" aria-label="OBB inference workbench">
       <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
@@ -33,6 +33,8 @@
           <h2 id="controlsTitle">輸入與設定</h2>
           <p>選好 ONNX model 與航拍影像後，再明確執行 Detect。</p>
         </div>
+
+        <button id="showcaseBtn" type="button" aria-describedby="claimTitle">載入 Synthetic Showcase</button>
 
         <div class="file-stack">
           <label class="file-control model-picker" id="modelDrop" for="modelInput">
@@ -76,6 +78,9 @@
           <p id="status" class="status" role="status" aria-live="polite">
             等待 local ONNX model 與影像。
           </p>
+          <button id="runtimeRetryBtn" class="runtime-retry" type="button" hidden>
+            重試載入 Browser runtime
+          </button>
           <button id="detectBtn" type="button" disabled>開始 Detect</button>
         </div>
       </aside>
@@ -83,7 +88,7 @@
       <section id="resultWorkspace" class="result-workspace" aria-labelledby="resultTitle">
         <div class="result-heading">
           <div>
-            <h2 id="resultTitle">Detection result</h2>
+            <h2 id="resultTitle" tabindex="-1">Detection result</h2>
             <p>Rotated polygons 保留在影像上，完整數值列於下方。</p>
           </div>
           <dl class="result-summary" aria-label="Detection summary">
@@ -98,6 +103,14 @@
             <div>
               <dt>本次 browser 執行</dt>
               <dd id="runtimeValue">—</dd>
+            </div>
+            <div class="mode-entry">
+              <dt>Mode</dt>
+              <dd id="modeBadge">NO RESULT</dd>
+            </div>
+            <div class="mode-entry">
+              <dt>Provenance</dt>
+              <dd id="provenanceValue">—</dd>
             </div>
           </dl>
         </div>
@@ -131,6 +144,11 @@
     </section>
   </main>
 
+  <nav class="source-links" aria-label="Project links">
+    <a href="https://github.com/kuotunyu/aerial-obb-lab">Source</a>
+    <a href="https://github.com/kuotunyu/aerial-obb-lab/blob/main/LICENSE">AGPL-3.0-or-later</a>
+  </nav>
+
   <footer>
     <span>BYOM · <code>output0 [1,N,7]</code></span>
     <span>Local browser processing</span>
@@ -138,6 +156,7 @@
   </footer>
 </div>
 <script src="obb.js"></script>
+<script src="showcase-fixture.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..", "..");
 const OBB = require(path.join(root, "demo", "web", "obb.js"));
+const OBB_SHOWCASE = require(path.join(root, "demo", "web", "showcase-fixture.js"));
 const fixture = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 
 const geometry = OBB.letterboxGeometry(
@@ -22,6 +23,21 @@ const detections = OBB.decodeDetections(
   decode.class_count,
 );
 const corners = OBB.rotatedCorners(detections[0]);
+
+const showcaseGeometry = OBB.letterboxGeometry(
+  OBB_SHOWCASE.imageWidth,
+  OBB_SHOWCASE.imageHeight,
+  OBB_SHOWCASE.targetSize,
+);
+const showcaseOutput = OBB.selectEndToEndOutput(OBB_SHOWCASE.results);
+const showcaseDetections = OBB.decodeDetections(
+  showcaseOutput,
+  showcaseGeometry,
+  decode.confidence,
+  new Set(decode.class_ids),
+  decode.class_count,
+);
+const showcaseCorners = OBB.rotatedCorners(showcaseDetections[0]);
 
 const schema = fixture.output_schema;
 const validOutput = OBB.selectEndToEndOutput({
@@ -67,6 +83,8 @@ process.stdout.write(JSON.stringify({
   chw,
   detections,
   corners,
+  showcaseDetections,
+  showcaseCorners,
   validOutputLength: validOutput.length,
   schemaErrors,
   invalidErrors,
