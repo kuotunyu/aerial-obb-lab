@@ -27,8 +27,9 @@ REQUIRED_FILES = (
     "fixtures/showcase.svg",
     "fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "fonts/IBM-Plex-OFL.txt",
+    "README.md",
 )
-ALLOWED_FILES = frozenset((*REQUIRED_FILES, "README.md"))
+ALLOWED_FILES = frozenset(REQUIRED_FILES)
 ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts"))
 FONT_PATH = "fonts/IBMPlexSansCondensed-SemiBold.woff2"
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".svg", ".txt"}
@@ -100,6 +101,10 @@ ORT_INTEGRITY = (
     "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
 )
 REVIEWED_ASSET_DIGESTS = {
+    "README.md": (
+        "583c7dba289ff12f823139c8b8585d9c810432961fa81f95da84ee6eddcdc966",
+        "reviewed README bytes differ",
+    ),
     "index.html": (
         "770c6e060aaa3f45ddb31fef78103e8eea74b3312ae9b87531f49644685c7301",
         "reviewed HTML bytes differ",

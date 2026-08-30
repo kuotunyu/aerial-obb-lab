@@ -83,6 +83,7 @@ def test_pages_tree_rejects_symlinks(tmp_path: Path) -> None:
         "fixtures/showcase.svg",
         "fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "fonts/IBM-Plex-OFL.txt",
+        "README.md",
     ),
 )
 def test_pages_tree_rejects_required_file_absence(tmp_path: Path, relative: str) -> None:
@@ -262,6 +263,19 @@ def test_pages_tree_rejects_unreviewed_runtime_capable_files(
     (site / relative).write_text(payload, encoding="utf-8")
 
     assert f"{relative}: unexpected Pages file" in verify_pages_tree(site)
+
+
+def test_pages_tree_rejects_disguised_readme_content_substitution(
+    tmp_path: Path,
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    (site / "README.md").write_text(
+        "# Geometry notes\n\n"
+        "sample = [[91, 72, 18, 9, 0.42], [144, 83, 20, 7, 1.17]]\n",
+        encoding="utf-8",
+    )
+
+    assert "README.md: reviewed README bytes differ" in verify_pages_tree(site)
 
 
 @pytest.mark.parametrize(
