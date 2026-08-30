@@ -13,6 +13,7 @@ from contextlib import contextmanager, nullcontext
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import re
 import sys
 from threading import Thread
 from typing import Iterator
@@ -451,7 +452,20 @@ def run_smoke(
                 raise RuntimeError("confidence changes must re-filter cached showcase output")
             if page.locator("#summaryCount").inner_text() != "0":
                 raise RuntimeError("cached showcase re-filter must update the summary")
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic confidence refilter lost no-inference runtime")
             page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic confidence restore lost no-inference runtime")
+            plane = page.locator('.class-cb[value="0"]')
+            plane.check()
+            if page.locator("#resultsBody tr").count() != 0:
+                raise RuntimeError("synthetic class refilter did not hide the fixture row")
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic class refilter lost no-inference runtime")
+            plane.uncheck()
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic class restore lost no-inference runtime")
 
             page.locator("#modelInput").set_input_files(
                 files=[
@@ -588,6 +602,17 @@ def run_smoke(
                 raise RuntimeError("result viewport has no authored completion reveal state")
             if page.evaluate("globalThis.__obbFillTextCalls") != 0:
                 raise RuntimeError("dense result labels must not be drawn on the canvas")
+            byom_runtime = page.locator("#runtimeValue").inner_text()
+            if not re.fullmatch(r"\d+ ms", byom_runtime):
+                raise RuntimeError(f"BYOM runtime is not numeric: {byom_runtime!r}")
+            page.locator("#confSlider").evaluate(
+                "slider => { slider.value = '0.95'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
+            )
+            if page.locator("#runtimeValue").inner_text() != byom_runtime:
+                raise RuntimeError("BYOM confidence refilter changed measured runtime")
+            page.locator("#confSlider").evaluate(
+                "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
+            )
 
             for failure_flag, failure_code in (
                 ("__failInferenceRun", "INFERENCE_RUN"),
@@ -889,7 +914,30 @@ def run_smoke(
             showcase_page = browser.new_page(viewport={"width": 1200, "height": 800})
             showcase_messages: list[str] = []
             showcase_request_count = 0
+            showcase_ort_request_count = 0
             try:
+                showcase_page.add_init_script(
+                    """
+                    (() => {
+                      const source = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
+                      let fixtureLoad = 0;
+                      Object.defineProperty(HTMLImageElement.prototype, "src", {
+                        configurable: true,
+                        enumerable: source.enumerable,
+                        get() { return source.get.call(this); },
+                        set(value) {
+                          const url = new URL(value, location.href);
+                          if (url.pathname.endsWith("/fixtures/showcase.svg")) {
+                            url.searchParams.set("smoke-showcase-load", String(++fixtureLoad));
+                            source.set.call(this, url.href);
+                            return;
+                          }
+                          source.set.call(this, value);
+                        },
+                      });
+                    })();
+                    """
+                )
                 showcase_page.on(
                     "console", lambda message: showcase_messages.append(message.text)
                 )
@@ -900,24 +948,48 @@ def run_smoke(
                 def flaky_showcase(route: Route) -> None:
                     nonlocal showcase_request_count
                     showcase_request_count += 1
-                    if showcase_request_count == 1:
+                    if showcase_request_count == 2:
                         route.abort("failed")
                     else:
                         route.continue_()
 
-                showcase_page.route("**/fixtures/showcase.svg", flaky_showcase)
+                def count_showcase_ort(route: Route) -> None:
+                    nonlocal showcase_ort_request_count
+                    showcase_ort_request_count += 1
+                    route.abort("failed")
+
+                showcase_page.route("**/fixtures/showcase.svg*", flaky_showcase)
+                showcase_page.route(ORT_CDN_URL, count_showcase_ort)
                 showcase_page.goto(entry_url, wait_until="networkidle")
+                showcase_page.locator("#showcaseBtn").click()
+                showcase_page.wait_for_function(
+                    "document.querySelector('#status').textContent.includes('Synthetic fixture')"
+                )
+                if showcase_page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                    raise RuntimeError("initial flaky showcase result lost no-inference runtime")
                 showcase_page.locator("#showcaseBtn").click()
                 showcase_page.wait_for_function(
                     "document.querySelector('#status').dataset.kind === 'error'"
                 )
                 assert_fixed_failure(showcase_page, showcase_messages, "SHOWCASE_ASSET")
+                if showcase_page.locator("#runtimeValue").inner_text() != "—":
+                    raise RuntimeError("synthetic asset failure did not clear runtime before retry")
+                if showcase_page.locator("#resultsBody tr").count() != 0:
+                    raise RuntimeError("synthetic asset failure left stale result rows")
+                if not showcase_page.locator("#canvas").evaluate(
+                    "canvas => canvas.getContext('2d').getImageData(200, 100, 1, 1).data[3] === 0"
+                ):
+                    raise RuntimeError("synthetic asset failure left stale canvas pixels")
+                if showcase_ort_request_count != 0:
+                    raise RuntimeError("synthetic retry requested ORT")
                 showcase_page.locator("#showcaseBtn").click()
                 showcase_page.wait_for_function(
                     "document.querySelector('#status').textContent.includes('Synthetic fixture')"
                 )
-                if showcase_request_count != 2:
-                    raise RuntimeError("showcase recovery did not reload its fixture once")
+                if showcase_page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                    raise RuntimeError("synthetic retry did not restore no-inference runtime")
+                if showcase_request_count != 3:
+                    raise RuntimeError("showcase retry did not issue exactly three fixture requests")
             finally:
                 showcase_page.close()
         finally:

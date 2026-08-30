@@ -108,7 +108,13 @@ function renderSummary(dets, elapsedMs = null) {
   summaryTop.textContent = dets.length
     ? Math.max(...dets.map((d) => d.conf)).toFixed(3)
     : "—";
-  runtimeValue.textContent = elapsedMs === null ? "—" : `${Math.round(elapsedMs)} ms`;
+  const activeSyntheticResult =
+    state.mode === "synthetic" && state.phase === "result" && state.cached !== null;
+  runtimeValue.textContent = activeSyntheticResult
+    ? "N/A · no inference"
+    : state.mode === "byom" && Number.isFinite(elapsedMs)
+      ? `${Math.round(elapsedMs)} ms`
+      : "—";
 }
 
 function updateDetectEnabled() {
