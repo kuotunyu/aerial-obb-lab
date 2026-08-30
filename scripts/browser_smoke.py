@@ -147,6 +147,17 @@ def run_smoke(
             if page.locator("h1").count() != 1:
                 raise RuntimeError("browser workbench must contain exactly one h1")
 
+            notice = page.locator("#claimBoundary")
+            control = page.locator("#showcaseBtn")
+            assert notice.count() == 1 and control.count() == 1
+            assert "沒有執行模型推論" in notice.inner_text()
+            assert notice.evaluate(
+                "(notice, control) => Boolean(notice.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING)",
+                control.element_handle(),
+            )
+            notice_box, control_box = notice.bounding_box(), control.bounding_box()
+            assert notice_box and control_box and notice_box["y"] < control_box["y"]
+
             body_size = page.locator("body").evaluate("el => getComputedStyle(el).fontSize")
             title_size = page.locator("h1").evaluate("el => getComputedStyle(el).fontSize")
             title_family = page.locator("h1").evaluate(

@@ -26,6 +26,11 @@
     </ul>
   </header>
 
+  <section id="claimBoundary" class="claim-boundary" aria-labelledby="claimTitle">
+    <h2 id="claimTitle">Synthetic Showcase — 沒有執行模型推論</h2>
+    <p>此展示使用本 repository 提交的 synthetic SVG 與固定 output，僅驗證 UI、decode、filter、rotated-corner 計算與 rendering。它不是 accuracy、evaluation 或 latency evidence。實際推論請使用 BYOM，自行提供相容 ONNX model 與影像。</p>
+  </section>
+
   <main>
     <section id="workbench" class="workbench" aria-label="OBB inference workbench">
       <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
@@ -33,6 +38,8 @@
           <h2 id="controlsTitle">輸入與設定</h2>
           <p>選好 ONNX model 與航拍影像後，再明確執行 Detect。</p>
         </div>
+
+        <button id="showcaseBtn" type="button" aria-describedby="claimTitle">載入 Synthetic Showcase</button>
 
         <div class="file-stack">
           <label class="file-control model-picker" id="modelDrop" for="modelInput">
@@ -99,6 +106,14 @@
               <dt>本次 browser 執行</dt>
               <dd id="runtimeValue">—</dd>
             </div>
+            <div class="mode-entry">
+              <dt>Mode</dt>
+              <dd id="modeBadge">BYOM</dd>
+            </div>
+            <div class="mode-entry">
+              <dt>Provenance</dt>
+              <dd id="provenanceValue">Local files</dd>
+            </div>
           </dl>
         </div>
 
@@ -130,6 +145,11 @@
       </section>
     </section>
   </main>
+
+  <nav class="source-links" aria-label="Project links">
+    <a href="https://github.com/kuotunyu/aerial-obb-lab">Source</a>
+    <a href="https://github.com/kuotunyu/aerial-obb-lab/blob/main/LICENSE">AGPL-3.0-or-later</a>
+  </nav>
 
   <footer>
     <span>BYOM · <code>output0 [1,N,7]</code></span>
