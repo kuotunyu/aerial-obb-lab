@@ -2,7 +2,7 @@
 
 - **Date:** 2026-08-31
 - **Repository:** `kuotunyu/aerial-obb-lab`
-- **Status:** Design approved by the owner-delegated Technical Lead; written spec pending final review
+- **Status:** Approved for implementation planning
 - **Target:** GitHub Pages project site published from `demo/web`
 
 ## Context
