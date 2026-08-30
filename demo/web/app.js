@@ -113,6 +113,8 @@ function clearSyntheticResult() {
   state.phase = "idle";
   state.cached = null;
   state.elapsedMs = null;
+  canvasFrame.classList.remove("has-results");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   resetResult();
 }
 

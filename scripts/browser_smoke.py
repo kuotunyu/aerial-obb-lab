@@ -338,6 +338,13 @@ def run_smoke(
                 raise RuntimeError("BYOM selection must clear synthetic mode state")
             if page.locator("#provenanceValue").inner_text() != "—":
                 raise RuntimeError("BYOM selection must clear synthetic provenance")
+            canvas_is_clear = page.locator("#canvas").evaluate(
+                "canvas => canvas.getContext('2d').getImageData(200, 100, 1, 1).data[3] === 0"
+            )
+            if not canvas_is_clear or page.locator("#canvasFrame").evaluate(
+                "el => el.classList.contains('has-results')"
+            ):
+                raise RuntimeError("BYOM selection must clear the synthetic canvas result")
             if not page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("Detect must remain disabled until an image is selected")
             page.locator("#fileInput").set_input_files(str(FIXTURE))
