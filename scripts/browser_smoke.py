@@ -28,7 +28,7 @@ ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7
 ORT_STUB = r"""
 globalThis.__ortCreateCount = 0;
 globalThis.__ortReleaseCount = 0;
-globalThis.__ortReleaseLabels = [];
+globalThis.__ortActiveSessionIdsAtRelease = [];
 globalThis.__ortRunSessionIds = [];
 globalThis.ort = {
   env: { wasm: {} },
@@ -53,14 +53,15 @@ globalThis.ort = {
       }
       let released = false;
       return {
+        __sessionId: sessionId,
         inputNames: ["images"],
         outputNames: modelBytes[0] === 1 ? ["unexpected"] : ["output0"],
         release: async () => {
           if (released) throw new Error("session released twice");
           released = true;
           globalThis.__ortReleaseCount += 1;
-          globalThis.__ortReleaseLabels.push(
-            document.querySelector("#modelLabel").textContent
+          globalThis.__ortActiveSessionIdsAtRelease.push(
+            state.session?.__sessionId ?? null
           );
         },
         run: async () => {
@@ -134,6 +135,7 @@ def run_smoke(
         raise RuntimeError("Playwright is required; run the locked development environment") from exc
 
     browser_errors: list[str] = []
+    browser_messages: list[str] = []
     requested_urls: list[str] = []
     server = nullcontext(base_url) if base_url else static_server()
     with server as served_url, sync_playwright() as playwright:
@@ -178,6 +180,7 @@ def run_smoke(
             )
             page.on("request", lambda request: requested_urls.append(request.url))
             page.on("pageerror", lambda error: browser_errors.append(str(error)))
+            page.on("console", lambda message: browser_messages.append(message.text))
             page.on(
                 "console",
                 lambda message: browser_errors.append(message.text)
@@ -362,7 +365,7 @@ def run_smoke(
             page.locator("#modelInput").set_input_files(
                 files=[
                     {
-                        "name": "synthetic-model.onnx",
+                        "name": "customer-alpha-private-model.onnx",
                         "mimeType": "application/octet-stream",
                         "buffer": b"synthetic-not-a-real-model",
                     }
@@ -379,6 +382,14 @@ def run_smoke(
                     "model selection did not reach success state; "
                     f"status={current_status!r}; browser_errors={browser_errors!r}"
                 ) from exc
+            sensitive_model_name = "customer-alpha-private-model.onnx"
+            visible_and_console = " | ".join(
+                [page.locator("body").inner_text(), *browser_messages]
+            )
+            if sensitive_model_name in visible_and_console:
+                raise RuntimeError("successful model selection exposed a local filename")
+            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
+                raise RuntimeError("successful model selection must use fixed neutral copy")
             if requested_urls.count(ORT_CDN_URL) != 1:
                 raise RuntimeError(
                     "first BYOM model selection must request ORT exactly once; "
@@ -461,13 +472,13 @@ def run_smoke(
                 ]
             )
             page.wait_for_function(
-                "document.querySelector('#modelLabel').textContent === 'replacement.onnx'"
+                "globalThis.__ortCreateCount === 2 && globalThis.__ortReleaseCount === 1"
             )
             if requested_urls.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("cached ORT loader must not request the runtime twice")
             if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [2, 1]:
                 raise RuntimeError("validated replacement must release exactly the previous session")
-            if page.evaluate("globalThis.__ortReleaseLabels") != ["replacement.onnx"]:
+            if page.evaluate("globalThis.__ortActiveSessionIdsAtRelease") != [2]:
                 raise RuntimeError("previous session was released before replacement assignment")
 
             page.locator("#modelInput").set_input_files(
@@ -482,8 +493,8 @@ def run_smoke(
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'error'"
             )
-            if page.locator("#modelLabel").inner_text() != "replacement.onnx":
-                raise RuntimeError("invalid candidate changed the visible active-model label")
+            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
+                raise RuntimeError("invalid candidate changed the neutral active-model label")
             if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [3, 2]:
                 raise RuntimeError("invalid candidate was not released while preserving the active session")
             page.locator("#detectBtn").click()
@@ -509,8 +520,8 @@ def run_smoke(
             page.wait_for_function(
                 "globalThis.__ortCreateCount === 4 && globalThis.__ortReleaseCount === 4"
             )
-            if page.locator("#modelLabel").inner_text() != "replacement.onnx":
-                raise RuntimeError("stale candidate changed the visible active-model label")
+            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
+                raise RuntimeError("stale candidate changed the neutral active-model label")
             if requested_urls.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("session lifecycle changes must reuse the cached ORT runtime")
             if screenshot is not None:

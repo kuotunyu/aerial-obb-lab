@@ -174,7 +174,7 @@ async function replaceModelSession(file, generation) {
 
   const previous = state.session;
   state.session = candidate;
-  modelLabel.textContent = file.name;
+  modelLabel.textContent = "Local ONNX model ready";
   if (previous && typeof previous.release === "function") await previous.release();
   return true;
 }
