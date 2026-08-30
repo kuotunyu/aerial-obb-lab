@@ -24,6 +24,7 @@ const fileLabel = document.getElementById("fileLabel");
 const confSlider = document.getElementById("confSlider");
 const confVal = document.getElementById("confVal");
 const classList = document.getElementById("classList");
+const showcaseBtn = document.getElementById("showcaseBtn");
 const detectBtn = document.getElementById("detectBtn");
 const statusEl = document.getElementById("status");
 const canvas = document.getElementById("canvas");
@@ -33,9 +34,14 @@ const resultsBody = document.getElementById("resultsBody");
 const summaryCount = document.getElementById("summaryCount");
 const summaryTop = document.getElementById("summaryTop");
 const runtimeValue = document.getElementById("runtimeValue");
+const modeBadge = document.getElementById("modeBadge");
+const provenanceValue = document.getElementById("provenanceValue");
+const resultTitle = document.getElementById("resultTitle");
 
-let session = null;
-let currentImage = null; // HTMLImageElement
+const state = {
+  mode: "none", phase: "idle", generation: 0,
+  session: null, image: null, cached: null, elapsedMs: null,
+};
 
 CLASS_NAMES.forEach((name, i) => {
   const label = document.createElement("label");
@@ -50,7 +56,9 @@ CLASS_NAMES.forEach((name, i) => {
 
 confSlider.addEventListener("input", () => {
   confVal.textContent = Number(confSlider.value).toFixed(2);
+  renderCachedOutput();
 });
+classList.addEventListener("change", renderCachedOutput);
 
 function setStatus(message, kind = "neutral") {
   statusEl.textContent = message;
@@ -66,12 +74,46 @@ function renderSummary(dets, elapsedMs = null) {
 }
 
 function updateDetectEnabled() {
-  detectBtn.disabled = !(session && currentImage);
+  detectBtn.disabled = !(state.session && state.image);
 }
 
 async function releaseSession() {
-  if (session && typeof session.release === "function") await session.release();
-  session = null;
+  const current = state.session;
+  state.session = null;
+  if (current && typeof current.release === "function") await current.release();
+}
+
+function resetResult() {
+  state.cached = null;
+  state.elapsedMs = null;
+  resultsBody.innerHTML = "";
+  renderSummary([]);
+  modeBadge.textContent = "NO RESULT";
+  provenanceValue.textContent = "—";
+}
+
+function renderCachedOutput() {
+  if (!state.cached || !state.image) return [];
+  const classes = new Set(
+    Array.from(document.querySelectorAll(".class-cb:checked")).map((cb) => Number(cb.value))
+  );
+  const output = OBB.selectEndToEndOutput(state.cached.results);
+  const dets = OBB.decodeDetections(
+    output, state.cached.geometry, Number(confSlider.value), classes, CLASS_NAMES.length
+  );
+  drawDetections(dets);
+  fillTable(dets);
+  renderSummary(dets, state.cached.elapsedMs);
+  return dets;
+}
+
+function clearSyntheticResult() {
+  if (state.mode === "synthetic") state.image = null;
+  state.mode = "byom";
+  state.phase = "idle";
+  state.cached = null;
+  state.elapsedMs = null;
+  resetResult();
 }
 
 async function loadModelFile(file) {
@@ -81,7 +123,7 @@ async function loadModelFile(file) {
     executionProviders: ["wasm"],
   });
   await releaseSession();
-  session = nextSession;
+  state.session = nextSession;
   modelLabel.textContent = file.name;
   setStatus("Model ready · 請選擇影像。", "success");
   updateDetectEnabled();
@@ -90,6 +132,7 @@ async function loadModelFile(file) {
 modelInput.addEventListener("change", async () => {
   const file = modelInput.files[0];
   if (!file) return;
+  clearSyntheticResult();
   detectBtn.disabled = true;
   try {
     await loadModelFile(file);
@@ -103,20 +146,19 @@ modelInput.addEventListener("change", async () => {
 });
 
 function loadImageFile(file) {
+  clearSyntheticResult();
   const url = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
-    currentImage = img;
+    state.image = img;
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     ctx.drawImage(img, 0, 0);
     updateDetectEnabled();
     fileLabel.textContent = file.name;
-    resultsBody.innerHTML = "";
-    renderSummary([]);
     setStatus(
-      session ? "影像已載入 · 可以開始 Detect。" : "影像已載入 · 請選擇 ONNX model。",
-      session ? "success" : "neutral",
+      state.session ? "影像已載入 · 可以開始 Detect。" : "影像已載入 · 請選擇 ONNX model。",
+      state.session ? "success" : "neutral",
     );
     URL.revokeObjectURL(url);
   };
@@ -174,7 +216,7 @@ function preprocess(img) {
 
 function drawDetections(dets) {
   canvasFrame.classList.remove("has-results");
-  ctx.drawImage(currentImage, 0, 0);
+  ctx.drawImage(state.image, 0, 0);
   ctx.lineWidth = Math.max(2, canvas.width / 500);
 
   for (const d of dets) {
@@ -204,35 +246,22 @@ function fillTable(dets) {
 }
 
 detectBtn.addEventListener("click", async () => {
-  if (!currentImage || !session) return;
+  if (!state.image || !state.session) return;
   detectBtn.disabled = true;
   try {
     setStatus("正在準備 1024px RGB CHW input…", "running");
-    const { chw, geometry } = preprocess(currentImage);
+    const { chw, geometry } = preprocess(state.image);
     const tensor = new ort.Tensor("float32", chw, [1, 3, IMGSZ, IMGSZ]);
 
     setStatus("正在本機 browser 執行 inference…", "running");
     const t0 = performance.now();
     const feeds = { images: tensor };
-    const results = await session.run(feeds);
-    const output = OBB.selectEndToEndOutput(results);
+    const results = await state.session.run(feeds);
     const elapsedMs = performance.now() - t0;
-
-    const confThresh = Number(confSlider.value);
-    const classMask = new Set(
-      Array.from(document.querySelectorAll(".class-cb:checked")).map((cb) => Number(cb.value))
-    );
-    const dets = OBB.decodeDetections(
-      output,
-      geometry,
-      confThresh,
-      classMask,
-      CLASS_NAMES.length,
-    );
-
-    drawDetections(dets);
-    fillTable(dets);
-    renderSummary(dets, elapsedMs);
+    state.cached = { results, geometry, provenance: "Local files", elapsedMs };
+    state.elapsedMs = elapsedMs;
+    state.phase = "result";
+    const dets = renderCachedOutput();
     setStatus(
       dets.length ? `完成 · ${dets.length} 個 detections` : "完成 · 沒有符合條件的 detections",
       "success",
@@ -244,3 +273,40 @@ detectBtn.addEventListener("click", async () => {
     updateDetectEnabled();
   }
 });
+
+function loadImageUrl(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("SHOWCASE_ASSET"));
+    image.src = url;
+  });
+}
+
+async function activateShowcase() {
+  const generation = ++state.generation;
+  state.phase = "loading";
+  await releaseSession();
+  resetResult();
+  const image = await loadImageUrl(OBB_SHOWCASE.imageUrl);
+  if (generation !== state.generation) return;
+  state.mode = "synthetic";
+  state.phase = "result";
+  state.image = image;
+  state.cached = {
+    results: OBB_SHOWCASE.results,
+    geometry: OBB.letterboxGeometry(400, 200, 1024),
+    provenance: OBB_SHOWCASE.provenance,
+    elapsedMs: null,
+  };
+  modeBadge.textContent = "SYNTHETIC FIXTURE · NO INFERENCE";
+  provenanceValue.textContent = OBB_SHOWCASE.provenance;
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  renderCachedOutput();
+  runtimeValue.textContent = "N/A · no inference";
+  resultTitle.focus();
+  setStatus("Synthetic fixture 已載入 · 沒有執行模型推論。", "success");
+}
+
+showcaseBtn.addEventListener("click", activateShowcase);

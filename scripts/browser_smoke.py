@@ -105,10 +105,32 @@ def run_smoke(
             page.add_init_script(
                 """
                 globalThis.__obbFillTextCalls = 0;
+                globalThis.__obbStrokedPolygons = [];
+                let currentPath = [];
                 const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+                const originalBeginPath = CanvasRenderingContext2D.prototype.beginPath;
+                const originalMoveTo = CanvasRenderingContext2D.prototype.moveTo;
+                const originalLineTo = CanvasRenderingContext2D.prototype.lineTo;
+                const originalStroke = CanvasRenderingContext2D.prototype.stroke;
                 CanvasRenderingContext2D.prototype.fillText = function (...args) {
                   globalThis.__obbFillTextCalls += 1;
                   return originalFillText.apply(this, args);
+                };
+                CanvasRenderingContext2D.prototype.beginPath = function (...args) {
+                  currentPath = [];
+                  return originalBeginPath.apply(this, args);
+                };
+                CanvasRenderingContext2D.prototype.moveTo = function (x, y, ...args) {
+                  currentPath.push([x, y]);
+                  return originalMoveTo.call(this, x, y, ...args);
+                };
+                CanvasRenderingContext2D.prototype.lineTo = function (x, y, ...args) {
+                  currentPath.push([x, y]);
+                  return originalLineTo.call(this, x, y, ...args);
+                };
+                CanvasRenderingContext2D.prototype.stroke = function (...args) {
+                  if (currentPath.length) globalThis.__obbStrokedPolygons.push([...currentPath]);
+                  return originalStroke.apply(this, args);
                 };
                 """
             )
@@ -260,6 +282,38 @@ def run_smoke(
                 raise RuntimeError("model picker has no visible keyboard focus")
             if not page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("Detect must be disabled before model and image selection")
+
+            page.locator("#showcaseBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('Synthetic fixture')",
+                timeout=5_000,
+            )
+            if page.locator("#modeBadge").inner_text() != "SYNTHETIC FIXTURE · NO INFERENCE":
+                raise RuntimeError("showcase mode badge is not exact")
+            if page.locator("#provenanceValue").inner_text() != "Committed synthetic fixture":
+                raise RuntimeError("showcase provenance is not exact")
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("showcase runtime must disclose that inference did not run")
+            showcase_row = page.locator("#resultsBody tr").first.locator("td").all_text_contents()
+            if showcase_row != EXPECTED_ROW:
+                raise RuntimeError(f"unexpected synthetic showcase row: {showcase_row!r}")
+            if page.locator("#resultTitle").evaluate("el => document.activeElement === el") is not True:
+                raise RuntimeError("showcase activation must move focus to the result title")
+            polygon = page.evaluate("globalThis.__obbStrokedPolygons.at(-1)")
+            expected_polygon = [[225, 50], [225, 150], [175, 150], [175, 50]]
+            if polygon is None or len(polygon) != len(expected_polygon) or any(
+                abs(actual - expected) > 0.01
+                for actual_corner, expected_corner in zip(polygon, expected_polygon, strict=True)
+                for actual, expected in zip(actual_corner, expected_corner, strict=True)
+            ):
+                raise RuntimeError(f"synthetic showcase did not draw expected polygon: {polygon!r}")
+            page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.95'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
+            if page.locator("#resultsBody tr").count() != 0:
+                raise RuntimeError("confidence changes must re-filter cached showcase output")
+            if page.locator("#summaryCount").inner_text() != "0":
+                raise RuntimeError("cached showcase re-filter must update the summary")
+            page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
+
             page.locator("#modelInput").set_input_files(
                 files=[
                     {
@@ -280,6 +334,10 @@ def run_smoke(
                     "model selection did not reach success state; "
                     f"status={current_status!r}; browser_errors={browser_errors!r}"
                 ) from exc
+            if page.locator("#modeBadge").inner_text() != "NO RESULT":
+                raise RuntimeError("BYOM selection must clear synthetic mode state")
+            if page.locator("#provenanceValue").inner_text() != "—":
+                raise RuntimeError("BYOM selection must clear synthetic provenance")
             if not page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("Detect must remain disabled until an image is selected")
             page.locator("#fileInput").set_input_files(str(FIXTURE))
