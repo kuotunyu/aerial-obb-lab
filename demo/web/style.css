@@ -364,6 +364,7 @@ h3 {
 }
 
 input[type="range"] {
+  display: block;
   width: 100%;
   min-height: 44px;
   margin: 3px 0 -4px;
