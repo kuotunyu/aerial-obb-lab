@@ -524,7 +524,7 @@ Run release/readme tests, release checker, and Pages verifier. Commit docs/evide
 def test_release_workflow_never_deploys_pages() -> None:
     text = (ROOT / ".github/workflows/release-gates.yml").read_text()
     assert "scripts/pages_artifact_check.py" in text
-    assert "actions/upload-artifact@v4" in text
+    assert "actions/upload-artifact@v7" in text
     assert "actions/deploy-pages" not in text
     assert "pages: write" not in text
 
@@ -534,8 +534,8 @@ def test_pages_workflow_is_manual_and_about_free() -> None:
     assert "workflow_dispatch:" in trigger
     assert "push:" not in trigger and "pull_request:" not in trigger
     assert "github.ref == 'refs/heads/main'" in text
-    assert "actions/upload-pages-artifact@v4" in text
-    assert "actions/deploy-pages@v4" in text
+    assert "actions/upload-pages-artifact@v5" in text
+    assert "actions/deploy-pages@v5" in text
     assert "pages: write" in text and "id-token: write" in text
     assert "gh repo edit" not in text and "--homepage" not in text
 ```
@@ -548,7 +548,7 @@ Expected: missing workflow/candidate steps.
 
 - [ ] **Step 3: Add the non-deploying candidate job**
 
-Add `pages-candidate` to release gates. It needs `core-cpu` and `browser-smoke`, runs the Pages verifier, uploads `demo/web` via `actions/upload-artifact@v4` as `aerial-obb-pages-candidate-${{ github.sha }}`, and has `contents: read` only.
+Add `pages-candidate` to release gates. It needs `core-cpu` and `browser-smoke`, runs the Pages verifier, uploads `demo/web` via `actions/upload-artifact@v7` as `aerial-obb-pages-candidate-${{ github.sha }}`, and has `contents: read` only.
 
 - [ ] **Step 4: Create manual-only `pages.yml`**
 
@@ -579,8 +579,8 @@ jobs:
       - run: uv run --no-sync python scripts/pages_artifact_check.py
       - run: uv run --no-sync playwright install --with-deps chromium
       - run: uv run --no-sync python scripts/browser_smoke.py
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with: {path: demo/web}
   deploy:
     needs: verify
@@ -594,7 +594,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 ```
 
 This file does not enable Pages and cannot run without manual dispatch.
