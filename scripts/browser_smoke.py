@@ -21,7 +21,7 @@ from typing import Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo" / "web"
-FIXTURE = ROOT / "tests" / "fixtures" / "browser-smoke.svg"
+FIXTURE = DEMO / "fixtures" / "showcase.svg"
 EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
 ORT_SCRIPT_RE = re.compile(
