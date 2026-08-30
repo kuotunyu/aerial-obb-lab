@@ -44,6 +44,7 @@ const detectBtn = document.getElementById("detectBtn");
 const runtimeRetryBtn = document.getElementById("runtimeRetryBtn");
 const statusEl = document.getElementById("status");
 const canvas = document.getElementById("canvas");
+const canvasDescription = document.getElementById("canvasDescription");
 const canvasFrame = document.getElementById("canvasFrame");
 const ctx = canvas.getContext("2d");
 const resultsBody = document.getElementById("resultsBody");
@@ -161,6 +162,7 @@ function resetResult() {
   state.elapsedMs = null;
   resultsBody.innerHTML = "";
   renderSummary([]);
+  renderCanvasDescription(null);
   modeBadge.textContent = "NO RESULT";
   provenanceValue.textContent = "—";
 }
@@ -188,7 +190,7 @@ function renderCachedOutput() {
   if (!state.cached || !state.image) return [];
   let dets;
   try {
-    dets = decodeCachedOutput();
+    dets = sortedDetections(decodeCachedOutput());
   } catch (_error) {
     reportFailure("OUTPUT_SCHEMA");
     return null;
@@ -197,6 +199,7 @@ function renderCachedOutput() {
     drawDetections(dets);
     fillTable(dets);
     renderSummary(dets, state.cached?.elapsedMs ?? null);
+    renderCanvasDescription(dets);
   } catch (_error) {
     reportFailure("RENDER_RESULT");
     return null;
@@ -377,16 +380,36 @@ function drawDetections(dets) {
   canvasFrame.classList.add("has-results");
 }
 
+function sortedDetections(dets) {
+  return [...dets].sort((a, b) => b.conf - a.conf);
+}
+
 function fillTable(dets) {
   resultsBody.innerHTML = "";
-  const sorted = [...dets].sort((a, b) => b.conf - a.conf);
-  for (const d of sorted) {
+  for (const d of dets) {
     const tr = document.createElement("tr");
     const deg = (d.angle * 180) / Math.PI;
     tr.innerHTML = `<td>${CLASS_NAMES[d.cls]}</td><td>${d.conf.toFixed(3)}</td>` +
       `<td>${d.w.toFixed(1)}</td><td>${d.h.toFixed(1)}</td><td>${deg.toFixed(1)}</td>`;
     resultsBody.appendChild(tr);
   }
+}
+
+function renderCanvasDescription(dets) {
+  if (dets === null) {
+    canvasDescription.textContent = "尚無 detection result。";
+    return;
+  }
+  if (!dets.length) {
+    canvasDescription.textContent = "目前篩選條件下沒有 detections；canvas 沒有 oriented polygons。";
+    return;
+  }
+  canvasDescription.textContent = dets.map((d) => {
+    const angle = (d.angle * 180) / Math.PI;
+    return `class=${CLASS_NAMES[d.cls]}; confidence=${d.conf.toFixed(3)}; ` +
+      `center-x=${d.cx.toFixed(1)} px; center-y=${d.cy.toFixed(1)} px; ` +
+      `width=${d.w.toFixed(1)} px; height=${d.h.toFixed(1)} px; angle=${angle.toFixed(1)}°.`;
+  }).join(" ");
 }
 
 detectBtn.addEventListener("click", async () => {

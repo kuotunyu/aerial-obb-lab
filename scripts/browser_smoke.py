@@ -23,6 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo" / "web"
 FIXTURE = DEMO / "fixtures" / "showcase.svg"
 EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
+CANVAS_RESET_DESCRIPTION = "尚無 detection result。"
+EXPECTED_CANVAS_DESCRIPTION = (
+    "class=ship; confidence=0.900; center-x=200.0 px; center-y=100.0 px; "
+    "width=100.0 px; height=50.0 px; angle=90.0°."
+)
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
 ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
 ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
@@ -167,6 +172,9 @@ def assert_fixed_failure(page: object, messages: list[str], code: str) -> None:
         raise RuntimeError("runtime retry control is missing")
     if retry.is_hidden() != (code != "RUNTIME_LOAD"):
         raise RuntimeError(f"runtime retry visibility is wrong for {code}")
+    canvas_description = page.locator("#canvasDescription")
+    if canvas_description.count() != 1 or canvas_description.inner_text() != CANVAS_RESET_DESCRIPTION:
+        raise RuntimeError(f"{code} left a stale canvas description")
     rendered_and_console = " | ".join([page.locator("body").inner_text(), *messages])
     leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
     if leaked:
@@ -447,6 +455,27 @@ def run_smoke(
                 for actual, expected in zip(actual_corner, expected_corner, strict=True)
             ):
                 raise RuntimeError(f"synthetic showcase did not draw expected polygon: {polygon!r}")
+            canvas = page.locator("#canvas")
+            description_id = canvas.get_attribute("aria-describedby")
+            if description_id != "canvasDescription":
+                raise RuntimeError("canvas must reference canvasDescription")
+            description = page.locator("#canvasDescription")
+            if description.get_attribute("aria-live") is not None:
+                raise RuntimeError("canvas description must not be aria-live")
+            expected_fields = {
+                "class": "ship",
+                "confidence": "0.900",
+                "center-x": "200.0 px",
+                "center-y": "100.0 px",
+                "width": "100.0 px",
+                "height": "50.0 px",
+                "angle": "90.0°",
+            }
+            for label, value in expected_fields.items():
+                if f"{label}={value}" not in description.inner_text():
+                    raise RuntimeError(
+                        f"canvas description lacks structured field {label}={value}"
+                    )
             page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.95'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
             if page.locator("#resultsBody tr").count() != 0:
                 raise RuntimeError("confidence changes must re-filter cached showcase output")
@@ -461,6 +490,8 @@ def run_smoke(
             plane.check()
             if page.locator("#resultsBody tr").count() != 0:
                 raise RuntimeError("synthetic class refilter did not hide the fixture row")
+            if "沒有 detections" not in description.inner_text():
+                raise RuntimeError("filtered-empty canvas description is not explicit")
             if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
                 raise RuntimeError("synthetic class refilter lost no-inference runtime")
             plane.uncheck()
@@ -805,6 +836,8 @@ def run_smoke(
                 raise RuntimeError("showcase activation retained stale BYOM file selections")
             if requested_urls.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("session lifecycle changes must reuse the cached ORT runtime")
+            if page.locator("#canvasDescription").inner_text() != EXPECTED_CANVAS_DESCRIPTION:
+                raise RuntimeError("switching from BYOM did not restore the synthetic canvas description")
             if screenshot is not None:
                 screenshot.parent.mkdir(parents=True, exist_ok=True)
                 page.wait_for_timeout(350)
@@ -988,6 +1021,8 @@ def run_smoke(
                 )
                 if showcase_page.locator("#runtimeValue").inner_text() != "N/A · no inference":
                     raise RuntimeError("synthetic retry did not restore no-inference runtime")
+                if showcase_page.locator("#canvasDescription").inner_text() != EXPECTED_CANVAS_DESCRIPTION:
+                    raise RuntimeError("synthetic retry did not restore the ship canvas description")
                 if showcase_request_count != 3:
                     raise RuntimeError("showcase retry did not issue exactly three fixture requests")
             finally:
