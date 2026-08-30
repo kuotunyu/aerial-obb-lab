@@ -683,6 +683,42 @@ def run_smoke(
                 "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
             )
 
+            page.evaluate(
+                """
+                () => {
+                  const originalRun = state.session.run;
+                  globalThis.__resolvePendingByomRun = null;
+                  state.session.run = (...args) => new Promise((resolve) => {
+                    globalThis.__resolvePendingByomRun = () => {
+                      state.session.run = originalRun;
+                      resolve(originalRun(...args));
+                    };
+                  });
+                }
+                """
+            )
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('正在本機 browser 執行 inference…')"
+            )
+            if page.locator("#canvasDescription").inner_text() != CANVAS_RESET_DESCRIPTION:
+                raise RuntimeError("pending BYOM detect left a stale canvas description")
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("pending BYOM detect retained a numeric runtime")
+            if page.evaluate("state.phase") != "loading" or page.evaluate("state.cached !== null"):
+                raise RuntimeError("pending BYOM detect retained a current result identity")
+            assert_result_cleared(page, base_canvas, "pending BYOM detect")
+            rendered_and_console = " | ".join([page.locator("body").inner_text(), *browser_messages])
+            leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
+            if leaked:
+                raise RuntimeError(f"pending BYOM detect leaked sensitive data: {leaked!r}")
+            page.evaluate("globalThis.__resolvePendingByomRun()")
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('完成')"
+            )
+            if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
+                raise RuntimeError("resolved pending BYOM detect did not restore a numeric runtime")
+
             for failure_flag, failure_code in (
                 ("__failInferenceRun", "INFERENCE_RUN"),
                 ("__invalidInferenceOutput", "OUTPUT_SCHEMA"),

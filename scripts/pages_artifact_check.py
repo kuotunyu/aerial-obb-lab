@@ -112,7 +112,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "4200132a44eb44c2577c25be789069381304b421d0ee699001e8d4332951fb95",
+        "5e56a01b3973becfc6f806dc2063e13d16a56ae0ad35e0b64e81e03b7c4613ff",
         "reviewed application bytes differ",
     ),
     "obb.js": (

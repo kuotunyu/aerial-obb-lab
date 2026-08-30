@@ -112,9 +112,12 @@ function renderSummary(dets, elapsedMs = null) {
     : "—";
   const activeSyntheticResult =
     state.mode === "synthetic" && state.phase === "result" && state.cached !== null;
+  const activeByomResult =
+    state.mode === "byom" && state.phase === "result" && state.cached !== null &&
+    Number.isFinite(elapsedMs);
   runtimeValue.textContent = activeSyntheticResult
     ? "N/A · no inference"
-    : state.mode === "byom" && Number.isFinite(elapsedMs)
+    : activeByomResult
       ? `${Math.round(elapsedMs)} ms`
       : "—";
 }
@@ -418,6 +421,8 @@ detectBtn.addEventListener("click", async () => {
   const generation = nextGeneration();
   const image = state.image;
   const session = state.session;
+  state.phase = "loading";
+  clearResultPresentation();
   detectBtn.disabled = true;
   try {
     let geometry;
