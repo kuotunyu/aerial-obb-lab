@@ -88,8 +88,8 @@ def test_ci_uses_current_node24_action_majors() -> None:
         encoding="utf-8"
     )
 
-    assert workflow.count("actions/checkout@v7") == 2
-    assert workflow.count("actions/setup-python@v7") == 2
+    assert workflow.count("actions/checkout@v7") == 3
+    assert workflow.count("actions/setup-python@v7") == 3
     assert workflow.count("actions/setup-node@v7") == 1
 
 

@@ -63,3 +63,26 @@ jobs:
         run: uv run --no-sync playwright install --with-deps chromium
       - name: Exercise the static UI with a synthetic fixture and stubbed output
         run: uv run --no-sync python scripts/browser_smoke.py
+
+  pages-candidate:
+    name: Pages artifact candidate
+    needs: [core-cpu, browser-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install locked environment tool
+        run: python -m pip install uv==0.11.18
+      - name: Install locked dependencies
+        run: uv sync --frozen --no-install-project
+      - name: Verify Pages artifact
+        run: uv run --no-sync python scripts/pages_artifact_check.py
+      - name: Upload reviewed Pages candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: aerial-obb-pages-candidate-${{ github.sha }}
+          path: demo/web
