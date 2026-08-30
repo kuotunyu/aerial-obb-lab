@@ -414,6 +414,7 @@ detectBtn.addEventListener("click", async () => {
     state.elapsedMs = elapsedMs;
     state.phase = "result";
     modeBadge.textContent = "BYOM · LOCAL BROWSER INFERENCE";
+    provenanceValue.textContent = state.cached.provenance;
     const dets = renderCachedOutput();
     if (dets === null) return;
     setStatus(

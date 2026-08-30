@@ -108,11 +108,11 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "afa24da9eb545ba09c0fea80afd80e0bbb6dd2256845758c5ca9403b9ae28feb",
+        "b80696d1cf31ee56efbdb568584a36e11e873813eb1bb67391304432606f7b39",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "351f51655213057f603dcb3fc4376f1705ea86e7a509f734a2f19604d7e44991",
+        "ce3f45eedbc65e10bf9a9e16b1639d9f5678e584f47f7f4c99608b84829ee14e",
         "reviewed application bytes differ",
     ),
     "obb.js": (

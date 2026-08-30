@@ -297,6 +297,10 @@ def run_smoke(
             if page.locator("h1").count() != 1:
                 raise RuntimeError("browser workbench must contain exactly one h1")
 
+            initial_result_presentation = page.evaluate(
+                "[modeBadge.textContent, provenanceValue.textContent]"
+            )
+
             notice = page.locator("#claimBoundary")
             control = page.locator("#showcaseBtn")
             assert notice.count() == 1 and control.count() == 1
@@ -539,10 +543,26 @@ def run_smoke(
                 "document.querySelector('#status').textContent.includes('完成')"
             )
 
-            if page.locator("#modeBadge").inner_text() != "BYOM · LOCAL BROWSER INFERENCE":
-                raise RuntimeError(
-                    "successful BYOM inference must expose the BYOM mode badge"
+            completed_byom_presentation = page.evaluate(
+                "[modeBadge.textContent, provenanceValue.textContent]"
+            )
+            presentation_failures = []
+            if initial_result_presentation != ["NO RESULT", "—"]:
+                presentation_failures.append(
+                    "initial result presentation must be exact "
+                    f"['NO RESULT', '—']; got {initial_result_presentation!r}"
                 )
+            if completed_byom_presentation != [
+                "BYOM · LOCAL BROWSER INFERENCE",
+                "Local files",
+            ]:
+                presentation_failures.append(
+                    "successful BYOM result presentation must be exact "
+                    "['BYOM · LOCAL BROWSER INFERENCE', 'Local files']; "
+                    f"got {completed_byom_presentation!r}"
+                )
+            if presentation_failures:
+                raise RuntimeError("; ".join(presentation_failures))
             row = page.locator("#resultsBody tr").first.locator("td").all_text_contents()
             if row != EXPECTED_ROW:
                 raise RuntimeError(f"unexpected browser result row: {row!r}")
