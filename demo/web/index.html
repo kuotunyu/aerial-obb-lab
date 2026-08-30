@@ -4,10 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
+  <meta name="theme-color" content="#edf1f4" />
   <title>Aerial OBB Lab · Browser-native rotated detection</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+<a class="skip-link" href="#mainContent">跳至主要工作區</a>
 <div class="page-shell">
   <header class="product-header">
     <div class="product-copy">
@@ -26,7 +28,7 @@
     <p>此展示使用本 repository 提交的 synthetic SVG 與固定 output，僅驗證 UI、decode、filter、rotated-corner 計算與 rendering。它不是 accuracy、evaluation 或 latency evidence。實際推論請使用 BYOM，自行提供相容 ONNX model 與影像。</p>
   </section>
 
-  <main>
+  <main id="mainContent" tabindex="-1">
     <section id="workbench" class="workbench" aria-label="OBB inference workbench">
       <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
         <div class="rail-heading">
@@ -38,14 +40,14 @@
 
         <div class="file-stack">
           <label class="file-control model-picker" id="modelDrop" for="modelInput">
-            <input type="file" id="modelInput" accept=".onnx,application/octet-stream" />
+            <input type="file" id="modelInput" name="model" accept=".onnx,application/octet-stream" />
             <span class="file-kind">ONNX model</span>
             <strong id="modelLabel">選擇相容的 <code>.onnx</code> model</strong>
             <small>檔案只會由目前的 browser session 讀取</small>
           </label>
 
           <label class="file-control image-picker" id="fileDrop" for="fileInput">
-            <input type="file" id="fileInput" accept="image/*" />
+            <input type="file" id="fileInput" name="image" accept="image/*" />
             <span class="file-kind">Aerial image</span>
             <strong id="fileLabel">選擇或拖放一張影像</strong>
             <small>支援 browser 可解碼的常見 image formats</small>
@@ -60,6 +62,7 @@
           <input
             type="range"
             id="confSlider"
+            name="confidence"
             min="0.05"
             max="0.9"
             step="0.05"
@@ -116,7 +119,8 @@
         </div>
 
         <div class="canvas-frame" id="canvasFrame">
-          <canvas id="canvas" aria-label="Oriented detection result"></canvas>
+          <canvas id="canvas" aria-label="Oriented detection result" aria-describedby="canvasDescription"></canvas>
+          <p id="canvasDescription" class="visually-hidden">尚無 detection result。</p>
           <p class="canvas-empty" aria-hidden="true">RESULT VIEWPORT</p>
         </div>
 

@@ -13,6 +13,7 @@ from contextlib import contextmanager, nullcontext
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import re
 import sys
 from threading import Thread
 from typing import Iterator
@@ -22,6 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo" / "web"
 FIXTURE = DEMO / "fixtures" / "showcase.svg"
 EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
+CANVAS_RESET_DESCRIPTION = "尚無 detection result。"
+EXPECTED_CANVAS_DESCRIPTION = (
+    "class=ship; confidence=0.900; center-x=200.0 px; center-y=100.0 px; "
+    "width=100.0 px; height=50.0 px; angle=90.0°."
+)
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
 ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
 ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
@@ -166,6 +172,9 @@ def assert_fixed_failure(page: object, messages: list[str], code: str) -> None:
         raise RuntimeError("runtime retry control is missing")
     if retry.is_hidden() != (code != "RUNTIME_LOAD"):
         raise RuntimeError(f"runtime retry visibility is wrong for {code}")
+    canvas_description = page.locator("#canvasDescription")
+    if canvas_description.count() != 1 or canvas_description.inner_text() != CANVAS_RESET_DESCRIPTION:
+        raise RuntimeError(f"{code} left a stale canvas description")
     rendered_and_console = " | ".join([page.locator("body").inner_text(), *messages])
     leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
     if leaked:
@@ -296,6 +305,44 @@ def run_smoke(
                 raise RuntimeError("browser workbench footer is missing the output contract")
             if page.locator("h1").count() != 1:
                 raise RuntimeError("browser workbench must contain exactly one h1")
+
+            page.keyboard.press("Tab")
+            skip_link = page.locator("a.skip-link")
+            if (
+                skip_link.count() != 1
+                or page.evaluate(
+                    "document.activeElement === document.querySelector('a.skip-link')"
+                )
+                is not True
+            ):
+                raise RuntimeError("first keyboard focus must be the main-workspace skip link")
+            if (
+                skip_link.inner_text() != "跳至主要工作區"
+                or skip_link.get_attribute("href") != "#mainContent"
+            ):
+                raise RuntimeError("skip link text or target is wrong")
+            page.keyboard.press("Enter")
+            page.wait_for_function(
+                "document.activeElement === document.querySelector('#mainContent')"
+            )
+
+            if page.locator('meta[name="theme-color"]').get_attribute("content") != "#edf1f4":
+                raise RuntimeError("theme-color metadata is not exact")
+            expected_names = {
+                "#modelInput": "model",
+                "#fileInput": "image",
+                "#confSlider": "confidence",
+            }
+            for selector, expected_name in expected_names.items():
+                if page.locator(selector).get_attribute("name") != expected_name:
+                    raise RuntimeError(f"stable control name is wrong for {selector}")
+            if any(
+                name != "class-filter"
+                for name in page.locator(".class-cb").evaluate_all(
+                    "els => els.map(el => el.name)"
+                )
+            ):
+                raise RuntimeError("class checkboxes do not share the semantic filter name")
 
             initial_result_presentation = page.evaluate(
                 "[modeBadge.textContent, provenanceValue.textContent]"
@@ -446,12 +493,48 @@ def run_smoke(
                 for actual, expected in zip(actual_corner, expected_corner, strict=True)
             ):
                 raise RuntimeError(f"synthetic showcase did not draw expected polygon: {polygon!r}")
+            canvas = page.locator("#canvas")
+            description_id = canvas.get_attribute("aria-describedby")
+            if description_id != "canvasDescription":
+                raise RuntimeError("canvas must reference canvasDescription")
+            description = page.locator("#canvasDescription")
+            if description.get_attribute("aria-live") is not None:
+                raise RuntimeError("canvas description must not be aria-live")
+            expected_fields = {
+                "class": "ship",
+                "confidence": "0.900",
+                "center-x": "200.0 px",
+                "center-y": "100.0 px",
+                "width": "100.0 px",
+                "height": "50.0 px",
+                "angle": "90.0°",
+            }
+            for label, value in expected_fields.items():
+                if f"{label}={value}" not in description.inner_text():
+                    raise RuntimeError(
+                        f"canvas description lacks structured field {label}={value}"
+                    )
             page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.95'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
             if page.locator("#resultsBody tr").count() != 0:
                 raise RuntimeError("confidence changes must re-filter cached showcase output")
             if page.locator("#summaryCount").inner_text() != "0":
                 raise RuntimeError("cached showcase re-filter must update the summary")
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic confidence refilter lost no-inference runtime")
             page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic confidence restore lost no-inference runtime")
+            plane = page.locator('.class-cb[value="0"]')
+            plane.check()
+            if page.locator("#resultsBody tr").count() != 0:
+                raise RuntimeError("synthetic class refilter did not hide the fixture row")
+            if "沒有 detections" not in description.inner_text():
+                raise RuntimeError("filtered-empty canvas description is not explicit")
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic class refilter lost no-inference runtime")
+            plane.uncheck()
+            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                raise RuntimeError("synthetic class restore lost no-inference runtime")
 
             page.locator("#modelInput").set_input_files(
                 files=[
@@ -588,6 +671,53 @@ def run_smoke(
                 raise RuntimeError("result viewport has no authored completion reveal state")
             if page.evaluate("globalThis.__obbFillTextCalls") != 0:
                 raise RuntimeError("dense result labels must not be drawn on the canvas")
+            byom_runtime = page.locator("#runtimeValue").inner_text()
+            if not re.fullmatch(r"\d+ ms", byom_runtime):
+                raise RuntimeError(f"BYOM runtime is not numeric: {byom_runtime!r}")
+            page.locator("#confSlider").evaluate(
+                "slider => { slider.value = '0.95'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
+            )
+            if page.locator("#runtimeValue").inner_text() != byom_runtime:
+                raise RuntimeError("BYOM confidence refilter changed measured runtime")
+            page.locator("#confSlider").evaluate(
+                "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
+            )
+
+            page.evaluate(
+                """
+                () => {
+                  const originalRun = state.session.run;
+                  globalThis.__resolvePendingByomRun = null;
+                  state.session.run = (...args) => new Promise((resolve) => {
+                    globalThis.__resolvePendingByomRun = () => {
+                      state.session.run = originalRun;
+                      resolve(originalRun(...args));
+                    };
+                  });
+                }
+                """
+            )
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('正在本機 browser 執行 inference…')"
+            )
+            if page.locator("#canvasDescription").inner_text() != CANVAS_RESET_DESCRIPTION:
+                raise RuntimeError("pending BYOM detect left a stale canvas description")
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("pending BYOM detect retained a numeric runtime")
+            if page.evaluate("state.phase") != "loading" or page.evaluate("state.cached !== null"):
+                raise RuntimeError("pending BYOM detect retained a current result identity")
+            assert_result_cleared(page, base_canvas, "pending BYOM detect")
+            rendered_and_console = " | ".join([page.locator("body").inner_text(), *browser_messages])
+            leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
+            if leaked:
+                raise RuntimeError(f"pending BYOM detect leaked sensitive data: {leaked!r}")
+            page.evaluate("globalThis.__resolvePendingByomRun()")
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('完成')"
+            )
+            if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
+                raise RuntimeError("resolved pending BYOM detect did not restore a numeric runtime")
 
             for failure_flag, failure_code in (
                 ("__failInferenceRun", "INFERENCE_RUN"),
@@ -780,6 +910,8 @@ def run_smoke(
                 raise RuntimeError("showcase activation retained stale BYOM file selections")
             if requested_urls.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("session lifecycle changes must reuse the cached ORT runtime")
+            if page.locator("#canvasDescription").inner_text() != EXPECTED_CANVAS_DESCRIPTION:
+                raise RuntimeError("switching from BYOM did not restore the synthetic canvas description")
             if screenshot is not None:
                 screenshot.parent.mkdir(parents=True, exist_ok=True)
                 page.wait_for_timeout(350)
@@ -889,7 +1021,30 @@ def run_smoke(
             showcase_page = browser.new_page(viewport={"width": 1200, "height": 800})
             showcase_messages: list[str] = []
             showcase_request_count = 0
+            showcase_ort_request_count = 0
             try:
+                showcase_page.add_init_script(
+                    """
+                    (() => {
+                      const source = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
+                      let fixtureLoad = 0;
+                      Object.defineProperty(HTMLImageElement.prototype, "src", {
+                        configurable: true,
+                        enumerable: source.enumerable,
+                        get() { return source.get.call(this); },
+                        set(value) {
+                          const url = new URL(value, location.href);
+                          if (url.pathname.endsWith("/fixtures/showcase.svg")) {
+                            url.searchParams.set("smoke-showcase-load", String(++fixtureLoad));
+                            source.set.call(this, url.href);
+                            return;
+                          }
+                          source.set.call(this, value);
+                        },
+                      });
+                    })();
+                    """
+                )
                 showcase_page.on(
                     "console", lambda message: showcase_messages.append(message.text)
                 )
@@ -900,24 +1055,50 @@ def run_smoke(
                 def flaky_showcase(route: Route) -> None:
                     nonlocal showcase_request_count
                     showcase_request_count += 1
-                    if showcase_request_count == 1:
+                    if showcase_request_count == 2:
                         route.abort("failed")
                     else:
                         route.continue_()
 
-                showcase_page.route("**/fixtures/showcase.svg", flaky_showcase)
+                def count_showcase_ort(route: Route) -> None:
+                    nonlocal showcase_ort_request_count
+                    showcase_ort_request_count += 1
+                    route.abort("failed")
+
+                showcase_page.route("**/fixtures/showcase.svg*", flaky_showcase)
+                showcase_page.route(ORT_CDN_URL, count_showcase_ort)
                 showcase_page.goto(entry_url, wait_until="networkidle")
+                showcase_page.locator("#showcaseBtn").click()
+                showcase_page.wait_for_function(
+                    "document.querySelector('#status').textContent.includes('Synthetic fixture')"
+                )
+                if showcase_page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                    raise RuntimeError("initial flaky showcase result lost no-inference runtime")
                 showcase_page.locator("#showcaseBtn").click()
                 showcase_page.wait_for_function(
                     "document.querySelector('#status').dataset.kind === 'error'"
                 )
                 assert_fixed_failure(showcase_page, showcase_messages, "SHOWCASE_ASSET")
+                if showcase_page.locator("#runtimeValue").inner_text() != "—":
+                    raise RuntimeError("synthetic asset failure did not clear runtime before retry")
+                if showcase_page.locator("#resultsBody tr").count() != 0:
+                    raise RuntimeError("synthetic asset failure left stale result rows")
+                if not showcase_page.locator("#canvas").evaluate(
+                    "canvas => canvas.getContext('2d').getImageData(200, 100, 1, 1).data[3] === 0"
+                ):
+                    raise RuntimeError("synthetic asset failure left stale canvas pixels")
+                if showcase_ort_request_count != 0:
+                    raise RuntimeError("synthetic retry requested ORT")
                 showcase_page.locator("#showcaseBtn").click()
                 showcase_page.wait_for_function(
                     "document.querySelector('#status').textContent.includes('Synthetic fixture')"
                 )
-                if showcase_request_count != 2:
-                    raise RuntimeError("showcase recovery did not reload its fixture once")
+                if showcase_page.locator("#runtimeValue").inner_text() != "N/A · no inference":
+                    raise RuntimeError("synthetic retry did not restore no-inference runtime")
+                if showcase_page.locator("#canvasDescription").inner_text() != EXPECTED_CANVAS_DESCRIPTION:
+                    raise RuntimeError("synthetic retry did not restore the ship canvas description")
+                if showcase_request_count != 3:
+                    raise RuntimeError("showcase retry did not issue exactly three fixture requests")
             finally:
                 showcase_page.close()
         finally:
