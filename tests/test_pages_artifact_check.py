@@ -243,3 +243,142 @@ def test_pages_tree_scans_macos_and_linux_home_paths(tmp_path: Path) -> None:
     errors = verify_pages_tree(site)
 
     assert "paths.txt: absolute user path" in errors
+
+
+@pytest.mark.parametrize(
+    ("relative", "payload"),
+    (
+        ("extra.html", "<p>extra executable surface</p>"),
+        ("extra.js", "const extra = true;"),
+        ("labels.json", '{"objects":[[91,72,18,9,0.42]]}'),
+        ("derived.svg", '<svg><polygon points="1,2 3,4 5,6"/></svg>'),
+        ("extra.css", "body { background: red; }"),
+    ),
+)
+def test_pages_tree_rejects_unreviewed_runtime_capable_files(
+    tmp_path: Path, relative: str, payload: str
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    (site / relative).write_text(payload, encoding="utf-8")
+
+    assert f"{relative}: unexpected Pages file" in verify_pages_tree(site)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        'localStorage.setItem("model", "cached");',
+        'indexedDB.open("private-models");',
+        'navigator.sendBeacon("/telemetry", "used");',
+    ),
+)
+def test_pages_tree_rejects_storage_and_telemetry_apis(
+    tmp_path: Path, payload: str
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    app = site / "app.js"
+    app.write_text(app.read_text(encoding="utf-8") + "\n" + payload, encoding="utf-8")
+
+    assert "app.js: forbidden browser storage/network API" in verify_pages_tree(site)
+
+
+def test_pages_tree_rejects_protocol_relative_resource_origin(tmp_path: Path) -> None:
+    site = copied_pages_tree(tmp_path)
+    html = site / "index.html"
+    html.write_text(
+        html.read_text(encoding="utf-8")
+        + '\n<script src="//unapproved.example/runtime.js"></script>\n',
+        encoding="utf-8",
+    )
+
+    assert "index.html: unapproved external origin" in joined_errors(site)
+
+
+def test_pages_tree_rejects_relative_remote_model_fallback(tmp_path: Path) -> None:
+    site = copied_pages_tree(tmp_path)
+    app = site / "app.js"
+    app.write_text(
+        app.read_text(encoding="utf-8") + '\nfetch("/model.onnx");\n',
+        encoding="utf-8",
+    )
+
+    assert "app.js: unapproved runtime/model reference" in verify_pages_tree(site)
+
+
+def test_pages_tree_does_not_reuse_anchor_approval_for_resource_url(
+    tmp_path: Path,
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    html = site / "index.html"
+    github_url = "https://github.com/kuotunyu/aerial-obb-lab"
+    html.write_text(
+        html.read_text(encoding="utf-8") + f'\n<img src="{github_url}" alt="bad">\n',
+        encoding="utf-8",
+    )
+
+    assert "index.html: unapproved external origin" in joined_errors(site)
+
+
+@pytest.mark.parametrize("comment_prefix", ("// ", "/*\n"))
+def test_pages_tree_rejects_inert_comment_copy_of_ort_assignment(
+    tmp_path: Path, comment_prefix: str
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    app = site / "app.js"
+    source = app.read_text(encoding="utf-8")
+    replacement = comment_prefix + "script.src = ORT_URL;"
+    if comment_prefix.startswith("/*"):
+        replacement += "\n*/"
+    app.write_text(source.replace("script.src = ORT_URL;", replacement), encoding="utf-8")
+
+    assert "app.js: effective dynamic ORT source is not exact" in verify_pages_tree(site)
+
+
+@pytest.mark.parametrize(
+    "override",
+    (
+        'script.src = "/local-runtime.js";',
+        'script.integrity = "sha384-later-override";',
+        'script.crossOrigin = "use-credentials";',
+        'globalThis.ort.env.wasm.wasmPaths = "/local-wasm/";',
+    ),
+)
+def test_pages_tree_rejects_later_ort_assignment_overrides(
+    tmp_path: Path, override: str
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    app = site / "app.js"
+    app.write_text(app.read_text(encoding="utf-8") + "\n" + override, encoding="utf-8")
+
+    assert "app.js: effective ORT tuple is overridden" in verify_pages_tree(site)
+
+
+def test_pages_tree_rejects_exact_wasm_base_mutation(tmp_path: Path) -> None:
+    site = copied_pages_tree(tmp_path)
+    app = site / "app.js"
+    app.write_text(
+        app.read_text(encoding="utf-8").replace(
+            'const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/'
+            'onnxruntime-web@1.20.1/dist/";',
+            'const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/'
+            'onnxruntime-web@1.20.1/wasm/";',
+        ),
+        encoding="utf-8",
+    )
+
+    assert "app.js: exact ORT WASM base URL is missing" in verify_pages_tree(site)
+
+
+@pytest.mark.parametrize(
+    "bypass",
+    (
+        'script["src"] = "/local-runtime.js";',
+        'script.setAttribute("src", "/local-runtime.js");',
+    ),
+)
+def test_pages_tree_rejects_dynamic_source_bypasses(tmp_path: Path, bypass: str) -> None:
+    site = copied_pages_tree(tmp_path)
+    app = site / "app.js"
+    app.write_text(app.read_text(encoding="utf-8") + "\n" + bypass, encoding="utf-8")
+
+    assert "app.js: effective dynamic ORT source is not exact" in verify_pages_tree(site)

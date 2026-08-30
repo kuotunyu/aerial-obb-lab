@@ -28,9 +28,11 @@ REQUIRED_FILES = (
     "fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "fonts/IBM-Plex-OFL.txt",
 )
+ALLOWED_FILES = frozenset((*REQUIRED_FILES, "README.md"))
+ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts"))
 FONT_PATH = "fonts/IBMPlexSansCondensed-SemiBold.woff2"
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".svg", ".txt"}
-RUNTIME_TEXT_SUFFIXES = {".css", ".html", ".js"}
+RUNTIME_TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".svg"}
 FORBIDDEN_MODEL_SUFFIXES = {
     ".ckpt",
     ".engine",
@@ -74,9 +76,21 @@ ABSOLUTE_USER_PATH_RE = re.compile(
     )
     '''
 )
-URL_RE = re.compile(r'''https?://[^\s"'`<>()\[\]{}]+''', re.I)
+URL_RE = re.compile(r'''(?:(?:https?:)?//)[^\s"'`<>()\[\]{}]+''', re.I)
 GITHUB_NAVIGATION_RE = re.compile(
     r'''<a\b[^>]*\bhref\s*=\s*["'](https://github\.com/[^"']+)["'][^>]*>''',
+    re.I,
+)
+SVG_NAMESPACE_RE = re.compile(
+    r'''\bxmlns\s*=\s*["'](http://www\.w3\.org/2000/svg)["']''', re.I
+)
+FORBIDDEN_BROWSER_API_RE = re.compile(
+    r"\b(?:localStorage|sessionStorage|indexedDB|caches|fetch|XMLHttpRequest|"
+    r"WebSocket|EventSource|sendBeacon|serviceWorker)\b|\bnavigator\.storage\b"
+)
+REMOTE_MODEL_FETCH_RE = re.compile(
+    r'''\bfetch\s*\(\s*["'`][^"'`]*(?:\.ckpt|\.engine|\.mlpackage|\.onnx|\.pb|'''
+    r'''\.pt|\.pth|\.safetensors|\.tflite|\.torchscript|\.weights)(?:[?#][^"'`]*)?["'`]''',
     re.I,
 )
 
@@ -86,6 +100,26 @@ ORT_INTEGRITY = (
     "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
 )
 REVIEWED_ASSET_DIGESTS = {
+    "index.html": (
+        "770c6e060aaa3f45ddb31fef78103e8eea74b3312ae9b87531f49644685c7301",
+        "reviewed HTML bytes differ",
+    ),
+    "app.js": (
+        "0291caaa351e84767b503843914b3decfb3a7f7dfc222e672e9c5faf6de96426",
+        "reviewed application bytes differ",
+    ),
+    "obb.js": (
+        "1103fa4a6c9dd1b577a04e5f5f798cb9a6b1f66721a81650c6fa7511855514e1",
+        "reviewed geometry bytes differ",
+    ),
+    "showcase-fixture.js": (
+        "d56958508b82d18028b9026aa8fd40235cba49174a2593118e8c7f8e41f478f6",
+        "reviewed showcase data bytes differ",
+    ),
+    "style.css": (
+        "15de382abff56f6abf8c69f801f85650eb2e5ad22fd64437a863f5b7efc08df4",
+        "reviewed stylesheet bytes differ",
+    ),
     "fixtures/showcase.svg": (
         "c208b1a056555825d75f25a421403a11738fb2efa90a880845a79e3af5c35385",
         "reviewed synthetic fixture bytes differ",
@@ -115,8 +149,8 @@ def _is_link(path: Path) -> bool:
 def _read_public_text(path: Path, relative: str, errors: list[str]) -> str | None:
     try:
         payload = path.read_bytes()
-    except OSError as exc:
-        errors.append(f"{relative}: cannot read file ({exc})")
+    except OSError:
+        errors.append(f"{relative}: cannot read file")
         return None
     if b"\0" in payload:
         errors.append(f"{relative}: unexpected binary file")
@@ -129,21 +163,98 @@ def _read_public_text(path: Path, relative: str, errors: list[str]) -> str | Non
 
 
 def _scan_runtime_urls(relative: str, text: str, errors: list[str]) -> None:
-    reviewed_navigation = (
-        set(GITHUB_NAVIGATION_RE.findall(text)) if relative.endswith(".html") else set()
+    approved_context_spans = (
+        {match.span(1) for match in GITHUB_NAVIGATION_RE.finditer(text)}
+        if relative.endswith(".html")
+        else set()
     )
-    for url in URL_RE.findall(text):
+    if relative.endswith(".svg"):
+        approved_context_spans.update(
+            match.span(1) for match in SVG_NAMESPACE_RE.finditer(text)
+        )
+    for match in URL_RE.finditer(text):
+        url = match.group(0)
         if url.startswith(ORT_PACKAGE_BASE):
             continue
-        if url in reviewed_navigation:
+        if match.span() in approved_context_spans:
             continue
         errors.append(f"{relative}: unapproved external origin: {url}")
+
+
+def _strip_javascript_comments(text: str) -> str:
+    """Blank JavaScript comments while preserving strings and line positions."""
+    output: list[str] = []
+    index = 0
+    quote: str | None = None
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        following = text[index + 1] if index + 1 < len(text) else ""
+        if quote is not None:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {'"', "'", "`"}:
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        if char == "/" and following == "/":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(text) and text[index] not in "\r\n":
+                output.append(" ")
+                index += 1
+            continue
+        if char == "/" and following == "*":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(text):
+                if index + 1 < len(text) and text[index : index + 2] == "*/":
+                    output.extend((" ", " "))
+                    index += 2
+                    break
+                output.append(text[index] if text[index] in "\r\n" else " ")
+                index += 1
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _active_line_count(source: str, line: str) -> int:
+    return len(re.findall(rf"^[ \t]*{re.escape(line)}[ \t]*$", source, re.M))
+
+
+SCRIPT_SOURCE_SETTER_RE = re.compile(
+    r'''\bscript\s*(?:\.\s*src\s*=|\[\s*["']src["']\s*\]\s*=|'''
+    r'''\.\s*setAttribute\s*\(\s*["']src["'])'''
+)
+SCRIPT_INTEGRITY_SETTER_RE = re.compile(
+    r'''\bscript\s*(?:\.\s*integrity\s*=|\[\s*["']integrity["']\s*\]\s*=|'''
+    r'''\.\s*setAttribute\s*\(\s*["']integrity["'])'''
+)
+SCRIPT_CORS_SETTER_RE = re.compile(
+    r'''\bscript\s*(?:\.\s*crossOrigin\s*=|\[\s*["']crossOrigin["']\s*\]\s*=|'''
+    r'''\.\s*setAttribute\s*\(\s*["']crossorigin["'])''',
+    re.I,
+)
+WASM_PATH_SETTER_RE = re.compile(
+    r"\b(?:globalThis\.)?ort\.env\.wasm\.wasmPaths\s*="
+)
 
 
 def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: list[str]) -> None:
     app = texts.get("app.js")
     if app is not None:
-        required_app_fragments = (
+        active_app = _strip_javascript_comments(app)
+        required_constant_lines = (
             (
                 f'const ORT_URL = "{ORT_SCRIPT_URL}";',
                 "exact ORT script URL is missing",
@@ -156,20 +267,51 @@ def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: lis
                 f'const ORT_INTEGRITY = "{ORT_INTEGRITY}";',
                 "exact ORT integrity is missing",
             ),
-            ("script.src = ORT_URL;", "dynamic ORT script assignment is missing"),
-            ("script.integrity = ORT_INTEGRITY;", "dynamic ORT integrity assignment is missing"),
-            (
-                'script.crossOrigin = "anonymous";',
-                "exact ORT anonymous CORS setting is missing",
-            ),
-            (
-                "globalThis.ort.env.wasm.wasmPaths = ORT_WASM_BASE;",
-                "exact ORT WASM path assignment is missing",
-            ),
         )
-        for fragment, reason in required_app_fragments:
-            if fragment not in app:
+        for line, reason in required_constant_lines:
+            if _active_line_count(active_app, line) != 1:
                 errors.append(f"app.js: {reason}")
+
+        source_line = "script.src = ORT_URL;"
+        integrity_line = "script.integrity = ORT_INTEGRITY;"
+        cors_line = 'script.crossOrigin = "anonymous";'
+        wasm_line = "globalThis.ort.env.wasm.wasmPaths = ORT_WASM_BASE;"
+        source_line_count = _active_line_count(active_app, source_line)
+        integrity_line_count = _active_line_count(active_app, integrity_line)
+        cors_line_count = _active_line_count(active_app, cors_line)
+        wasm_line_count = _active_line_count(active_app, wasm_line)
+        source_setters = len(SCRIPT_SOURCE_SETTER_RE.findall(active_app))
+        integrity_setters = len(SCRIPT_INTEGRITY_SETTER_RE.findall(active_app))
+        cors_setters = len(SCRIPT_CORS_SETTER_RE.findall(active_app))
+        wasm_setters = len(WASM_PATH_SETTER_RE.findall(active_app))
+
+        if source_line_count != 1:
+            errors.append("app.js: dynamic ORT script assignment is missing")
+        if source_line_count != 1 or source_setters != 1:
+            errors.append("app.js: effective dynamic ORT source is not exact")
+        if integrity_line_count != 1:
+            errors.append("app.js: dynamic ORT integrity assignment is missing")
+        if cors_line_count != 1:
+            errors.append("app.js: exact ORT anonymous CORS setting is missing")
+        if wasm_line_count != 1:
+            errors.append("app.js: exact ORT WASM path assignment is missing")
+
+        constant_assignment_counts = (
+            len(re.findall(r"\bORT_URL\s*=", active_app)),
+            len(re.findall(r"\bORT_WASM_BASE\s*=", active_app)),
+            len(re.findall(r"\bORT_INTEGRITY\s*=", active_app)),
+        )
+        if any(
+            count > 1
+            for count in (
+                *constant_assignment_counts,
+                source_setters,
+                integrity_setters,
+                cors_setters,
+                wasm_setters,
+            )
+        ):
+            errors.append("app.js: effective ORT tuple is overridden")
 
     html = texts.get("index.html")
     if html is not None:
@@ -191,7 +333,7 @@ def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: lis
         errors.append("fonts/IBM-Plex-OFL.txt: SIL Open Font License 1.1 text is missing")
 
     fixture_path = root / "fixtures" / "showcase.svg"
-    if fixture_path.is_file() and fixture_path.is_symlink():
+    if fixture_path.is_file() and _is_link(fixture_path):
         errors.append("fixtures/showcase.svg: required fixture must be a regular file")
 
 
@@ -217,6 +359,8 @@ def verify_pages_tree(root: Path) -> list[str]:
             errors.append(f"{relative}: symbolic link")
             continue
         if path.is_dir():
+            if relative not in ALLOWED_DIRECTORIES:
+                errors.append(f"{relative}: unexpected Pages directory")
             continue
         if not path.is_file():
             errors.append(f"{relative}: unsupported filesystem entry")
@@ -224,8 +368,8 @@ def verify_pages_tree(root: Path) -> list[str]:
 
         try:
             stat = path.stat()
-        except OSError as exc:
-            errors.append(f"{relative}: cannot inspect file ({exc})")
+        except OSError:
+            errors.append(f"{relative}: cannot inspect file")
             continue
         if stat.st_nlink != 1:
             errors.append(f"{relative}: hard link count is {stat.st_nlink}")
@@ -237,14 +381,16 @@ def verify_pages_tree(root: Path) -> list[str]:
             errors.append(f"{relative}: forbidden model/runtime artifact")
         if FORBIDDEN_PATH_TOKEN_RE.search(relative):
             errors.append(f"{relative}: forbidden DOTA-derived path")
+        if relative not in ALLOWED_FILES:
+            errors.append(f"{relative}: unexpected Pages file")
 
         reviewed = REVIEWED_ASSET_DIGESTS.get(relative)
         if reviewed is not None:
             expected_digest, reason = reviewed
             try:
                 actual_digest = hashlib.sha256(path.read_bytes()).hexdigest()
-            except OSError as exc:
-                errors.append(f"{relative}: cannot read file ({exc})")
+            except OSError:
+                errors.append(f"{relative}: cannot read file")
             else:
                 if actual_digest != expected_digest:
                     errors.append(f"{relative}: {reason}")
@@ -265,6 +411,10 @@ def verify_pages_tree(root: Path) -> list[str]:
             errors.append(f"{relative}: absolute user path")
         if suffix in RUNTIME_TEXT_SUFFIXES:
             _scan_runtime_urls(relative, text, errors)
+            if REMOTE_MODEL_FETCH_RE.search(text):
+                errors.append(f"{relative}: unapproved runtime/model reference")
+            if FORBIDDEN_BROWSER_API_RE.search(text):
+                errors.append(f"{relative}: forbidden browser storage/network API")
 
     _check_exact_runtime_contract(root, texts, errors)
     return errors
