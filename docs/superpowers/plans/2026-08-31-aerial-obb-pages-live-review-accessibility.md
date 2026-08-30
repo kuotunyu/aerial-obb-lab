@@ -61,30 +61,21 @@ summary rendering, and description rendering only after successful decode.
 - Consumes: existing `state.mode`, `state.cached.elapsedMs`, and cached result filtering in `renderCachedOutput()`.
 - Produces: `renderSummary(detections, elapsedMs)` whose runtime cell is exact synthetic text, numeric BYOM text, or reset/error `—`.
 
-- [ ] **Step 1: Add the failing synthetic confidence-runtime browser assertion**
+- [ ] **Step 1: Add the Task 1 runtime batch RED assertions**
 
-Immediately after the existing confidence `0.95` and restored `0.25` cached-showcase checks, add the
-named checkpoint `synthetic_confidence_refilter_preserves_no_inference_runtime`:
+In one edit, add the three named checkpoints
+`synthetic_confidence_refilter_preserves_no_inference_runtime`,
+`synthetic_class_refilter_preserves_no_inference_runtime`, and
+`byom_cached_refilter_retains_numeric_runtime`. Place the confidence assertion immediately after the
+existing confidence `0.95` and restored `0.25` cached-showcase checks:
 
 ```python
 if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
     raise RuntimeError("synthetic confidence refilter lost no-inference runtime")
 ```
 
-Run:
-
-```powershell
-uv run --no-sync python scripts/browser_smoke.py
-```
-
-Expected RED: `RuntimeError: synthetic confidence refilter lost no-inference runtime`, because the current
-shared renderer writes `—` for synthetic `elapsedMs=None` after the filter event.
-
-- [ ] **Step 2: Add the failing synthetic class-runtime browser assertion**
-
 In the same synthetic section, check the existing `plane` class checkbox, assert zero rows, then uncheck
-it and assert the fixture row returns. Name this checkpoint
-`synthetic_class_refilter_preserves_no_inference_runtime`; after both transitions assert the exact runtime:
+it and assert the fixture row returns. The class checkpoint uses:
 
 ```python
 plane = page.locator('.class-cb[value="0"]')
@@ -98,15 +89,8 @@ if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
     raise RuntimeError("synthetic class restore lost no-inference runtime")
 ```
 
-Run the same command.
-
-Expected RED: the first runtime assertion fails with `synthetic class refilter lost no-inference runtime`.
-
-- [ ] **Step 3: Add the failing BYOM runtime-preservation browser assertion**
-
 After the existing stubbed successful BYOM result assertions, store the numeric runtime, change the
-confidence slider to `0.95` and restore `0.25`, then name the checkpoint
-`byom_cached_refilter_retains_numeric_runtime`:
+confidence slider to `0.95` and restore `0.25`; the BYOM checkpoint uses:
 
 ```python
 byom_runtime = page.locator("#runtimeValue").inner_text()
@@ -119,13 +103,22 @@ if page.locator("#runtimeValue").inner_text() != byom_runtime:
     raise RuntimeError("BYOM confidence refilter changed measured runtime")
 ```
 
-Restore `0.25` before later smoke scenarios. Import `re` at the script's existing import block. Run the
-same command.
+Restore `0.25` before later smoke scenarios. Import `re` at the script's existing import block.
 
-Expected RED: the synthetic checkpoints fail before BYOM is reached; record that ordering in the task
-report rather than weakening or bypassing the earlier RED.
+- [ ] **Step 2: Run the runtime batch and record the actual RED**
 
-- [ ] **Step 4: Implement the minimal mode-derived runtime change**
+Run:
+
+```powershell
+uv run --no-sync python scripts/browser_smoke.py
+```
+
+Expected and recordable RED: `RuntimeError: synthetic confidence refilter lost no-inference runtime`,
+because the current shared renderer writes `—` for synthetic `elapsedMs=None` after the first confidence
+filter event. Do not claim that the later class or BYOM checkpoints independently reached their assertions
+in this RED run; they are intentionally a single root-cause batch and are verified together after GREEN.
+
+- [ ] **Step 3: Implement the minimal mode-derived runtime change**
 
 In `demo/web/app.js`, keep the existing `renderSummary(detections, elapsedMs)` call sites. Change only its
 runtime branch:
@@ -140,7 +133,7 @@ Do not add a `runtimeText` or other presentation value to `state.cached`, and do
 override. `resetResult()` still calls `renderSummary([])` while mode is `none` or `byom` reset state, so it
 continues to display `—`.
 
-- [ ] **Step 5: Run the named runtime browser GREEN checks**
+- [ ] **Step 4: Run the named runtime browser GREEN checks**
 
 Run:
 
@@ -151,7 +144,7 @@ uv run --no-sync python scripts/browser_smoke.py
 Expected GREEN: all three named runtime checkpoints pass; synthetic makes zero ORT requests and BYOM
 runtime matches `^\d+ ms$` before and after the cached filter.
 
-- [ ] **Step 6: Observe the artifact verifier RED and refresh only the app digest**
+- [ ] **Step 5: Observe the artifact verifier RED and refresh only the app digest**
 
 Run:
 
@@ -170,7 +163,7 @@ uv run --no-sync python -c "from pathlib import Path; import hashlib; p=Path('de
 Replace only `REVIEWED_TEXT_DIGESTS["app.js"]` in `scripts/pages_artifact_check.py` with that printed
 digest; retain its existing reason string `reviewed application bytes differ`.
 
-- [ ] **Step 7: Verify focused static contracts and commit**
+- [ ] **Step 6: Verify focused static contracts and commit**
 
 Run:
 
@@ -219,9 +212,18 @@ if description_id != "canvasDescription":
 description = page.locator("#canvasDescription")
 if description.get_attribute("aria-live") is not None:
     raise RuntimeError("canvas description must not be aria-live")
-for token in ("ship", "0.900", "200.0", "100.0", "50.0", "90.0"):
-    if token not in description.inner_text():
-        raise RuntimeError(f"canvas description lacks filtered detection token: {token}")
+expected_fields = {
+    "class": "ship",
+    "confidence": "0.900",
+    "center-x": "200.0 px",
+    "center-y": "100.0 px",
+    "width": "100.0 px",
+    "height": "50.0 px",
+    "angle": "90.0°",
+}
+for label, value in expected_fields.items():
+    if f"{label}={value}" not in description.inner_text():
+        raise RuntimeError(f"canvas description lacks structured field {label}={value}")
 ```
 
 Run:
@@ -265,11 +267,12 @@ Make the following focused changes.
    It must remain exposed to assistive technology and must not create layout overflow.
 3. In `app.js`, add `sortedDetections(detections)` returning a new confidence-descending array. Change
    `fillTable(detections)` to iterate that helper.
-4. Add `renderCanvasDescription(detections)`. For a populated list, produce one Chinese sentence per
-   confidence-sorted detection in this exact field order: class, confidence, centre x/y in pixels, width,
-   height, and degree angle. Use `toFixed(3)` for confidence and `toFixed(1)` for coordinates, dimensions,
-   and degrees. For `[]`, write `目前篩選條件下沒有 detections；canvas 沒有 oriented polygons。`. For
-   `null`, write `尚無 detection result。`.
+4. Add `renderCanvasDescription(detections)`. For a populated list, produce one confidence-sorted,
+   field-labelled record per detection in this exact order:
+   `class=<name>; confidence=<0.000>; center-x=<0.0 px>; center-y=<0.0 px>; width=<0.0 px>; height=<0.0 px>; angle=<0.0°>.`
+   Use `toFixed(3)` for confidence and `toFixed(1)` for coordinates, dimensions, and degrees. For `[]`,
+   write `目前篩選條件下沒有 detections；canvas 沒有 oriented polygons。`. For `null`, write
+   `尚無 detection result。`.
 5. In `renderCachedOutput()`, call `renderCanvasDescription(detections)` only after draw, table, and
    summary work completes. In `resetResult()`, call `renderCanvasDescription(null)` so reset and existing
    result-clearing safe errors cannot retain old text.
@@ -342,9 +345,11 @@ git commit -m "fix: describe filtered canvas detections accessibly"
 - Produces: keyboard-first `a.skip-link[href="#mainContent"]`, `main#mainContent[tabindex="-1"]`, exact
   theme metadata, and stable input names.
 
-- [ ] **Step 1: Add the failing skip-link browser assertion**
+- [ ] **Step 1: Add the Task 3 semantic batch RED assertions**
 
-Immediately after page load, add the named checkpoint `keyboard_skip_link_targets_main_content`:
+In one edit immediately after page load, add the three semantic assertions
+`keyboard_skip_link_targets_main_content`, `document_theme_and_control_names_contract`, and the existing
+notice-order assertion that must remain true. The keyboard checkpoint is:
 
 ```python
 page.keyboard.press("Tab")
@@ -357,18 +362,7 @@ page.keyboard.press("Enter")
 page.wait_for_function("document.activeElement === document.querySelector('#mainContent')")
 ```
 
-Run:
-
-```powershell
-uv run --no-sync python scripts/browser_smoke.py
-```
-
-Expected RED: `RuntimeError: first keyboard focus must be the main-workspace skip link` because the current
-page has no skip link.
-
-- [ ] **Step 2: Add failing theme-colour and stable-name browser assertions**
-
-Add named checkpoint `document_theme_and_control_names_contract` before showcase activation:
+The metadata/name checkpoint before showcase activation is:
 
 ```python
 if page.locator('meta[name="theme-color"]').get_attribute("content") != "#edf1f4":
@@ -381,10 +375,17 @@ if any(name != "class-filter" for name in page.locator(".class-cb").evaluate_all
     raise RuntimeError("class checkboxes do not share the semantic filter name")
 ```
 
-Run the same command.
+- [ ] **Step 2: Run the semantic batch and record the actual RED**
 
-Expected RED: the skip-link assertion fails first; after the skip link is GREEN, this checkpoint fails with
-`theme-color metadata is not exact` until the static DOM is added.
+Run:
+
+```powershell
+uv run --no-sync python scripts/browser_smoke.py
+```
+
+Expected and recordable RED: `RuntimeError: first keyboard focus must be the main-workspace skip link`,
+because the current page has no skip link. Do not claim that theme-colour or name checkpoints independently
+reached their assertions in this RED run; they are intentionally verified as one semantic batch after GREEN.
 
 - [ ] **Step 3: Implement the minimal semantic HTML and CSS**
 
