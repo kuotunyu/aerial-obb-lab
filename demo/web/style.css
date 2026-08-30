@@ -474,6 +474,27 @@ input[type="range"]:focus-visible {
   color: var(--danger);
 }
 
+.runtime-retry {
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.runtime-retry:hover {
+  background: var(--accent-soft);
+}
+
+.runtime-retry:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 #detectBtn {
   width: 100%;
   min-height: 48px;

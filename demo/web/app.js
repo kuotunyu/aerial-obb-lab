@@ -10,6 +10,16 @@ const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/
 const ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp";
 let ortPromise = null;
 
+const ERROR_COPY = Object.freeze({
+  SHOWCASE_ASSET: "Synthetic fixture 無法載入。請重新整理頁面，或改用 BYOM。",
+  RUNTIME_LOAD: "Browser runtime 無法載入。請檢查網路或 content blocker 後重試；Synthetic Showcase 仍可使用。",
+  MODEL_CONTRACT: "請選擇使用 images [1,3,1024,1024] 與 output0 [1,N,7] 的相容 ONNX。",
+  IMAGE_DECODE: "Browser 無法解碼影像。請改選 PNG、JPEG 或 WebP。",
+  INFERENCE_RUN: "推論未完成。請確認模型 contract、重新選擇影像後再試。",
+  OUTPUT_SCHEMA: "模型輸出不符合 output0 [1,N,7]。請改用相容的 end-to-end OBB export。",
+  RENDER_RESULT: "結果無法呈現。請重新載入 Synthetic Showcase，或重新執行 Detect。",
+});
+
 const CLASS_NAMES = [
   "plane", "ship", "storage tank", "baseball diamond", "tennis court",
   "basketball court", "ground track field", "harbor", "bridge", "large vehicle",
@@ -31,6 +41,7 @@ const confVal = document.getElementById("confVal");
 const classList = document.getElementById("classList");
 const showcaseBtn = document.getElementById("showcaseBtn");
 const detectBtn = document.getElementById("detectBtn");
+const runtimeRetryBtn = document.getElementById("runtimeRetryBtn");
 const statusEl = document.getElementById("status");
 const canvas = document.getElementById("canvas");
 const canvasFrame = document.getElementById("canvasFrame");
@@ -68,6 +79,23 @@ classList.addEventListener("change", renderCachedOutput);
 function setStatus(message, kind = "neutral") {
   statusEl.textContent = message;
   statusEl.dataset.kind = kind;
+  runtimeRetryBtn.hidden = true;
+}
+
+function reportFailure(code) {
+  const safe = Object.hasOwn(ERROR_COPY, code) ? code : "INFERENCE_RUN";
+  console.warn("[AERIAL_OBB:" + safe + "]");
+  setStatus(ERROR_COPY[safe], "error");
+  runtimeRetryBtn.hidden = safe !== "RUNTIME_LOAD";
+}
+
+function nextGeneration() {
+  state.generation += 1;
+  return state.generation;
+}
+
+function isCurrentGeneration(token) {
+  return token === state.generation;
 }
 
 function renderSummary(dets, elapsedMs = null) {
@@ -119,7 +147,7 @@ function resetResult() {
   provenanceValue.textContent = "—";
 }
 
-function renderCachedOutput() {
+function decodeCachedOutput() {
   if (!state.cached || !state.image) return [];
   const classes = new Set(
     Array.from(document.querySelectorAll(".class-cb:checked")).map((cb) => Number(cb.value))
@@ -128,9 +156,26 @@ function renderCachedOutput() {
   const dets = OBB.decodeDetections(
     output, state.cached.geometry, Number(confSlider.value), classes, CLASS_NAMES.length
   );
-  drawDetections(dets);
-  fillTable(dets);
-  renderSummary(dets, state.cached.elapsedMs);
+  return dets;
+}
+
+function renderCachedOutput() {
+  if (!state.cached || !state.image) return [];
+  let dets;
+  try {
+    dets = decodeCachedOutput();
+  } catch (_error) {
+    reportFailure("OUTPUT_SCHEMA");
+    return null;
+  }
+  try {
+    drawDetections(dets);
+    fillTable(dets);
+    renderSummary(dets, state.cached?.elapsedMs ?? null);
+  } catch (_error) {
+    reportFailure("RENDER_RESULT");
+    return null;
+  }
   return dets;
 }
 
@@ -156,54 +201,71 @@ function validateSessionContract(candidate) {
 
 async function replaceModelSession(file, generation) {
   const runtime = await loadOrtRuntime();
+  if (!isCurrentGeneration(generation)) return false;
   const modelBytes = new Uint8Array(await file.arrayBuffer());
+  if (!isCurrentGeneration(generation)) return false;
   const candidate = await runtime.InferenceSession.create(modelBytes, {
     executionProviders: ["wasm"],
   });
+  if (!isCurrentGeneration(generation)) {
+    if (typeof candidate.release === "function") await candidate.release();
+    if (!isCurrentGeneration(generation)) return false;
+  }
 
   try {
     validateSessionContract(candidate);
   } catch (_error) {
     if (typeof candidate.release === "function") await candidate.release();
-    throw new Error("SESSION_CONTRACT");
-  }
-  if (generation !== state.generation) {
-    if (typeof candidate.release === "function") await candidate.release();
-    return false;
+    if (!isCurrentGeneration(generation)) return false;
+    throw new Error("MODEL_CONTRACT");
   }
 
   const previous = state.session;
   state.session = candidate;
   modelLabel.textContent = "Local ONNX model ready";
-  if (previous && typeof previous.release === "function") await previous.release();
+  if (previous && typeof previous.release === "function") {
+    await previous.release();
+    if (!isCurrentGeneration(generation)) return false;
+  }
   return true;
 }
 
-modelInput.addEventListener("change", async () => {
-  const file = modelInput.files[0];
+async function handleModelSelection(file) {
   if (!file) return;
-  const generation = ++state.generation;
+  const generation = nextGeneration();
   clearSyntheticResult();
   detectBtn.disabled = true;
   setStatus("正在載入 local ONNX model…", "running");
   try {
     const assigned = await replaceModelSession(file, generation);
-    if (!assigned) return;
+    if (!isCurrentGeneration(generation) || !assigned) return;
     setStatus("Model ready · 請選擇影像。", "success");
     updateDetectEnabled();
-  } catch (_error) {
-    if (generation !== state.generation) return;
-    console.warn("Model load failed: incompatible local ONNX input.");
-    setStatus("模型載入失敗，請確認 ONNX 格式與 output contract。", "error");
+  } catch (error) {
+    if (!isCurrentGeneration(generation)) return;
+    reportFailure(error?.message === "RUNTIME_LOAD" ? "RUNTIME_LOAD" : "MODEL_CONTRACT");
     updateDetectEnabled();
   }
+}
+
+modelInput.addEventListener("change", () => {
+  void handleModelSelection(modelInput.files[0]);
 });
 
-function loadImageFile(file) {
+runtimeRetryBtn.addEventListener("click", () => {
+  void handleModelSelection(modelInput.files[0]);
+});
+
+async function loadImageFile(file) {
+  const generation = nextGeneration();
   clearSyntheticResult();
+  state.image = null;
+  updateDetectEnabled();
+  setStatus("正在解碼 local image…", "running");
   const url = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = () => {
+  try {
+    const img = await loadImageUrl(url);
+    if (!isCurrentGeneration(generation)) return;
     state.image = img;
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
@@ -214,13 +276,16 @@ function loadImageFile(file) {
       state.session ? "影像已載入 · 可以開始 Detect。" : "影像已載入 · 請選擇 ONNX model。",
       state.session ? "success" : "neutral",
     );
+  } catch (_error) {
+    if (!isCurrentGeneration(generation)) return;
+    reportFailure("IMAGE_DECODE");
+  } finally {
     URL.revokeObjectURL(url);
-  };
-  img.src = url;
+  }
 }
 
 fileInput.addEventListener("change", () => {
-  if (fileInput.files[0]) loadImageFile(fileInput.files[0]);
+  if (fileInput.files[0]) void loadImageFile(fileInput.files[0]);
 });
 ["dragenter", "dragover"].forEach((evt) =>
   fileDrop.addEventListener(evt, (e) => {
@@ -236,7 +301,7 @@ fileInput.addEventListener("change", () => {
 );
 fileDrop.addEventListener("drop", (e) => {
   const file = e.dataTransfer.files[0];
-  if (file) loadImageFile(file);
+  if (file) void loadImageFile(file);
 });
 
 // Letterbox `img` into an IMGSZxIMGSZ canvas, gray-padded, centered.
@@ -301,30 +366,42 @@ function fillTable(dets) {
 
 detectBtn.addEventListener("click", async () => {
   if (!state.image || !state.session) return;
+  const generation = nextGeneration();
+  const image = state.image;
+  const session = state.session;
   detectBtn.disabled = true;
   try {
-    setStatus("正在準備 1024px RGB CHW input…", "running");
-    const { chw, geometry } = preprocess(state.image);
-    const tensor = new ort.Tensor("float32", chw, [1, 3, IMGSZ, IMGSZ]);
+    let geometry;
+    let results;
+    let t0;
+    try {
+      setStatus("正在準備 1024px RGB CHW input…", "running");
+      const prepared = preprocess(image);
+      geometry = prepared.geometry;
+      const tensor = new ort.Tensor("float32", prepared.chw, [1, 3, IMGSZ, IMGSZ]);
 
-    setStatus("正在本機 browser 執行 inference…", "running");
-    const t0 = performance.now();
-    const feeds = { images: tensor };
-    const results = await state.session.run(feeds);
+      setStatus("正在本機 browser 執行 inference…", "running");
+      t0 = performance.now();
+      const feeds = { images: tensor };
+      results = await session.run(feeds);
+      if (!isCurrentGeneration(generation)) return;
+    } catch (_error) {
+      if (!isCurrentGeneration(generation)) return;
+      reportFailure("INFERENCE_RUN");
+      return;
+    }
     const elapsedMs = performance.now() - t0;
     state.cached = { results, geometry, provenance: "Local files", elapsedMs };
     state.elapsedMs = elapsedMs;
     state.phase = "result";
     const dets = renderCachedOutput();
+    if (dets === null) return;
     setStatus(
       dets.length ? `完成 · ${dets.length} 個 detections` : "完成 · 沒有符合條件的 detections",
       "success",
     );
-  } catch (_error) {
-    console.warn("Inference failed: incompatible model input or output contract.");
-    setStatus("Inference 失敗，請確認模型使用 images input 與 output0 [1,N,7]。", "error");
   } finally {
-    updateDetectEnabled();
+    if (isCurrentGeneration(generation)) updateDetectEnabled();
   }
 });
 
@@ -338,29 +415,43 @@ function loadImageUrl(url) {
 }
 
 async function activateShowcase() {
-  const generation = ++state.generation;
+  const generation = nextGeneration();
   state.phase = "loading";
-  await releaseSession();
-  resetResult();
-  const image = await loadImageUrl(OBB_SHOWCASE.imageUrl);
-  if (generation !== state.generation) return;
-  state.mode = "synthetic";
-  state.phase = "result";
-  state.image = image;
-  state.cached = {
-    results: OBB_SHOWCASE.results,
-    geometry: OBB.letterboxGeometry(400, 200, 1024),
-    provenance: OBB_SHOWCASE.provenance,
-    elapsedMs: null,
-  };
-  modeBadge.textContent = "SYNTHETIC FIXTURE · NO INFERENCE";
-  provenanceValue.textContent = OBB_SHOWCASE.provenance;
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-  renderCachedOutput();
-  runtimeValue.textContent = "N/A · no inference";
-  resultTitle.focus();
-  setStatus("Synthetic fixture 已載入 · 沒有執行模型推論。", "success");
+  detectBtn.disabled = true;
+  setStatus("正在載入 Synthetic Showcase…", "running");
+  try {
+    await releaseSession();
+    if (!isCurrentGeneration(generation)) return;
+    state.image = null;
+    canvasFrame.classList.remove("has-results");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    resetResult();
+    const image = await loadImageUrl(OBB_SHOWCASE.imageUrl);
+    if (!isCurrentGeneration(generation)) return;
+    state.mode = "synthetic";
+    state.phase = "result";
+    state.image = image;
+    state.cached = {
+      results: OBB_SHOWCASE.results,
+      geometry: OBB.letterboxGeometry(400, 200, 1024),
+      provenance: OBB_SHOWCASE.provenance,
+      elapsedMs: null,
+    };
+    modeBadge.textContent = "SYNTHETIC FIXTURE · NO INFERENCE";
+    provenanceValue.textContent = OBB_SHOWCASE.provenance;
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    if (renderCachedOutput() === null) return;
+    runtimeValue.textContent = "N/A · no inference";
+    resultTitle.focus();
+    setStatus("Synthetic fixture 已載入 · 沒有執行模型推論。", "success");
+  } catch (_error) {
+    if (!isCurrentGeneration(generation)) return;
+    state.phase = "error";
+    reportFailure("SHOWCASE_ASSET");
+  }
 }
 
-showcaseBtn.addEventListener("click", activateShowcase);
+showcaseBtn.addEventListener("click", () => {
+  void activateShowcase();
+});

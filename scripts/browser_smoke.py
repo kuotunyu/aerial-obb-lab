@@ -25,11 +25,33 @@ EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
 ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
 ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
+ERROR_COPY = {
+    "SHOWCASE_ASSET": "Synthetic fixture 無法載入。請重新整理頁面，或改用 BYOM。",
+    "RUNTIME_LOAD": "Browser runtime 無法載入。請檢查網路或 content blocker 後重試；Synthetic Showcase 仍可使用。",
+    "MODEL_CONTRACT": "請選擇使用 images [1,3,1024,1024] 與 output0 [1,N,7] 的相容 ONNX。",
+    "IMAGE_DECODE": "Browser 無法解碼影像。請改選 PNG、JPEG 或 WebP。",
+    "INFERENCE_RUN": "推論未完成。請確認模型 contract、重新選擇影像後再試。",
+    "OUTPUT_SCHEMA": "模型輸出不符合 output0 [1,N,7]。請改用相容的 end-to-end OBB export。",
+    "RENDER_RESULT": "結果無法呈現。請重新載入 Synthetic Showcase，或重新執行 Detect。",
+}
+SENSITIVE_TOKENS = (
+    "C:\\Users\\alice\\private-model.onnx",
+    "tenant=omega",
+    "raw create failure",
+    "flight=classified",
+    "raw inference failure",
+    "expected output0 shape [1,N,7]",
+    "tile=restricted",
+    "raw renderer failure",
+)
 ORT_STUB = r"""
 globalThis.__ortCreateCount = 0;
 globalThis.__ortReleaseCount = 0;
 globalThis.__ortActiveSessionIdsAtRelease = [];
+globalThis.__ortReleasedSessionIds = [];
 globalThis.__ortRunSessionIds = [];
+globalThis.__ortCreatedSessionIds = [];
+globalThis.__ortDelayedCreateResolvers = [];
 globalThis.ort = {
   env: { wasm: {} },
   Tensor: class Tensor {
@@ -42,24 +64,31 @@ globalThis.ort = {
   InferenceSession: {
     create: async (modelBytes) => {
       const sessionId = ++globalThis.__ortCreateCount;
+      globalThis.__ortCreatedSessionIds.push(sessionId);
       if (!(modelBytes instanceof Uint8Array) || modelBytes.length === 0) {
         throw new Error("expected non-empty local model bytes");
       }
       if (modelBytes[0] === 0) {
-        throw new Error("C:\\Users\\alice\\private-model.onnx");
+        throw new Error(
+          "C:\\Users\\alice\\private-model.onnx | tenant=omega | raw create failure"
+        );
       }
-      if (modelBytes[0] === 2) {
-        await new Promise((resolve) => setTimeout(resolve, 150));
+      if (modelBytes[0] === 1) {
+        await new Promise((resolve) => {
+          globalThis.__ortDelayedCreateResolvers.push(resolve);
+        });
       }
+      const behavior = modelBytes[0];
       let released = false;
       return {
         __sessionId: sessionId,
         inputNames: ["images"],
-        outputNames: modelBytes[0] === 1 ? ["unexpected"] : ["output0"],
+        outputNames: behavior === 3 ? ["unexpected"] : ["output0"],
         release: async () => {
           if (released) throw new Error("session released twice");
           released = true;
           globalThis.__ortReleaseCount += 1;
+          globalThis.__ortReleasedSessionIds.push(sessionId);
           globalThis.__ortActiveSessionIdsAtRelease.push(
             state.session?.__sessionId ?? null
           );
@@ -67,6 +96,17 @@ globalThis.ort = {
         run: async () => {
           if (released) throw new Error("released session was used");
           globalThis.__ortRunSessionIds.push(sessionId);
+          if (behavior === 4) {
+            throw new Error("flight=classified | raw inference failure");
+          }
+          if (behavior === 2) {
+            return {
+              output0: {
+                dims: [1, 2, 6],
+                data: new Float32Array(12)
+              }
+            };
+          }
           return {
             output0: {
               dims: [1, 2, 7],
@@ -107,6 +147,25 @@ SRI_STUB_SHIM = f"""
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         pass
+
+
+def assert_fixed_failure(page: object, messages: list[str], code: str) -> None:
+    status = page.locator("#status").inner_text()
+    if status != ERROR_COPY[code]:
+        raise RuntimeError(f"wrong {code} copy: {status!r}")
+    if page.locator("#status").get_attribute("data-kind") != "error":
+        raise RuntimeError(f"{code} has no semantic error state")
+    if f"[AERIAL_OBB:{code}]" not in messages:
+        raise RuntimeError(f"{code} did not emit its fixed diagnostic code")
+    retry = page.locator("#runtimeRetryBtn")
+    if retry.count() != 1:
+        raise RuntimeError("runtime retry control is missing")
+    if retry.is_hidden() != (code != "RUNTIME_LOAD"):
+        raise RuntimeError(f"runtime retry visibility is wrong for {code}")
+    rendered_and_console = " | ".join([page.locator("body").inner_text(), *messages])
+    leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
+    if leaked:
+        raise RuntimeError(f"{code} leaked sensitive exception data: {leaked!r}")
 
 
 @contextmanager
@@ -173,6 +232,9 @@ def run_smoke(
                   return originalLineTo.call(this, x, y, ...args);
                 };
                 CanvasRenderingContext2D.prototype.stroke = function (...args) {
+                  if (globalThis.__failResultRender) {
+                    throw new Error("tile=restricted | raw renderer failure");
+                  }
                   if (currentPath.length) globalThis.__obbStrokedPolygons.push([...currentPath]);
                   return originalStroke.apply(this, args);
                 };
@@ -328,6 +390,11 @@ def run_smoke(
                 raise RuntimeError("model picker has no visible keyboard focus")
             if not page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("Detect must be disabled before model and image selection")
+            page.locator("#confSlider").evaluate(
+                "slider => slider.dispatchEvent(new Event('input', { bubbles: true }))"
+            )
+            if page.locator("#status").get_attribute("data-kind") == "error":
+                raise RuntimeError("filtering before a result must remain a no-op")
 
             page.locator("#showcaseBtn").click()
             page.wait_for_function(
@@ -486,7 +553,7 @@ def run_smoke(
                     {
                         "name": "invalid-contract.onnx",
                         "mimeType": "application/octet-stream",
-                        "buffer": b"\x01invalid-contract",
+                        "buffer": b"\x03invalid-contract",
                     }
                 ]
             )
@@ -507,21 +574,126 @@ def run_smoke(
             page.locator("#modelInput").set_input_files(
                 files=[
                     {
-                        "name": "stale.onnx",
+                        "name": "delayed-model-a.onnx",
                         "mimeType": "application/octet-stream",
-                        "buffer": b"\x02stale-candidate",
+                        "buffer": b"\x01delayed-candidate",
                     }
                 ]
             )
+            page.wait_for_function(
+                "globalThis.__ortCreateCount === 4 && globalThis.__ortDelayedCreateResolvers.length === 1"
+            )
+            page.locator("#modelInput").set_input_files(
+                files=[
+                    {
+                        "name": "model-b.onnx",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"model-b",
+                    }
+                ]
+            )
+            page.wait_for_function(
+                "globalThis.__ortCreateCount === 5 && globalThis.__ortReleaseCount === 3 && state.session?.__sessionId === 5"
+            )
+            page.evaluate("globalThis.__ortDelayedCreateResolvers.shift()()")
+            page.wait_for_function(
+                "globalThis.__ortReleaseCount === 4 && globalThis.__ortReleasedSessionIds.includes(4)"
+            )
+            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
+                raise RuntimeError("stale candidate changed the neutral active-model label")
+            if page.evaluate("state.session?.__sessionId") != 5:
+                raise RuntimeError("delayed model A replaced newer model B")
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('完成')"
+            )
+            if page.evaluate("globalThis.__ortRunSessionIds.at(-1)") != 5:
+                raise RuntimeError("Detect did not keep newer model B active")
+
+            page.locator("#modelInput").set_input_files(
+                files=[
+                    {
+                        "name": "inference-failure.onnx",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"\x04inference-failure",
+                    }
+                ]
+            )
+            page.wait_for_function(
+                "globalThis.__ortCreateCount === 6 && document.querySelector('#status').dataset.kind === 'success'"
+            )
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'"
+            )
+            assert_fixed_failure(page, browser_messages, "INFERENCE_RUN")
+
+            page.locator("#modelInput").set_input_files(
+                files=[
+                    {
+                        "name": "invalid-output.onnx",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"\x02invalid-output",
+                    }
+                ]
+            )
+            page.wait_for_function(
+                "globalThis.__ortCreateCount === 7 && document.querySelector('#status').dataset.kind === 'success'"
+            )
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'"
+            )
+            assert_fixed_failure(page, browser_messages, "OUTPUT_SCHEMA")
+
+            page.locator("#modelInput").set_input_files(
+                files=[
+                    {
+                        "name": "render-recovery.onnx",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"render-recovery",
+                    }
+                ]
+            )
+            page.wait_for_function(
+                "globalThis.__ortCreateCount === 8 && document.querySelector('#status').dataset.kind === 'success'"
+            )
+            page.evaluate("globalThis.__failResultRender = true")
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'"
+            )
+            assert_fixed_failure(page, browser_messages, "RENDER_RESULT")
+            page.evaluate("globalThis.__failResultRender = false")
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('完成')"
+            )
+
+            page.locator("#fileInput").set_input_files(
+                files=[
+                    {
+                        "name": "broken-image.png",
+                        "mimeType": "image/png",
+                        "buffer": b"not-an-image",
+                    }
+                ]
+            )
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'"
+            )
+            assert_fixed_failure(page, browser_messages, "IMAGE_DECODE")
+            page.locator("#fileInput").set_input_files(str(FIXTURE))
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('影像已載入')"
+            )
+
             page.locator("#showcaseBtn").click()
             page.wait_for_function(
                 "document.querySelector('#status').textContent.includes('Synthetic fixture')"
             )
-            page.wait_for_function(
-                "globalThis.__ortCreateCount === 4 && globalThis.__ortReleaseCount === 4"
-            )
-            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
-                raise RuntimeError("stale candidate changed the neutral active-model label")
+            if not page.locator("#detectBtn").is_disabled():
+                raise RuntimeError("showcase activation must disable BYOM Detect")
             if requested_urls.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("session lifecycle changes must reuse the cached ORT runtime")
             if screenshot is not None:
@@ -568,15 +740,102 @@ def run_smoke(
                 invalid_page.wait_for_function(
                     "document.querySelector('#status').dataset.kind === 'error'"
                 )
-                error_status = invalid_page.locator("#status").inner_text()
-                expected_error = "模型載入失敗，請確認 ONNX 格式與 output contract。"
-                if error_status != expected_error:
-                    raise RuntimeError(f"unsafe model error copy: {error_status!r}")
-                visible_and_console = " | ".join([error_status, *invalid_messages])
-                if "alice" in visible_and_console or "private-model" in visible_and_console:
-                    raise RuntimeError("model error leaked a private path to the UI or console")
+                assert_fixed_failure(invalid_page, invalid_messages, "MODEL_CONTRACT")
+                invalid_page.locator("#modelInput").set_input_files(
+                    files=[
+                        {
+                            "name": "recovered.onnx",
+                            "mimeType": "application/octet-stream",
+                            "buffer": b"recovered-model",
+                        }
+                    ]
+                )
+                invalid_page.wait_for_function(
+                    "document.querySelector('#status').dataset.kind === 'success'"
+                )
             finally:
                 invalid_page.close()
+
+            runtime_page = browser.new_page(viewport={"width": 1200, "height": 800})
+            runtime_messages: list[str] = []
+            runtime_request_count = 0
+            try:
+                runtime_page.add_init_script(SRI_STUB_SHIM)
+                runtime_page.on(
+                    "console", lambda message: runtime_messages.append(message.text)
+                )
+                runtime_page.on(
+                    "pageerror", lambda error: runtime_messages.append(str(error))
+                )
+
+                def flaky_ort(route: Route) -> None:
+                    nonlocal runtime_request_count
+                    runtime_request_count += 1
+                    if runtime_request_count == 1:
+                        route.abort("failed")
+                    else:
+                        stub_ort(route)
+
+                runtime_page.route(ORT_CDN_URL, flaky_ort)
+                runtime_page.goto(entry_url, wait_until="networkidle")
+                runtime_page.locator("#modelInput").set_input_files(
+                    files=[
+                        {
+                            "name": "runtime-retry.onnx",
+                            "mimeType": "application/octet-stream",
+                            "buffer": b"runtime-retry",
+                        }
+                    ]
+                )
+                runtime_page.wait_for_function(
+                    "document.querySelector('#status').dataset.kind === 'error'"
+                )
+                assert_fixed_failure(runtime_page, runtime_messages, "RUNTIME_LOAD")
+                runtime_page.locator("#runtimeRetryBtn").click()
+                runtime_page.wait_for_function(
+                    "document.querySelector('#status').dataset.kind === 'success'"
+                )
+                if runtime_page.locator("#runtimeRetryBtn").is_visible():
+                    raise RuntimeError("runtime retry remained visible after recovery")
+                if runtime_request_count != 2:
+                    raise RuntimeError("runtime retry did not perform exactly one fresh request")
+            finally:
+                runtime_page.close()
+
+            showcase_page = browser.new_page(viewport={"width": 1200, "height": 800})
+            showcase_messages: list[str] = []
+            showcase_request_count = 0
+            try:
+                showcase_page.on(
+                    "console", lambda message: showcase_messages.append(message.text)
+                )
+                showcase_page.on(
+                    "pageerror", lambda error: showcase_messages.append(str(error))
+                )
+
+                def flaky_showcase(route: Route) -> None:
+                    nonlocal showcase_request_count
+                    showcase_request_count += 1
+                    if showcase_request_count == 1:
+                        route.abort("failed")
+                    else:
+                        route.continue_()
+
+                showcase_page.route("**/fixtures/showcase.svg", flaky_showcase)
+                showcase_page.goto(entry_url, wait_until="networkidle")
+                showcase_page.locator("#showcaseBtn").click()
+                showcase_page.wait_for_function(
+                    "document.querySelector('#status').dataset.kind === 'error'"
+                )
+                assert_fixed_failure(showcase_page, showcase_messages, "SHOWCASE_ASSET")
+                showcase_page.locator("#showcaseBtn").click()
+                showcase_page.wait_for_function(
+                    "document.querySelector('#status').textContent.includes('Synthetic fixture')"
+                )
+                if showcase_request_count != 2:
+                    raise RuntimeError("showcase recovery did not reload its fixture once")
+            finally:
+                showcase_page.close()
         finally:
             browser.close()
     if browser_errors:
