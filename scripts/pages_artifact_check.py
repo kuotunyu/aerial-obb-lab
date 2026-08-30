@@ -108,11 +108,11 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "b083cabed70001bdfe7427d819399af17d20a50c013fc27276e4dc507efbc20c",
+        "4a09df2370c56e59dff9337a5754605c7bc28a36effdeba1e4321778396c8325",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "d7c0588eaa9346aaf90ac5e57b3c0d7c0bf128f11ba8366a39f2c017ac713e7f",
+        "4200132a44eb44c2577c25be789069381304b421d0ee699001e8d4332951fb95",
         "reviewed application bytes differ",
     ),
     "obb.js": (
@@ -124,7 +124,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed showcase data bytes differ",
     ),
     "style.css": (
-        "889d81dbcefdf75b0d7682218aa47b5e0ee9a417dec176cd2010026eb4e71053",
+        "5685625db34b50b25f41006f7a57684830c68f8c10971fd0917707ad2e00332b",
         "reviewed stylesheet bytes differ",
     ),
     "fixtures/showcase.svg": (

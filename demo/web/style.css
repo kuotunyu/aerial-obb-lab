@@ -58,6 +58,37 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link:focus-visible {
+  width: auto;
+  height: auto;
+  padding: 10px 14px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 750;
+  text-decoration: none;
+}
+
 button,
 input {
   font: inherit;

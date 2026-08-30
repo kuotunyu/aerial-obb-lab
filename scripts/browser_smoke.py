@@ -306,6 +306,44 @@ def run_smoke(
             if page.locator("h1").count() != 1:
                 raise RuntimeError("browser workbench must contain exactly one h1")
 
+            page.keyboard.press("Tab")
+            skip_link = page.locator("a.skip-link")
+            if (
+                skip_link.count() != 1
+                or page.evaluate(
+                    "document.activeElement === document.querySelector('a.skip-link')"
+                )
+                is not True
+            ):
+                raise RuntimeError("first keyboard focus must be the main-workspace skip link")
+            if (
+                skip_link.inner_text() != "跳至主要工作區"
+                or skip_link.get_attribute("href") != "#mainContent"
+            ):
+                raise RuntimeError("skip link text or target is wrong")
+            page.keyboard.press("Enter")
+            page.wait_for_function(
+                "document.activeElement === document.querySelector('#mainContent')"
+            )
+
+            if page.locator('meta[name="theme-color"]').get_attribute("content") != "#edf1f4":
+                raise RuntimeError("theme-color metadata is not exact")
+            expected_names = {
+                "#modelInput": "model",
+                "#fileInput": "image",
+                "#confSlider": "confidence",
+            }
+            for selector, expected_name in expected_names.items():
+                if page.locator(selector).get_attribute("name") != expected_name:
+                    raise RuntimeError(f"stable control name is wrong for {selector}")
+            if any(
+                name != "class-filter"
+                for name in page.locator(".class-cb").evaluate_all(
+                    "els => els.map(el => el.name)"
+                )
+            ):
+                raise RuntimeError("class checkboxes do not share the semantic filter name")
+
             initial_result_presentation = page.evaluate(
                 "[modeBadge.textContent, provenanceValue.textContent]"
             )

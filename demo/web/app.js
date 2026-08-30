@@ -67,6 +67,7 @@ CLASS_NAMES.forEach((name, i) => {
   const cb = document.createElement("input");
   cb.type = "checkbox";
   cb.value = String(i);
+  cb.name = "class-filter";
   cb.className = "class-cb";
   label.appendChild(cb);
   label.appendChild(document.createTextNode(name));
