@@ -278,6 +278,18 @@ def test_pages_tree_rejects_disguised_readme_content_substitution(
     assert "README.md: reviewed README bytes differ" in verify_pages_tree(site)
 
 
+@pytest.mark.parametrize("newline", ("\n", "\r\n"), ids=("lf", "crlf"))
+def test_pages_tree_accepts_reviewed_readme_across_line_endings(
+    tmp_path: Path, newline: str
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    readme = site / "README.md"
+    canonical_text = readme.read_text(encoding="utf-8").replace("\r\n", "\n")
+    readme.write_bytes(canonical_text.replace("\n", newline).encode("utf-8"))
+
+    assert verify_pages_tree(site) == []
+
+
 @pytest.mark.parametrize(
     "payload",
     (

@@ -101,10 +101,6 @@ ORT_INTEGRITY = (
     "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
 )
 REVIEWED_ASSET_DIGESTS = {
-    "README.md": (
-        "583c7dba289ff12f823139c8b8585d9c810432961fa81f95da84ee6eddcdc966",
-        "reviewed README bytes differ",
-    ),
     "index.html": (
         "770c6e060aaa3f45ddb31fef78103e8eea74b3312ae9b87531f49644685c7301",
         "reviewed HTML bytes differ",
@@ -138,6 +134,12 @@ REVIEWED_ASSET_DIGESTS = {
         "reviewed font license bytes differ",
     ),
 }
+REVIEWED_TEXT_DIGESTS = {
+    "README.md": (
+        "f894db4415d92adae81c9ecbf121580710944f690cf44473814c3c6647c97d11",
+        "reviewed README bytes differ",
+    ),
+}
 
 
 def _is_link(path: Path) -> bool:
@@ -149,6 +151,13 @@ def _is_link(path: Path) -> bool:
         return False
     reparse_flag = getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
     return bool(attributes & reparse_flag)
+
+
+def _canonical_lf_text_sha256(path: Path) -> str:
+    """Hash UTF-8 text content after normalizing CRLF and lone CR to LF."""
+    text = path.read_bytes().decode("utf-8")
+    canonical = text.replace("\r\n", "\n").replace("\r", "\n")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _read_public_text(path: Path, relative: str, errors: list[str]) -> str | None:
@@ -396,6 +405,19 @@ def verify_pages_tree(root: Path) -> list[str]:
                 actual_digest = hashlib.sha256(path.read_bytes()).hexdigest()
             except OSError:
                 errors.append(f"{relative}: cannot read file")
+            else:
+                if actual_digest != expected_digest:
+                    errors.append(f"{relative}: {reason}")
+
+        reviewed_text = REVIEWED_TEXT_DIGESTS.get(relative)
+        if reviewed_text is not None:
+            expected_digest, reason = reviewed_text
+            try:
+                actual_digest = _canonical_lf_text_sha256(path)
+            except OSError:
+                errors.append(f"{relative}: cannot read file")
+            except UnicodeDecodeError:
+                errors.append(f"{relative}: {reason}")
             else:
                 if actual_digest != expected_digest:
                     errors.append(f"{relative}: {reason}")
