@@ -124,7 +124,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed showcase data bytes differ",
     ),
     "style.css": (
-        "6ad2634891f79759702a20d5c03100ef9fb1fc84ac130f7eb75d21ebb82b5e68",
+        "2e5e0a355324fc2ae594a77573dced348fbb7b8e18941bb6f0d2215b075ffb1b",
         "reviewed stylesheet bytes differ",
     ),
     "fixtures/showcase.svg": (
