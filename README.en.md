@@ -260,7 +260,10 @@ frozen and must not be rerun merely to improve the numbers.
   `ort.min.js` only; WASM assets fetched afterward by the runtime are outside that script SRI scope.
 - Showcase-asset, runtime, model-contract, inference, output, render, and image-decode failures clear
   stale results and expose fixed, filename-safe recovery paths. An invalid replacement model does not
-  displace the last validated session, and retry remains available where recovery is safe.
+  displace the last validated session, and retry remains available where recovery is safe. Switching
+  to Synthetic Showcase releases the BYOM session, clears its file selections, and restores neutral
+  model/image labels. Inference/output/render failures retain the base image while removing the stale
+  polygon, table, and summary.
 
 ---
 

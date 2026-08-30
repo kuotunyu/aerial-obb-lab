@@ -250,7 +250,8 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
   後續取得的 WASM assets 不在這個 script SRI 的涵蓋範圍。
 - Showcase asset、runtime、model contract、inference、output、render 或 image decode 失敗時，UI 會清除
   stale 結果、提供固定且不洩漏檔名的錯誤與可用的重試／重新選擇路徑；無效的新 model 不會取代最後一個
-  已驗證 session。
+  已驗證 session。切換到 Synthetic Showcase 會釋放 BYOM session、清除 file selections，並把 model／image
+  labels 還原為未選擇狀態；inference／output／render failure 會保留 base image，但移除 polygon、table 與摘要。
 
 ---
 

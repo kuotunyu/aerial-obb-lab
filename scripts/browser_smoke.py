@@ -49,6 +49,8 @@ SENSITIVE_TOKENS = (
 ORT_STUB = r"""
 globalThis.__ortCreateCount = 0;
 globalThis.__ortReleaseCount = 0;
+globalThis.__failInferenceRun = false;
+globalThis.__invalidInferenceOutput = false;
 globalThis.__ortActiveSessionIdsAtRelease = [];
 globalThis.__ortReleasedSessionIds = [];
 globalThis.__ortRunSessionIds = [];
@@ -98,10 +100,10 @@ globalThis.ort = {
         run: async () => {
           if (released) throw new Error("released session was used");
           globalThis.__ortRunSessionIds.push(sessionId);
-          if (behavior === 4) {
+          if (behavior === 4 || globalThis.__failInferenceRun) {
             throw new Error("flight=classified | raw inference failure");
           }
-          if (behavior === 2) {
+          if (behavior === 2 || globalThis.__invalidInferenceOutput) {
             return {
               output0: {
                 dims: [1, 2, 6],
@@ -168,6 +170,22 @@ def assert_fixed_failure(page: object, messages: list[str], code: str) -> None:
     leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
     if leaked:
         raise RuntimeError(f"{code} leaked sensitive exception data: {leaked!r}")
+
+
+def assert_result_cleared(page: object, base_canvas: str, code: str) -> None:
+    if page.locator("#resultsBody tr").count() != 0:
+        raise RuntimeError(f"{code} left a stale result row visible")
+    summary = page.evaluate(
+        "[summaryCount.textContent, summaryTop.textContent, runtimeValue.textContent, "
+        "modeBadge.textContent, provenanceValue.textContent]"
+    )
+    if summary != ["0", "—", "—", "NO RESULT", "—"]:
+        raise RuntimeError(f"{code} left stale result metadata visible: {summary!r}")
+    if page.locator("#canvasFrame").evaluate("el => el.classList.contains('has-results')"):
+        raise RuntimeError(f"{code} left the completed-result state visible")
+    current_canvas = page.locator("#canvas").evaluate("canvas => canvas.toDataURL()")
+    if current_canvas != base_canvas:
+        raise RuntimeError(f"{code} left a stale polygon painted on the canvas")
 
 
 @contextmanager
@@ -515,6 +533,7 @@ def run_smoke(
                 raise RuntimeError("successful image selection must use fixed neutral copy")
             if page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("Detect must be enabled after local model and image selection")
+            base_canvas = page.locator("#canvas").evaluate("canvas => canvas.toDataURL()")
             page.locator("#detectBtn").click()
             page.wait_for_function(
                 "document.querySelector('#status').textContent.includes('完成')"
@@ -545,6 +564,24 @@ def run_smoke(
                 raise RuntimeError("result viewport has no authored completion reveal state")
             if page.evaluate("globalThis.__obbFillTextCalls") != 0:
                 raise RuntimeError("dense result labels must not be drawn on the canvas")
+
+            for failure_flag, failure_code in (
+                ("__failInferenceRun", "INFERENCE_RUN"),
+                ("__invalidInferenceOutput", "OUTPUT_SCHEMA"),
+                ("__failResultRender", "RENDER_RESULT"),
+            ):
+                page.evaluate(f"globalThis.{failure_flag} = true")
+                page.locator("#detectBtn").click()
+                page.wait_for_function(
+                    "document.querySelector('#status').dataset.kind === 'error'"
+                )
+                assert_fixed_failure(page, browser_messages, failure_code)
+                assert_result_cleared(page, base_canvas, failure_code)
+                page.evaluate(f"globalThis.{failure_flag} = false")
+                page.locator("#detectBtn").click()
+                page.wait_for_function(
+                    "document.querySelector('#status').textContent.includes('完成')"
+                )
 
             page.locator("#modelInput").set_input_files(
                 files=[
@@ -711,6 +748,12 @@ def run_smoke(
             )
             if not page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("showcase activation must disable BYOM Detect")
+            if page.locator("#modelLabel").inner_text() != "選擇相容的 .onnx model":
+                raise RuntimeError("showcase activation left the BYOM model label ready")
+            if page.locator("#fileLabel").inner_text() != "選擇或拖放一張影像":
+                raise RuntimeError("showcase activation left the BYOM image label ready")
+            if page.locator("#modelInput").input_value() or page.locator("#fileInput").input_value():
+                raise RuntimeError("showcase activation retained stale BYOM file selections")
             if requested_urls.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("session lifecycle changes must reuse the cached ORT runtime")
             if screenshot is not None:

@@ -112,7 +112,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "d8be7af74b51636d3a22599e0d9f20cb522a7887195b327ff546728f07114b9b",
+        "9729424c3479d01969452dbb53d5ece254478ee5250993180f9e08bffd0092cb",
         "reviewed application bytes differ",
     ),
     "obb.js": (
@@ -136,7 +136,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed font license bytes differ",
     ),
     "README.md": (
-        "b2fdc5d47182a137b10c9756b137164728876643452316be3863dcb9210b59d5",
+        "458772e09e2d1ed4d034c323228cf42fd20e8f2079dc4f389bb7d916740745a4",
         "reviewed README bytes differ",
     ),
 }

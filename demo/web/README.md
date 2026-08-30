@@ -40,7 +40,10 @@ non-zero-network。`ort.min.js` 使用 SHA-384 SRI 與 anonymous CORS；這個 S
   inference；它們也不是 accuracy、evaluation 或 latency evidence。
 - Showcase asset、runtime、model contract、inference、output schema、render 或 image decode 失敗時，
   UI 會清除 stale results，顯示固定且不洩漏 local filename 的錯誤，並保留安全的 retry／重新選擇路徑。
-  無效或過期的新 model candidate 不會取代最後一個已驗證 session。
+  無效或過期的新 model candidate 不會取代最後一個已驗證 session。Inference／output／render failure
+  會保留目前的 base image，但清除 stale polygon、result table 與 summary。
+- 切換到 Synthetic Showcase 會釋放 BYOM session、清除先前的 model／image file selections，並把兩個
+  picker labels 還原成未選擇狀態，避免 synthetic mode 顯示錯誤的 BYOM ready 訊號。
 - 本路徑不需要 Python ML runtime、Torch、CUDA、DOTA、weights、HF token 或 secrets。
 
 ## 授權

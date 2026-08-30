@@ -14,6 +14,8 @@ All notable changes to this project are documented here.
   asset, runtime, model, inference, output, render, and image-decode failures.
 - Aligned release evidence, screenshot, and clean-export membership with the canonical showcase
   fixture while excluding tracked internal design plans from release archives.
+- Cleared stale polygon/table/summary state after inference, output-schema, or result-render failures,
+  and reset BYOM file selections plus readiness labels whenever Synthetic Showcase takes control.
 
 ## [1.0.0] - 2026-08-16
 

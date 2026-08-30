@@ -53,6 +53,8 @@ const runtimeValue = document.getElementById("runtimeValue");
 const modeBadge = document.getElementById("modeBadge");
 const provenanceValue = document.getElementById("provenanceValue");
 const resultTitle = document.getElementById("resultTitle");
+const MODEL_PROMPT_HTML = '選擇相容的 <code>.onnx</code> model';
+const IMAGE_PROMPT = "選擇或拖放一張影像";
 
 const state = {
   mode: "none", phase: "idle", generation: 0,
@@ -84,6 +86,9 @@ function setStatus(message, kind = "neutral") {
 
 function reportFailure(code) {
   const safe = Object.hasOwn(ERROR_COPY, code) ? code : "INFERENCE_RUN";
+  if (["INFERENCE_RUN", "OUTPUT_SCHEMA", "RENDER_RESULT"].includes(safe)) {
+    clearResultPresentation();
+  }
   console.warn("[AERIAL_OBB:" + safe + "]");
   setStatus(ERROR_COPY[safe], "error");
   runtimeRetryBtn.hidden = safe !== "RUNTIME_LOAD";
@@ -108,6 +113,13 @@ function renderSummary(dets, elapsedMs = null) {
 
 function updateDetectEnabled() {
   detectBtn.disabled = !(state.session && state.image);
+}
+
+function resetByomReadiness() {
+  modelInput.value = "";
+  fileInput.value = "";
+  modelLabel.innerHTML = MODEL_PROMPT_HTML;
+  fileLabel.textContent = IMAGE_PROMPT;
 }
 
 function loadOrtRuntime() {
@@ -145,6 +157,13 @@ function resetResult() {
   renderSummary([]);
   modeBadge.textContent = "NO RESULT";
   provenanceValue.textContent = "—";
+}
+
+function clearResultPresentation() {
+  canvasFrame.classList.remove("has-results");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (state.image) ctx.drawImage(state.image, 0, 0);
+  resetResult();
 }
 
 function decodeCachedOutput() {
@@ -418,6 +437,7 @@ async function activateShowcase() {
   const generation = nextGeneration();
   state.phase = "loading";
   detectBtn.disabled = true;
+  resetByomReadiness();
   setStatus("正在載入 Synthetic Showcase…", "running");
   try {
     await releaseSession();
