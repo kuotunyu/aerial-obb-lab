@@ -17,10 +17,11 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 **發布範圍：**僅程式碼與證據，不含 weights。
 
 <!-- claim:browser-scope -->
-> 瀏覽器 demo 需要使用者自行提供相容的 ONNX 模型，模型與圖片都只在本機瀏覽器處理；
-> ONNX Runtime Web code 由固定版本 jsDelivr URL 載入，並以 SHA-384 SRI 驗證。
-> 它不代表 fine-tuned `yolo26m-obb` checkpoint 的準確度或 T4 latency；本 repo 也不發布
-> 這兩種模型檔。
+> 瀏覽器 demo 有兩種明確模式：按一次「載入 Synthetic Showcase」即可呈現 repository 內的
+> authored SVG、固定結果與 rotated polygon，完全不載入 runtime、也不執行推論；BYOM 才是
+> inference 路徑，需要使用者自行提供相容 ONNX 與圖片，兩者都只在本機瀏覽器處理。
+> 模型與圖片都只在本機瀏覽器處理；Synthetic Showcase 與 screenshot 不代表 fine-tuned
+> `yolo26m-obb` 的 accuracy、evaluation 或 latency evidence。
 <!-- /claim:browser-scope -->
 
 ## 關鍵成果
@@ -30,11 +31,11 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 | Matched evaluation | Fine-tuned 相較官方 baseline：Δ mAP50 **-0.05pt**、Δ mAP50-95 **-0.13pt** | 持平略降，不宣稱精度提升 |
 | OBB geometry | 456 張 val images、28,853 個 objects；全體 weighted mean HBB／OBB 面積比 **1.76×**（bridge mean 2.43×） | Ground-truth geometry，不是 detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms／49.4 FPS** | 歷史 Tesla T4、batch=1、1024px 指定環境 |
-| Browser-native demo | ONNX Runtime Web WASM、BYOM、模型與影像只在本機處理 | Runtime code 由 jsDelivr + SRI 載入；不含模型，不代表 medium checkpoint 精度或 T4 latency |
+| Browser-native dual-mode demo | 一鍵 Synthetic Showcase（no inference）＋本機 BYOM inference | BYOM 選擇模型時才 lazy-load jsDelivr runtime；非零網路、JS script 受 SRI 驗證，不含模型或 DOTA pixels |
 
 ![Synthetic UI fixture：Browser-native BYOM workbench，不代表模型精度](docs/assets/browser-workbench.png)
 
-*Synthetic UI fixture：使用固定 SVG 與 stubbed `[1,N,7]` output 驗證 UI／UX、decode 與 rendering；沒有執行模型 inference。*
+*Synthetic UI fixture：一次操作載入固定 SVG 與 authored `[1,N,7]` output，驗證 UI／UX、decode 與 rendering；`N/A · no inference`，不代表 accuracy、evaluation 或 latency。*
 
 ---
 
@@ -239,12 +240,17 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
 
 ### 3. 瀏覽器 BYOM Demo
 
-- 以 static HTTP server 提供 `demo/web/`，再選擇本機 ONNX 與圖片；兩者不離開 Browser。
-- 頁面只向 jsDelivr 請求固定版本 ONNX Runtime Web code，並以 SHA-384 SRI 驗證；不會上傳 model／圖片。
-- 純 JavaScript + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)（WASM）；不下載、
-  export 或 fallback 到具名模型。
-- Synthetic fixture 交叉驗證 letterbox、RGB CHW、`[N,7]` decode、angle 與 rotated corners；
-  不下載 DOTA、不執行 inference。
+- 一次按下「載入 Synthetic Showcase」就會載入 committed authored SVG 與固定 output，繪出 rotated
+  polygon，顯示 provenance 與 `N/A · no inference`；不請求外部 runtime、不含 DOTA pixels，也不建立
+  accuracy、evaluation 或 latency evidence。
+- 只有 BYOM 模式執行 inference。以 static HTTP server 提供 `demo/web/`，再選擇本機 ONNX 與圖片；
+  model／image bytes 不離開 Browser，且不會下載、export 或 fallback 到具名模型。
+- ONNX Runtime Web 直到選擇 BYOM model 才 lazy-load。首次載入或 cache miss 會向 jsDelivr 請求 pinned
+  JavaScript 與 WASM assets，因此 BYOM 不是 zero-network。SHA-384 SRI 只驗證 `ort.min.js`；runtime
+  後續取得的 WASM assets 不在這個 script SRI 的涵蓋範圍。
+- Showcase asset、runtime、model contract、inference、output、render 或 image decode 失敗時，UI 會清除
+  stale 結果、提供固定且不洩漏檔名的錯誤與可用的重試／重新選擇路徑；無效的新 model 不會取代最後一個
+  已驗證 session。
 
 ---
 

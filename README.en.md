@@ -17,9 +17,12 @@ The result is reported as-is: matched fine-tuning was a near-tie/slight regressi
 **Release scope:** code and evidence only; no weights.
 
 <!-- claim:browser-scope -->
-> The browser demo requires a compatible, user-supplied ONNX model and processes both the model
-> and image locally. It does not represent the fine-tuned `yolo26m-obb` checkpoint's accuracy or
-> its recorded T4 latency, and this repository does not distribute either model binary.
+> The browser demo has two explicit modes. One click on **Load Synthetic Showcase** renders the
+> repository's authored SVG, fixed results, and rotated polygon without loading the runtime or
+> performing inference. BYOM is the only inference path; its user-supplied compatible ONNX model
+> and image are processed locally. Neither the showcase nor its screenshot is accuracy,
+> evaluation, or latency evidence: it **does not represent** the fine-tuned `yolo26m-obb`
+> checkpoint's accuracy or its recorded T4 latency.
 <!-- /claim:browser-scope -->
 
 ## Highlights
@@ -29,11 +32,11 @@ The result is reported as-is: matched fine-tuning was a near-tie/slight regressi
 | Matched evaluation | Fine-tuned vs. official baseline: Δ mAP50 **-0.05pt**, Δ mAP50-95 **-0.13pt** | Near-tie/slight regression, not an accuracy gain |
 | OBB geometry | 456 val images, 28,853 objects; overall weighted mean **1.76×**, bridge mean **2.43×** | Ground-truth geometry, not a detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms / 49.4 FPS** | Historical Tesla T4, batch=1, 1024px environment |
-| Browser-native demo | ONNX Runtime Web WASM and BYOM; model/image files stay local | Runtime code loads from jsDelivr with SRI; no bundled model, medium-checkpoint accuracy, or T4-latency claim |
+| Browser-native dual-mode demo | One-action Synthetic Showcase (no inference) plus local BYOM inference | Runtime lazy-loads from jsDelivr on BYOM model selection; non-zero network, SRI-covered JavaScript, no model or DOTA pixels |
 
 ![Synthetic UI fixture showing the browser-native BYOM workbench, not model-quality evidence](docs/assets/browser-workbench.png)
 
-*Synthetic UI fixture: a fixed SVG and stubbed `[1,N,7]` output verify UI/UX, decoding, and rendering without model inference.*
+*Synthetic UI fixture: one action loads a fixed SVG and authored `[1,N,7]` output to verify UI/UX, decoding, and rendering; `N/A · no inference`, not accuracy, evaluation, or latency evidence.*
 
 ---
 
@@ -247,13 +250,17 @@ frozen and must not be rerun merely to improve the numbers.
 
 ### 3. Browser BYOM Demo
 
-- Serve `demo/web/`, then choose a local ONNX model and image; both stay in the browser.
-- The page requests only the pinned ONNX Runtime Web code from jsDelivr and verifies it with SHA-384
-  SRI; it does not upload the model or image.
-- Vanilla JavaScript + [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/) (WASM);
-  no named-model download, export, or fallback.
-- Synthetic fixtures cross-check letterboxing, RGB CHW, `[N,7]` decode, angles, and rotated corners;
-  no DOTA download or inference.
+- One click on **Load Synthetic Showcase** loads the committed authored SVG and fixed output, draws a
+  rotated polygon, and shows provenance plus `N/A · no inference`. It makes no external runtime
+  request, contains no DOTA pixels, and creates no accuracy, evaluation, or latency evidence.
+- BYOM is the only inference mode. Serve `demo/web/`, then choose a local ONNX model and image;
+  model/image bytes stay in the browser, with no named-model download, implicit export, or fallback.
+- ONNX Runtime Web lazy-loads only when a BYOM model is selected. A first load or cache miss fetches
+  pinned JavaScript and WASM assets from jsDelivr, so BYOM is not zero-network. SHA-384 SRI covers
+  `ort.min.js` only; WASM assets fetched afterward by the runtime are outside that script SRI scope.
+- Showcase-asset, runtime, model-contract, inference, output, render, and image-decode failures clear
+  stale results and expose fixed, filename-safe recovery paths. An invalid replacement model does not
+  displace the last validated session, and retry remains available where recovery is safe.
 
 ---
 

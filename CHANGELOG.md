@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+### Browser evidence showcase
+
+- Added a one-action, deterministic Synthetic Showcase with an authored SVG, fixed result data,
+  visible provenance, and `N/A · no inference`; it includes no DOTA pixels and makes no model,
+  accuracy, evaluation, or latency claim.
+- Kept inference exclusive to BYOM and lazy-loaded the pinned ONNX Runtime Web runtime only after
+  model selection, with explicit JS-only SRI and non-zero-network boundaries plus safe recovery for
+  asset, runtime, model, inference, output, render, and image-decode failures.
+- Aligned release evidence, screenshot, and clean-export membership with the canonical showcase
+  fixture while excluding tracked internal design plans from release archives.
+
 ## [1.0.0] - 2026-08-16
 
 ### Evidence-first stable release

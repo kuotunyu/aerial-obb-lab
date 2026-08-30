@@ -136,7 +136,7 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "README.md": (
-        "f894db4415d92adae81c9ecbf121580710944f690cf44473814c3c6647c97d11",
+        "b2fdc5d47182a137b10c9756b137164728876643452316be3863dcb9210b59d5",
         "reviewed README bytes differ",
     ),
 }

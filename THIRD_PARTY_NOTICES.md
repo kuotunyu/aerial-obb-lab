@@ -13,12 +13,22 @@ only one self-hosted OFL display font; its hash and the checksums of six exclude
 artifacts are recorded in [`release/artifact-manifest.json`](release/artifact-manifest.json). Those
 records are audit metadata, not permission or distribution of the files.
 
+The committed Synthetic Showcase SVG and its fixed result data are authored, first-party test and
+presentation fixtures, not third-party artifacts. They contain no DOTA pixels and do not change the
+one-entry bundled third-party inventory. The code-only exclusions still cover model binaries,
+trained weights, DOTA images and annotations, DOTA-derived renders, and owner-private artifacts.
+
 The browser demo is a bring-your-own-model tool. A model selected by a user is not part
 of this repository and remains subject to its own provenance, software license, dataset terms, and
 weight terms. Ultralytics offers separate
 [AGPL-3.0 and Enterprise routes](https://www.ultralytics.com/license); this repository grants no
 Enterprise license. DOTA images and annotations are academic-use-only and may also carry underlying
 image-source restrictions. AGPL compliance and data/image rights are separate obligations.
+
+BYOM inference is not a zero-network mode: selecting a model lazy-loads pinned ONNX Runtime Web
+JavaScript and WASM assets from jsDelivr on a cache miss. SHA-384 SRI covers `ort.min.js` only, not
+the WASM assets subsequently fetched by that runtime. Model and image bytes remain local to the
+browser. The Synthetic Showcase neither loads this external runtime nor performs model inference.
 
 ## Runtime and development dependencies
 
