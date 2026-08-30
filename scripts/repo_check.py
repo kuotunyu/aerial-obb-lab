@@ -20,6 +20,11 @@ from pathlib import Path
 from urllib.parse import unquote
 from urllib.request import urlopen
 
+if __package__:
+    from .pages_artifact_check import verify_pages_tree
+else:
+    from pages_artifact_check import verify_pages_tree
+
 ROOT = Path(__file__).resolve().parents[1]
 
 TOKEN_PATTERNS = {
@@ -264,6 +269,13 @@ def check_static_demo() -> None:
     print("[OK] Static demo assets, references, and loopback HTTP serving")
 
 
+def check_pages_artifact() -> None:
+    errors = verify_pages_tree(ROOT / "demo" / "web")
+    if errors:
+        raise RuntimeError("Pages artifact boundary:\n  " + "\n  ".join(errors))
+    print("[OK] Pages artifact boundary")
+
+
 def check_javascript() -> None:
     node = shutil.which("node")
     if not node:
@@ -292,6 +304,7 @@ def main() -> int:
         check_json(files)
         check_markdown_links(files)
         check_secrets(files)
+        check_pages_artifact()
         check_static_demo()
         check_javascript()
     except (OSError, ValueError, SyntaxError, subprocess.CalledProcessError, RuntimeError) as exc:
