@@ -271,7 +271,7 @@ async function loadImageFile(file) {
     canvas.height = img.naturalHeight;
     ctx.drawImage(img, 0, 0);
     updateDetectEnabled();
-    fileLabel.textContent = file.name;
+    fileLabel.textContent = "Local image ready";
     setStatus(
       state.session ? "影像已載入 · 可以開始 Detect。" : "影像已載入 · 請選擇 ONNX model。",
       state.session ? "success" : "neutral",

@@ -25,6 +25,7 @@ EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
 ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
 ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
+SENSITIVE_IMAGE_NAME = "customer-alpha-private-aerial-image.svg"
 ERROR_COPY = {
     "SHOWCASE_ASSET": "Synthetic fixture 無法載入。請重新整理頁面，或改用 BYOM。",
     "RUNTIME_LOAD": "Browser runtime 無法載入。請檢查網路或 content blocker 後重試；Synthetic Showcase 仍可使用。",
@@ -36,6 +37,7 @@ ERROR_COPY = {
 }
 SENSITIVE_TOKENS = (
     "C:\\Users\\alice\\private-model.onnx",
+    SENSITIVE_IMAGE_NAME,
     "tenant=omega",
     "raw create failure",
     "flight=classified",
@@ -492,10 +494,25 @@ def run_smoke(
                 raise RuntimeError("BYOM selection must clear the synthetic canvas result")
             if not page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("Detect must remain disabled until an image is selected")
-            page.locator("#fileInput").set_input_files(str(FIXTURE))
+            page.locator("#fileInput").set_input_files(
+                files=[
+                    {
+                        "name": SENSITIVE_IMAGE_NAME,
+                        "mimeType": "image/svg+xml",
+                        "buffer": FIXTURE.read_bytes(),
+                    }
+                ]
+            )
             page.wait_for_function(
                 "document.querySelector('#status').textContent.includes('影像已載入')"
             )
+            visible_and_console = " | ".join(
+                [page.locator("body").inner_text(), *browser_messages]
+            )
+            if SENSITIVE_IMAGE_NAME in visible_and_console:
+                raise RuntimeError("successful image selection exposed a local filename")
+            if page.locator("#fileLabel").inner_text() != "Local image ready":
+                raise RuntimeError("successful image selection must use fixed neutral copy")
             if page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("Detect must be enabled after local model and image selection")
             page.locator("#detectBtn").click()
