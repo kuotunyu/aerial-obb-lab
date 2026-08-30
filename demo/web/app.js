@@ -5,6 +5,11 @@
 // [cx, cy, w, h, conf, cls, angle_rad] per detection in letterboxed pixel space.
 
 const IMGSZ = 1024;
+const ORT_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js";
+const ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+const ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp";
+let ortPromise = null;
+
 const CLASS_NAMES = [
   "plane", "ship", "storage tank", "baseball diamond", "tennis court",
   "basketball court", "ground track field", "harbor", "bridge", "large vehicle",
@@ -77,6 +82,28 @@ function updateDetectEnabled() {
   detectBtn.disabled = !(state.session && state.image);
 }
 
+function loadOrtRuntime() {
+  if (globalThis.ort) return Promise.resolve(globalThis.ort);
+  if (ortPromise) return ortPromise;
+  ortPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = ORT_URL;
+    script.integrity = ORT_INTEGRITY;
+    script.crossOrigin = "anonymous";
+    script.onload = () => {
+      globalThis.ort.env.wasm.wasmPaths = ORT_WASM_BASE;
+      resolve(globalThis.ort);
+    };
+    script.onerror = () => {
+      script.remove();
+      ortPromise = null;
+      reject(new Error("RUNTIME_LOAD"));
+    };
+    document.head.appendChild(script);
+  });
+  return ortPromise;
+}
+
 async function releaseSession() {
   const current = state.session;
   state.session = null;
@@ -118,30 +145,55 @@ function clearSyntheticResult() {
   resetResult();
 }
 
-async function loadModelFile(file) {
-  setStatus("正在載入 local ONNX model…", "running");
+function validateSessionContract(candidate) {
+  if (
+    !candidate?.inputNames?.includes("images") ||
+    !candidate?.outputNames?.includes("output0")
+  ) {
+    throw new Error("SESSION_CONTRACT");
+  }
+}
+
+async function replaceModelSession(file, generation) {
+  const runtime = await loadOrtRuntime();
   const modelBytes = new Uint8Array(await file.arrayBuffer());
-  const nextSession = await ort.InferenceSession.create(modelBytes, {
+  const candidate = await runtime.InferenceSession.create(modelBytes, {
     executionProviders: ["wasm"],
   });
-  await releaseSession();
-  state.session = nextSession;
+
+  try {
+    validateSessionContract(candidate);
+  } catch (_error) {
+    if (typeof candidate.release === "function") await candidate.release();
+    throw new Error("SESSION_CONTRACT");
+  }
+  if (generation !== state.generation) {
+    if (typeof candidate.release === "function") await candidate.release();
+    return false;
+  }
+
+  const previous = state.session;
+  state.session = candidate;
   modelLabel.textContent = file.name;
-  setStatus("Model ready · 請選擇影像。", "success");
-  updateDetectEnabled();
+  if (previous && typeof previous.release === "function") await previous.release();
+  return true;
 }
 
 modelInput.addEventListener("change", async () => {
   const file = modelInput.files[0];
   if (!file) return;
+  const generation = ++state.generation;
   clearSyntheticResult();
   detectBtn.disabled = true;
+  setStatus("正在載入 local ONNX model…", "running");
   try {
-    await loadModelFile(file);
+    const assigned = await replaceModelSession(file, generation);
+    if (!assigned) return;
+    setStatus("Model ready · 請選擇影像。", "success");
+    updateDetectEnabled();
   } catch (_error) {
-    await releaseSession();
+    if (generation !== state.generation) return;
     console.warn("Model load failed: incompatible local ONNX input.");
-    modelLabel.textContent = "選擇相容的 .onnx model";
     setStatus("模型載入失敗，請確認 ONNX 格式與 output contract。", "error");
     updateDetectEnabled();
   }

@@ -1,9 +1,9 @@
 """Headless BYOM demo smoke using synthetic model bytes, image, and ONNX output.
 
-This script tests local model selection, browser wiring, preprocessing, strict output
-selection, OBB decoding, drawing, and result rendering without model inference or an
-external network request. The committed CDN tag is checked separately by unit tests;
-the smoke response replaces only that tag with the synthetic runtime stub.
+This script tests local model selection, lazy runtime loading, browser wiring,
+preprocessing, strict output selection, OBB decoding, drawing, and result rendering
+without model inference or an external network request. The pinned CDN request is
+fulfilled directly with the synthetic runtime stub.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from contextlib import contextmanager, nullcontext
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import re
 import sys
 from threading import Thread
 from typing import Iterator
@@ -24,12 +23,15 @@ DEMO = ROOT / "demo" / "web"
 FIXTURE = DEMO / "fixtures" / "showcase.svg"
 EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
-ORT_SCRIPT_RE = re.compile(
-    rf'<script\b(?=[^>]*\bsrc="{re.escape(ORT_CDN_URL)}")[^>]*></script>',
-    flags=re.IGNORECASE | re.DOTALL,
-)
+ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
+ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
 ORT_STUB = r"""
+globalThis.__ortCreateCount = 0;
+globalThis.__ortReleaseCount = 0;
+globalThis.__ortReleaseLabels = [];
+globalThis.__ortRunSessionIds = [];
 globalThis.ort = {
+  env: { wasm: {} },
   Tensor: class Tensor {
     constructor(type, data, dims) {
       this.type = type;
@@ -39,26 +41,65 @@ globalThis.ort = {
   },
   InferenceSession: {
     create: async (modelBytes) => {
+      const sessionId = ++globalThis.__ortCreateCount;
       if (!(modelBytes instanceof Uint8Array) || modelBytes.length === 0) {
         throw new Error("expected non-empty local model bytes");
       }
       if (modelBytes[0] === 0) {
         throw new Error("C:\\Users\\alice\\private-model.onnx");
       }
+      if (modelBytes[0] === 2) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      let released = false;
       return {
-        run: async () => ({
-          output0: {
-            dims: [1, 2, 7],
-            data: new Float32Array([
-              512, 512, 256, 128, 0.9, 1, Math.PI / 2,
-              100, 100, 50, 40, 0.2, 2, 0
-            ])
-          }
-        })
+        inputNames: ["images"],
+        outputNames: modelBytes[0] === 1 ? ["unexpected"] : ["output0"],
+        release: async () => {
+          if (released) throw new Error("session released twice");
+          released = true;
+          globalThis.__ortReleaseCount += 1;
+          globalThis.__ortReleaseLabels.push(
+            document.querySelector("#modelLabel").textContent
+          );
+        },
+        run: async () => {
+          if (released) throw new Error("released session was used");
+          globalThis.__ortRunSessionIds.push(sessionId);
+          return {
+            output0: {
+              dims: [1, 2, 7],
+              data: new Float32Array([
+                512, 512, 256, 128, 0.9, 1, Math.PI / 2,
+                100, 100, 50, 40, 0.2, 2, 0
+              ])
+            }
+          };
+        }
       };
     }
   }
 };
+"""
+
+# The intercepted stub cannot share the production bundle's SRI digest. Bypass
+# hashing only when production already supplied the exact pinned attributes,
+# then restore the integrity value before the app can observe the script.
+SRI_STUB_SHIM = f"""
+(() => {{
+  const appendChild = Node.prototype.appendChild;
+  Node.prototype.appendChild = function (child) {{
+    const isPinnedRuntime = child instanceof HTMLScriptElement &&
+      child.src === {ORT_CDN_URL!r} &&
+      child.integrity === {ORT_INTEGRITY!r} &&
+      child.crossOrigin === "anonymous";
+    if (!isPinnedRuntime) return appendChild.call(this, child);
+    child.integrity = "";
+    const appended = appendChild.call(this, child);
+    child.integrity = {ORT_INTEGRITY!r};
+    return appended;
+  }};
+}})();
 """
 
 
@@ -102,6 +143,7 @@ def run_smoke(
         browser = playwright.chromium.launch(**launch_options)
         try:
             page = browser.new_page(viewport={"width": 1600, "height": 1000})
+            page.add_init_script(SRI_STUB_SHIM)
             page.add_init_script(
                 """
                 globalThis.__obbFillTextCalls = 0;
@@ -144,17 +186,18 @@ def run_smoke(
             )
 
             def stub_ort(route: Route) -> None:
-                response = route.fetch()
-                body, replacements = ORT_SCRIPT_RE.subn(
-                    f"<script>{ORT_STUB}</script>", response.text(), count=1
+                route.fulfill(
+                    status=200,
+                    content_type="application/javascript",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                    body=ORT_STUB,
                 )
-                if replacements != 1:
-                    raise RuntimeError("pinned ONNX Runtime Web script tag was not found")
-                route.fulfill(response=response, body=body)
 
             entry_url = f"{str(served_url).rstrip('/')}/"
-            page.route(entry_url, stub_ort)
+            page.route(ORT_CDN_URL, stub_ort)
             page.goto(entry_url, wait_until="networkidle")
+            if requested_urls.count(ORT_CDN_URL) != 0:
+                raise RuntimeError("ORT must not be requested during initial page load")
             if page.locator("html").get_attribute("lang") != "zh-Hant-TW":
                 raise RuntimeError("browser workbench must declare zh-Hant-TW")
             header = page.locator("header").inner_text()
@@ -288,6 +331,8 @@ def run_smoke(
                 "document.querySelector('#status').textContent.includes('Synthetic fixture')",
                 timeout=5_000,
             )
+            if requested_urls.count(ORT_CDN_URL) != 0:
+                raise RuntimeError("synthetic showcase must not request ORT")
             if page.locator("#modeBadge").inner_text() != "SYNTHETIC FIXTURE · NO INFERENCE":
                 raise RuntimeError("showcase mode badge is not exact")
             if page.locator("#provenanceValue").inner_text() != "Committed synthetic fixture":
@@ -334,6 +379,28 @@ def run_smoke(
                     "model selection did not reach success state; "
                     f"status={current_status!r}; browser_errors={browser_errors!r}"
                 ) from exc
+            if requested_urls.count(ORT_CDN_URL) != 1:
+                raise RuntimeError(
+                    "first BYOM model selection must request ORT exactly once; "
+                    f"requests={requested_urls.count(ORT_CDN_URL)}"
+                )
+            runtime_scripts = page.locator(f'script[src="{ORT_CDN_URL}"]')
+            if runtime_scripts.count() != 1:
+                raise RuntimeError("lazy ORT loader must append exactly one runtime script")
+            runtime_attributes = runtime_scripts.evaluate(
+                "script => ({ integrity: script.integrity, crossOrigin: script.crossOrigin })"
+            )
+            if runtime_attributes != {
+                "integrity": ORT_INTEGRITY,
+                "crossOrigin": "anonymous",
+            }:
+                raise RuntimeError(
+                    f"lazy ORT script security attributes are wrong: {runtime_attributes!r}"
+                )
+            if page.evaluate("globalThis.ort.env.wasm.wasmPaths") != ORT_WASM_BASE:
+                raise RuntimeError("lazy ORT loader did not pin the WASM asset base")
+            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [1, 0]:
+                raise RuntimeError("first validated model must become active without a release")
             if page.locator("#modeBadge").inner_text() != "NO RESULT":
                 raise RuntimeError("BYOM selection must clear synthetic mode state")
             if page.locator("#provenanceValue").inner_text() != "—":
@@ -383,6 +450,69 @@ def run_smoke(
                 raise RuntimeError("result viewport has no authored completion reveal state")
             if page.evaluate("globalThis.__obbFillTextCalls") != 0:
                 raise RuntimeError("dense result labels must not be drawn on the canvas")
+
+            page.locator("#modelInput").set_input_files(
+                files=[
+                    {
+                        "name": "replacement.onnx",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"replacement-model",
+                    }
+                ]
+            )
+            page.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'replacement.onnx'"
+            )
+            if requested_urls.count(ORT_CDN_URL) != 1:
+                raise RuntimeError("cached ORT loader must not request the runtime twice")
+            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [2, 1]:
+                raise RuntimeError("validated replacement must release exactly the previous session")
+            if page.evaluate("globalThis.__ortReleaseLabels") != ["replacement.onnx"]:
+                raise RuntimeError("previous session was released before replacement assignment")
+
+            page.locator("#modelInput").set_input_files(
+                files=[
+                    {
+                        "name": "invalid-contract.onnx",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"\x01invalid-contract",
+                    }
+                ]
+            )
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'"
+            )
+            if page.locator("#modelLabel").inner_text() != "replacement.onnx":
+                raise RuntimeError("invalid candidate changed the visible active-model label")
+            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [3, 2]:
+                raise RuntimeError("invalid candidate was not released while preserving the active session")
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('完成')"
+            )
+            if page.evaluate("globalThis.__ortRunSessionIds.at(-1)") != 2:
+                raise RuntimeError("invalid candidate replaced the last validated session")
+
+            page.locator("#modelInput").set_input_files(
+                files=[
+                    {
+                        "name": "stale.onnx",
+                        "mimeType": "application/octet-stream",
+                        "buffer": b"\x02stale-candidate",
+                    }
+                ]
+            )
+            page.locator("#showcaseBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').textContent.includes('Synthetic fixture')"
+            )
+            page.wait_for_function(
+                "globalThis.__ortCreateCount === 4 && globalThis.__ortReleaseCount === 4"
+            )
+            if page.locator("#modelLabel").inner_text() != "replacement.onnx":
+                raise RuntimeError("stale candidate changed the visible active-model label")
+            if requested_urls.count(ORT_CDN_URL) != 1:
+                raise RuntimeError("session lifecycle changes must reuse the cached ORT runtime")
             if screenshot is not None:
                 screenshot.parent.mkdir(parents=True, exist_ok=True)
                 page.wait_for_timeout(350)
@@ -406,13 +536,14 @@ def run_smoke(
             invalid_page = browser.new_page(viewport={"width": 1200, "height": 800})
             invalid_messages: list[str] = []
             try:
+                invalid_page.add_init_script(SRI_STUB_SHIM)
                 invalid_page.on(
                     "console", lambda message: invalid_messages.append(message.text)
                 )
                 invalid_page.on(
                     "pageerror", lambda error: invalid_messages.append(str(error))
                 )
-                invalid_page.route(entry_url, stub_ort)
+                invalid_page.route(ORT_CDN_URL, stub_ort)
                 invalid_page.goto(entry_url, wait_until="networkidle")
                 invalid_page.locator("#modelInput").set_input_files(
                     files=[
@@ -442,7 +573,7 @@ def run_smoke(
     unexpected = [
         url
         for url in requested_urls
-        if not url.startswith(str(served_url))
+        if url != ORT_CDN_URL and not url.startswith(str(served_url))
     ]
     if unexpected:
         raise RuntimeError("unexpected external browser requests: " + " | ".join(unexpected))
