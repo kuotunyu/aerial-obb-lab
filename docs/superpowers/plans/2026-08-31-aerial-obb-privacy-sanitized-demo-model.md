@@ -358,6 +358,7 @@ git commit -m "feat: admit privacy-sanitized demo assets"
 - Delete: `demo/web/fixtures/showcase.svg`
 - Modify: `scripts/browser_smoke.py`
 - Modify: `scripts/pages_artifact_check.py`
+- Modify: `tests/test_browser_parity.py`
 - Modify: `tests/test_pages_artifact_check.py`
 - Modify: `tests/test_package_release.py`
 
@@ -402,6 +403,11 @@ In the same GREEN, remove the transitional Synthetic paths from the Pages allowl
 real-demo JS/image/derivative/manifest/license/notice inventory authoritative. A current-tree verifier pass
 must now fail if `showcase-fixture.js`, `fixtures/showcase.svg`, or any Synthetic reference remains.
 
+`tests/test_browser_parity.py` contains one obsolete production-Synthetic contract that imports
+`showcase-fixture.js`. Remove only that test and its now-dead dedicated helper/constant while preserving all
+pure OBB preprocessing, decode, schema, geometry, and Python/browser parity tests. This scoped removal is
+required so deleting the production fixture and running the complete parity file are not contradictory.
+
 - [ ] **Step 6: Run Task 3 GREEN**
 
 ```powershell
@@ -417,7 +423,7 @@ git diff --check
 Complete fresh spec/quality review and fix rounds, then stage exactly Task 3 files and commit:
 
 ```powershell
-git add demo/web/demo-assets.js demo/web/index.html demo/web/style.css demo/web/app.js demo/web/showcase-fixture.js demo/web/fixtures/showcase.svg scripts/browser_smoke.py scripts/pages_artifact_check.py tests/test_pages_artifact_check.py tests/test_package_release.py
+git add demo/web/demo-assets.js demo/web/index.html demo/web/style.css demo/web/app.js demo/web/showcase-fixture.js demo/web/fixtures/showcase.svg scripts/browser_smoke.py scripts/pages_artifact_check.py tests/test_browser_parity.py tests/test_pages_artifact_check.py tests/test_package_release.py
 git diff --cached --check
 git commit -m "feat: add real-image browser OBB demo"
 ```
