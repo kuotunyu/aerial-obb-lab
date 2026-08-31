@@ -32,6 +32,7 @@ ERROR_CODES = {
     "io": "DEMO_MODEL_IO",
 }
 PRIVATE_PATH = re.compile(rb"(?i)(?:[a-z]:[\\/](?:users|home)[\\/]|/(?:home|users)/)")
+PRIVATE_TEXT = re.compile(r"(?i)(?:[a-z]:[\\/](?:users|home)[\\/]|/(?:home|users)/)")
 
 
 class SanitizationError(Exception):
@@ -71,7 +72,17 @@ def _field_path(prefix: str, name: str) -> str:
 
 
 def _sensitive_string(value: str) -> bool:
-    return PRIVATE_PATH.search(value.encode("utf-8", errors="surrogatepass")) is not None
+    return PRIVATE_TEXT.search(value) is not None
+
+
+def _sensitive_bytes(value: bytes) -> bool:
+    if PRIVATE_PATH.search(value) is not None:
+        return True
+    for encoding in ("utf-16-le", "utf-16-be"):
+        for offset in (0, 1):
+            if _sensitive_string(value[offset:].decode(encoding, errors="ignore")):
+                return True
+    return False
 
 
 def _sensitive_fields(message: object, prefix: str) -> Iterable[str]:
@@ -86,10 +97,14 @@ def _sensitive_fields(message: object, prefix: str) -> Iterable[str]:
                     yield from _sensitive_fields(item, item_path)
                 elif field.type == field.TYPE_STRING and _sensitive_string(item):
                     yield item_path
+                elif field.type == field.TYPE_BYTES and _sensitive_bytes(item):
+                    yield item_path
         elif field.type == field.TYPE_MESSAGE:
             if message.HasField(field.name):  # type: ignore[attr-defined]
                 yield from _sensitive_fields(value, field_path)
         elif field.type == field.TYPE_STRING and value and _sensitive_string(value):
+            yield field_path
+        elif field.type == field.TYPE_BYTES and value and _sensitive_bytes(value):
             yield field_path
 
 
@@ -114,26 +129,28 @@ def require_structural_identity(first: onnx.ModelProto, second: onnx.ModelProto)
         raise SanitizationError("verify")
 
 
-def _graphs(graph: onnx.GraphProto) -> Iterable[onnx.GraphProto]:
-    yield graph
-    for node in graph.node:
-        for attribute in node.attribute:
-            if attribute.type == onnx.AttributeProto.GRAPH:
-                yield from _graphs(attribute.g)
-            elif attribute.type == onnx.AttributeProto.GRAPHS:
-                for nested in attribute.graphs:
-                    yield from _graphs(nested)
+def _messages(message: object) -> Iterable[object]:
+    yield message
+    descriptor = message.DESCRIPTOR  # type: ignore[attr-defined]
+    for field in descriptor.fields:
+        if field.type != field.TYPE_MESSAGE:
+            continue
+        value = getattr(message, field.name)  # type: ignore[arg-type]
+        if field.is_repeated:
+            for item in value:
+                yield from _messages(item)
+        elif message.HasField(field.name):  # type: ignore[attr-defined]
+            yield from _messages(value)
 
 
 def require_no_external_data(model: onnx.ModelProto) -> None:
-    for graph in _graphs(model.graph):
-        for initializer in graph.initializer:
-            if initializer.data_location == TensorProto.EXTERNAL or initializer.external_data:
-                raise SanitizationError("verify")
+    for message in _messages(model):
+        if isinstance(message, onnx.TensorProto) and (message.data_location == TensorProto.EXTERNAL or message.external_data):
+            raise SanitizationError("verify")
 
 
 def require_private_bytes(value: bytes) -> None:
-    if PRIVATE_PATH.search(value) is not None:
+    if _sensitive_bytes(value):
         raise SanitizationError("privacy")
 
 
@@ -204,10 +221,21 @@ def _safe_existing_file(path: Path) -> Path:
 def _safe_destination(path: Path) -> Path:
     parent = Path(os.path.abspath(path.parent))
     try:
+        for ancestor in [*reversed(parent.parents), parent]:
+            if (ancestor.exists() or ancestor.is_symlink()) and is_reparse_point(ancestor):
+                raise SanitizationError("scope")
         parent.mkdir(parents=True, exist_ok=True)
-        if is_reparse_point(parent):
+        for ancestor in [*reversed(parent.parents), parent]:
+            if (ancestor.exists() or ancestor.is_symlink()) and is_reparse_point(ancestor):
+                raise SanitizationError("scope")
+        safe_parent = parent.resolve(strict=False)
+        if not safe_parent.is_dir() or is_reparse_point(safe_parent):
             raise SanitizationError("scope")
-        candidate = checked_child(parent, Path(path.name))
+        candidate = checked_child(safe_parent, Path(path.name))
+        try:
+            candidate.resolve(strict=False).relative_to(safe_parent)
+        except ValueError:
+            raise SanitizationError("scope") from None
         if candidate.exists() and is_reparse_point(candidate):
             raise SanitizationError("scope")
         return candidate
@@ -228,43 +256,73 @@ def _receipt_bytes(receipt: SanitizationReceipt) -> bytes:
     return (json.dumps(asdict(receipt), sort_keys=True, indent=2) + "\n").encode("utf-8")
 
 
+def _write_descriptor(descriptor: int, value: bytes) -> None:
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(value)
+    except Exception:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+
+
+def _new_temporary(parent: Path, prefix: str) -> tuple[int, Path]:
+    descriptor, temporary = tempfile.mkstemp(prefix=prefix, dir=parent)
+    return descriptor, Path(temporary)
+
+
+def _cleanup(path: Path) -> bool:
+    try:
+        path.unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False
+
+
 def _write_transactional(entries: tuple[tuple[Path, bytes], ...]) -> None:
     staged: list[tuple[Path, Path]] = []
-    backups: list[tuple[Path, Path | None]] = []
-    applied: list[tuple[Path, Path | None]] = []
+    backups: dict[Path, Path | None] = {}
+    applied: list[Path] = []
+    preserved_backups: set[Path] = set()
+    failed = False
     try:
         for destination, value in entries:
-            descriptor, temporary = tempfile.mkstemp(prefix=".demo-model-stage-", dir=destination.parent)
-            with os.fdopen(descriptor, "wb") as stream:
-                stream.write(value)
-            staged.append((Path(temporary), destination))
+            descriptor, temporary = _new_temporary(destination.parent, ".demo-model-stage-")
+            staged.append((temporary, destination))
+            _write_descriptor(descriptor, value)
             backup: Path | None = None
             if destination.exists():
-                descriptor, temporary = tempfile.mkstemp(prefix=".demo-model-backup-", dir=destination.parent)
-                with os.fdopen(descriptor, "wb") as stream:
-                    stream.write(destination.read_bytes())
-                backup = Path(temporary)
-            backups.append((destination, backup))
+                descriptor, backup = _new_temporary(destination.parent, ".demo-model-backup-")
+                backups[destination] = backup
+                _write_descriptor(descriptor, destination.read_bytes())
+            else:
+                backups[destination] = None
         for temporary, destination in staged:
-            backup = next(item_backup for item_destination, item_backup in backups if item_destination == destination)
             os.replace(temporary, destination)
-            applied.append((destination, backup))
+            applied.append(destination)
     except Exception:
-        for destination, backup in reversed(applied):
+        failed = True
+        for destination in reversed(applied):
+            backup = backups[destination]
             try:
                 if backup is None:
                     destination.unlink(missing_ok=True)
                 else:
                     os.replace(backup, destination)
             except Exception:
-                pass
-        raise SanitizationError("io") from None
+                if backup is not None:
+                    preserved_backups.add(backup)
     finally:
+        cleanup_failed = False
         for temporary, _ in staged:
-            temporary.unlink(missing_ok=True)
-        for _, backup in backups:
-            if backup is not None:
-                backup.unlink(missing_ok=True)
+            cleanup_failed = not _cleanup(temporary) or cleanup_failed
+        for backup in backups.values():
+            if backup is not None and backup not in preserved_backups:
+                cleanup_failed = not _cleanup(backup) or cleanup_failed
+    if failed or cleanup_failed:
+        raise SanitizationError("io")
 
 
 def sanitize_official_model(source: Path, output: Path, receipt: Path) -> SanitizationReceipt:
@@ -310,7 +368,12 @@ def validate_sanitized_model(source: Path, output: Path, receipt: Path) -> Sanit
     require_private_bytes(current_output)
     if not hmac.compare_digest(current_output, expected_output):
         raise SanitizationError("verify")
-    if _load_receipt(safe_receipt) != asdict(expected_receipt):
+    received_receipt = _load_receipt(safe_receipt)
+    expected_payload = asdict(expected_receipt)
+    if set(received_receipt) != set(expected_payload) or any(
+        type(received_receipt[key]) is not type(expected_payload[key]) or received_receipt[key] != expected_payload[key]
+        for key in expected_payload
+    ):
         raise SanitizationError("receipt")
     return expected_receipt
 
