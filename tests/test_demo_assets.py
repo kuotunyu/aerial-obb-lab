@@ -565,7 +565,7 @@ def test_publish_rejects_stale_managed_page_leaf(tmp_path: Path, fake_transport:
     assert _files(pages_root) == {"models/stale.onnx": b"stale"}
 
 
-def test_publish_replaces_the_complete_derivative_batch_atomically(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_publish_validates_complete_batch_and_restores_prior_batch_on_failure(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
     repo_root = tmp_path / "repo"; repo_root.mkdir()
     subprocess.run(["git", "init", str(repo_root)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
     monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
