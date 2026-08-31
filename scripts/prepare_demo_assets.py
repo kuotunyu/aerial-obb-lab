@@ -369,10 +369,12 @@ def acquire_assets(review_root: Path, transport: Callable[[AssetSpec], tuple[byt
 def _git_worktree_roots(repo_root: Path) -> set[Path]:
     roots = {repo_root.resolve()}
     try:
-        output = subprocess.run(["git", "-C", str(repo_root), "worktree", "list", "--porcelain"], check=False, capture_output=True, text=True).stdout
-    except OSError:
-        return roots
-    for line in output.splitlines():
+        command = ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"]
+        completed = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
+        porcelain = completed.stdout.decode("utf-8", errors="strict")
+    except (OSError, UnicodeDecodeError, subprocess.SubprocessError):
+        raise AssetPreparationError("scope") from None
+    for line in porcelain.splitlines():
         if line.startswith("worktree "):
             roots.add(Path(line.removeprefix("worktree ")).resolve())
     return roots

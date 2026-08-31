@@ -7,6 +7,8 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
+from types import SimpleNamespace
 from urllib.error import HTTPError
 
 from PIL import Image
@@ -305,7 +307,8 @@ def test_publish_rejects_stale_managed_page_leaf(tmp_path: Path, fake_transport:
 
 
 def test_publish_writes_only_three_approved_paths_and_closed_manifest(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
-    repo_root = tmp_path / "repo"; repo_root.mkdir(); (repo_root / ".git").mkdir()
+    repo_root = tmp_path / "repo"; repo_root.mkdir()
+    subprocess.run(["git", "init", str(repo_root)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
     monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
     pages_root = repo_root / "demo" / "web"
     review_root = tmp_path / "external-review"
@@ -348,3 +351,20 @@ def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.Capt
     secret_argument = "C:/Users/alice/private?token=secret"
     assert main(["invalid-command", "--review-root", secret_argument]) == 1
     assert capsys.readouterr().out == "[FAIL] DEMO_ASSET_SCOPE\n"
+
+
+def test_git_worktree_roots_decodes_utf8_bytes_independent_of_host_locale(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    unicode_root = tmp_path / "工作區"
+
+    def fake_run(*_args: object, **kwargs: object) -> SimpleNamespace:
+        assert kwargs == {
+            "check": True,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": False,
+        }
+        return SimpleNamespace(stdout=f"worktree {unicode_root}\n".encode("utf-8"))
+
+    monkeypatch.setattr(demo_assets.subprocess, "run", fake_run)
+
+    assert unicode_root.resolve() in demo_assets._git_worktree_roots(tmp_path)
