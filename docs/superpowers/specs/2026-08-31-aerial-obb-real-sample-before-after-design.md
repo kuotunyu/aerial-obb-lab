@@ -5,8 +5,80 @@
 - **Design branch:** `docs/pages-real-sample-before-after-design`
 - **Base commit:** `24039db9e07e327b55433086241ac574430c4531`
 - **Dependency:** the local `fix/pages-live-review-accessibility` branch must be integrated before implementation begins
-- **Status:** Approved for implementation planning
+- **Status:** Expanded-candidate amendment approved in principle; pending written amended-spec review
 - **Scope:** replace the public synthetic-first experience with two reviewed real-image Before/After samples while preserving BYOM as the only live-inference path
+
+## Owner-approved amendment: frozen expanded candidate pool
+
+The first implementation attempt preserved the original immutable-crop rule and produced zero decoded
+detections for both priority candidates at confidence `0.25`. Neither result is publishable under this
+design. No crop, tensor, or box may be changed to rescue either failed candidate, and the two rejected
+candidate identities remain rejected for this implementation wave.
+
+The owner approved the recommended recovery: keep the same owner-authorized external compatible OBB model,
+but replace the original three-candidate priority/reserve rule with one broader, pre-inference-frozen pool.
+This amendment supersedes only the candidate-count, priority, and reserve wording below. Rights, privacy,
+claim, model, artifact, testing, and remote-gate boundaries remain unchanged.
+
+### Pool construction and freeze boundary
+
+One implementation wave contains exactly eight new candidates selected before any model access:
+
+- three aircraft or airfield scenes with multiple clearly visible aircraft;
+- three ship, harbor, or naval-yard scenes with multiple clearly visible vessels; and
+- two port, vehicle, or transport-infrastructure scenes with multiple clearly visible targets.
+
+Each candidate must have an image-specific HTTPS record and an explicit public-domain basis as an official
+U.S. federal government work. Allowed record families are the National Archives Catalog, Naval History and
+Heritage Command, and DVIDS. A DVIDS candidate additionally requires an individual `PUBLIC DOMAIN` marking,
+named government creator/unit, and the complete non-endorsement/privacy/trademark notice. General collection
+policy alone cannot admit a candidate. The two already rejected priority images cannot re-enter the pool.
+
+For every candidate, the operator selects one crop from visible scene content only, before the model path is
+made available to the process. The crop may favor a region containing multiple visually obvious target-class
+objects, but may not use inference, heatmaps, tensor values, or trial detections. Before the first inference,
+the tool writes a repository-external frozen pool record containing, for all eight candidates, the public
+record/acquisition/rights URLs, agency and creator when available, source SHA-256 and dimensions, crop
+rectangle, output dimensions, and deterministic WebP SHA-256. The tool prints only a fixed success code and
+the frozen pool's SHA-256; the controller records that digest in the SDD ledger. After the freeze, changing a
+candidate, order, source byte, crop, transform, or published WebP invalidates the entire wave.
+
+### Deterministic run and admission
+
+The frozen pool runs once, in recorded order, through the same pinned browser preprocessing, ORT session,
+`output0 [1,N,7]` selection, production decoder, confidence `0.25`, and no class selection. Every raw result
+is retained only in the repository-external review package. A candidate passes only when it produces 1–20
+finite detections and the overlay is visually understandable without private people, sensitive information,
+misleading branding, or obvious non-scene artifacts.
+
+The accepted public pair is the first two passing candidates in frozen order. The pair must have different
+scene labels; if the second pass duplicates the first label, evaluation continues to the first later pass
+with a different label. No pass may be preferred because its boxes look more flattering. Rejected candidates
+remain whole-candidate rejections; no crop, confidence, tensor, class, label, or box can be edited or retried.
+If the frozen wave yields fewer than two distinct-label passes, implementation stops for a new owner decision.
+
+Only the accepted pair's metadata-free WebPs and public-only precomputed outputs enter `demo/web/samples/`.
+The frozen pool, rejected images, source originals, overlays, raw tensors, and model remain outside every
+repository, artifact, report, screenshot, and commit. Public provenance continues to identify the generator
+only as `owner-authorized external compatible OBB model`.
+
+### Amendment-specific tests
+
+Strict TDD must add real behavioral coverage for these boundaries before extending the preparation tool:
+
+- the freeze operation accepts exactly eight rights-reviewed new candidates in the required 3/3/2 category
+  composition and never accepts either previously rejected candidate;
+- a frozen pool is created without receiving or resolving a model path;
+- source, order, crop, transform, WebP byte, or pool-digest drift fails closed before inference;
+- a synthetic result matrix proves selection is the first two passes in frozen order with distinct labels,
+  not the visually preferred pair;
+- fewer than two qualifying distinct-label results publishes nothing; and
+- public output, diagnostics, tests, reports, screenshots, and commits contain no rejected asset, source
+  original, private model identity, raw tensor, raw exception, stack, or local path.
+
+The real capture gate then verifies the frozen digest before and after the one production run, reviews all
+eight external overlays, and admits exactly two or stops. Synthetic unit fixtures may exercise selection
+logic, but they cannot replace the real browser capture and visual review.
 
 ## Problem and outcome
 
@@ -55,7 +127,7 @@ not a substitute for an image-specific rights record. The implementation must pr
 page, originating agency, author/creator when available, public-domain basis, retrieval date, original file
 digest, published crop digest, crop rectangle, output dimensions, and transformation record.
 
-Initial candidates are limited to these reviewed source families:
+The original implementation wave reviewed these candidates:
 
 1. **Aircraft boneyard:** U.S. Air Force/NARA aerial photograph of stored aircraft at the Aerospace
    Maintenance and Regeneration Center, NARA identifier 6438938, marked public domain as a U.S. federal
@@ -63,11 +135,12 @@ Initial candidates are limited to these reviewed source families:
 2. **Naval shipyard:** U.S. Navy/NHHC aerial view of Pearl Harbor Naval Shipyard, photo 80-G-361740, marked
    public domain as a U.S. federal government work.
 3. **Port reserve candidate:** U.S. Army aerial photograph over the Port of Tacoma, DVIDS image 3156545,
-   marked public domain as an official-duty U.S. federal government work.
+   marked public domain as an official-duty U.S. federal government work; it was not run after both priority
+   candidates failed, because the then-approved stop rule prohibited it.
 
-The final release contains exactly two candidates that pass every gate below. The aircraft and naval
-candidates have priority; the port candidate is the defined replacement if either priority candidate fails.
-No other image source may be substituted without a written design amendment.
+The aircraft and naval crops produced zero decoded detections and are rejected. The port image cannot enter
+the amended wave because all eight candidates must be new and frozen together before inference. The final
+release contains exactly two candidates selected by the amended frozen-pool rule above.
 
 ### Candidate acceptance gate
 
@@ -76,9 +149,11 @@ For each candidate, implementation must perform these steps in order:
 1. save the image-specific source and rights record outside the repository for review;
 2. inspect the original image and metadata; reject third-party copyright, ambiguous authorship, visible
    protected logos used as branding, identifiable private persons, or sensitive/private information;
-3. create one deterministic crop with no geometric warp, at most 1600 pixels on its longest edge;
-4. remove EXIF/IPTC/XMP and encode a same-origin WebP capped at 300 KiB;
-5. run the owner-authorized external compatible OBB model locally against that exact published crop;
+3. create one deterministic crop with no geometric warp, at most 1600 pixels on its longest edge, before
+   making the model path available;
+4. remove EXIF/IPTC/XMP, encode a same-origin WebP capped at 300 KiB, and freeze all eight candidate records;
+5. verify the frozen-pool digest, then run the owner-authorized external compatible OBB model locally once
+   against each exact published crop in recorded order;
 6. accept only finite, schema-valid output that produces 1–20 visually understandable detections at the
    fixed default confidence `0.25`; and
 7. reject the candidate instead of moving, adding, deleting, relabeling, or hand-tuning any box.
@@ -319,8 +394,8 @@ This spec, its commit, and later planning authorize none of those gates.
 
 ## Self-review record
 
-- **Placeholders:** no behavioral placeholder exists. Three named source candidates and a deterministic
-  priority/replacement rule resolve asset selection; implementation stops if fewer than two candidates pass.
+- **Placeholders:** no behavioral placeholder exists. The amended pool has an exact count, category
+  composition, allowed record families, freeze boundary, deterministic order, selection rule, and stop rule.
 - **Consistency:** precomputed samples never display live-inference runtime or load ORT; only completed BYOM
   results do. Sample switching and BYOM transitions share atomic clearing and generation-token protection.
 - **Ambiguity:** image rights, transformations, size, metadata, output contract, prohibited manual editing,
