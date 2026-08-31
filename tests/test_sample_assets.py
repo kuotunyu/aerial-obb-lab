@@ -153,3 +153,38 @@ def test_cli_rejects_a_model_inside_the_repository_without_echoing_its_name(tmp_
     assert captured.out == ""
     assert captured.err.strip() == "[SAMPLE_PREP:REPOSITORY_MODEL]"
     assert repo_model.name not in captured.err
+
+
+def test_cli_rejects_a_review_directory_inside_repository_before_creating_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    model = tmp_path / "owner-authorized.onnx"
+    review = Path(__file__).resolve().parents[1] / "private-SENTINEL-review"
+    model.write_bytes(b"not a model")
+    try:
+        status = samples.main(["--model", str(model), "--output-dir", str(review)])
+    finally:
+        if review.exists():
+            review.rmdir()
+    captured = capsys.readouterr()
+
+    assert status == 2
+    assert not review.exists()
+    assert captured.out == ""
+    assert captured.err.strip() == "[SAMPLE_PREP:REPOSITORY_OUTPUT]"
+    assert review.name not in captured.err
+
+
+def test_cli_malformed_arguments_emit_only_a_fixed_code_without_secret_echo(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    secret = "PRIVATE-CLI-SENTINEL"
+
+    status = samples.main([
+        "--model", str(tmp_path / "owner-authorized.onnx"),
+        "--output-dir", str(tmp_path / "review"),
+        "--unexpected-option", secret,
+    ])
+    captured = capsys.readouterr()
+
+    assert status == 2
+    assert captured.out == ""
+    assert captured.err.strip() == "[SAMPLE_PREP:ARGUMENTS]"
+    assert secret not in captured.err
+    assert "usage:" not in captured.err.lower()

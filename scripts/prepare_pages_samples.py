@@ -95,6 +95,11 @@ def _fail(code: str) -> None:
     raise PreparationError(f"[SAMPLE_PREP:{code}]")
 
 
+class _FixedDiagnosticParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        _fail("ARGUMENTS")
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -323,13 +328,16 @@ def _inside_repository(path: Path) -> bool:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = _FixedDiagnosticParser(add_help=False)
     parser.add_argument("--model", required=True)
     parser.add_argument("--output-dir", required=True)
     for candidate_id in CANDIDATES:
         parser.add_argument(f"--{candidate_id}-source")
     try:
         args = parser.parse_args(argv)
+        review = Path(args.output_dir)
+        if _inside_repository(review):
+            _fail("REPOSITORY_OUTPUT")
         model = Path(args.model)
         if _inside_repository(model):
             _fail("REPOSITORY_MODEL")
@@ -339,12 +347,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if any(path is None for path in source_paths.values()):
             _fail("SOURCE_ARGUMENT")
         for candidate_id, source_path in source_paths.items():
-            build_candidate(Path(source_path), CANDIDATES[candidate_id], model, Path(args.output_dir))
+            build_candidate(Path(source_path), CANDIDATES[candidate_id], model, review)
     except PreparationError as error:
         print(error.code, file=sys.stderr)
-        return 2
-    except SystemExit:
-        print("[SAMPLE_PREP:ARGUMENTS]", file=sys.stderr)
         return 2
     except Exception:
         print("[SAMPLE_PREP:FAILED]", file=sys.stderr)
