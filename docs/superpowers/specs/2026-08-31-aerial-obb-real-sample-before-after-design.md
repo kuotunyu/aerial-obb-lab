@@ -5,7 +5,7 @@
 - **Design branch:** `docs/pages-real-sample-before-after-design`
 - **Base commit:** `24039db9e07e327b55433086241ac574430c4531`
 - **Dependency:** the local `fix/pages-live-review-accessibility` branch must be integrated before implementation begins
-- **Status:** Conversational design approved; pending written-spec review
+- **Status:** Approved for implementation planning
 - **Scope:** replace the public synthetic-first experience with two reviewed real-image Before/After samples while preserving BYOM as the only live-inference path
 
 ## Problem and outcome
