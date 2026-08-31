@@ -200,6 +200,8 @@ def _media_receipt(spec: AssetSpec, body: bytes, content_type: str, redirect_hos
             raise AssetPreparationError("media")
         try:
             with Image.open(io.BytesIO(body)) as image:
+                if str(image.format or "").casefold() != "jpeg":
+                    raise AssetPreparationError("media")
                 image.load()
                 width, height = image.width, image.height
         except (UnidentifiedImageError, OSError, ValueError):

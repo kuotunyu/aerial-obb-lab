@@ -34,6 +34,14 @@ def _jpeg_bytes(expected_bytes: int, color: tuple[int, int, int] = (21, 82, 160)
     return payload + (b"\0" * (expected_bytes - len(payload)))
 
 
+def _png_bytes(expected_bytes: int) -> bytes:
+    image = Image.new("RGB", (3, 2), color=(21, 82, 160))
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    payload = stream.getvalue()
+    return payload + (b"\0" * (expected_bytes - len(payload)))
+
+
 def _license_bytes(expected_bytes: int) -> bytes:
     prefix = b"GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3\n"
     return prefix + (b"L" * (expected_bytes - len(prefix)))
@@ -169,6 +177,14 @@ def test_acquire_writes_digest_receipt_without_path_query_header_or_raw_error(tm
     assert receipts["obb-model"].media_type == "application/onnx"
 
 
+def test_acquire_rejects_decodable_non_jpeg_boats_bytes(tmp_path: Path, fake_transport: FakeTransport) -> None:
+    boat = OFFICIAL_ASSETS[0]
+    fake_transport.responses[boat.asset_id] = (_png_bytes(boat.expected_bytes), (), "image/jpeg")
+
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_MEDIA"):
+        _acquire_review(tmp_path / "external-review", fake_transport)
+
+
 def test_acquire_rejects_unknown_review_member_without_calling_transport(tmp_path: Path, fake_transport: FakeTransport) -> None:
     review_root = tmp_path / "external-review"
     review_root.mkdir()
@@ -217,6 +233,21 @@ def test_validate_receipts_rejects_extra_top_level_and_asset_receipt_fields(tmp_
     payload["assets"]["boats-image"]["raw_header"] = "do not accept undeclared fields"
     receipt_path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        validate_receipts(review_root)
+
+
+def test_validate_receipts_rejects_decodable_non_jpeg_boats_mutation(tmp_path: Path, fake_transport: FakeTransport) -> None:
+    review_root = tmp_path / "external-review"
+    _acquire_review(review_root, fake_transport)
+    boat = OFFICIAL_ASSETS[0]
+    mutated = _png_bytes(boat.expected_bytes)
+    (review_root / boat.public_relative_path).write_bytes(mutated)
+    receipt_path = review_root / "receipt.json"
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["assets"][boat.asset_id]["sha256"] = hashlib.sha256(mutated).hexdigest()
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_MEDIA"):
         validate_receipts(review_root)
 
 
