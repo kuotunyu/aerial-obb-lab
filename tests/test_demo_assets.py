@@ -22,7 +22,7 @@ from scripts.prepare_demo_assets import (
     main,
     publish_assets,
     urlopen_transport,
-    verify_review_assets,
+    validate_receipts,
 )
 
 
@@ -78,7 +78,7 @@ def fake_transport() -> FakeTransport:
 
 
 def _acquire_review(review_root: Path, transport: FakeTransport) -> dict[str, AssetReceipt]:
-    return acquire_assets(OFFICIAL_ASSETS, review_root, transport)
+    return acquire_assets(review_root, transport)
 
 
 def _files(root: Path) -> dict[str, bytes]:
@@ -95,8 +95,8 @@ def test_official_asset_specs_are_immutable_and_same_origin_publishable() -> Non
         AssetSpec("obb-model", "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx", 10_207_250, ("github.com", "release-assets.githubusercontent.com"), "models/yolo26n-obb.onnx"),
         AssetSpec("ultralytics-license", "https://raw.githubusercontent.com/ultralytics/assets/v8.4.0/LICENSE", 34_523, ("raw.githubusercontent.com",), "third_party/ULTRALYTICS-AGPL-3.0.txt"),
     )
-    assert list(inspect.signature(acquire_assets).parameters) == ["specs", "review_root", "transport"]
-    assert list(inspect.signature(verify_review_assets).parameters) == ["specs", "review_root"]
+    assert list(inspect.signature(acquire_assets).parameters) == ["review_root", "transport"]
+    assert list(inspect.signature(validate_receipts).parameters) == ["review_root"]
     assert list(inspect.signature(publish_assets).parameters) == ["review_root", "pages_root"]
     with pytest.raises(FrozenInstanceError):
         OFFICIAL_ASSETS[0].asset_id = "different"  # type: ignore[misc]
@@ -169,20 +169,55 @@ def test_acquire_writes_digest_receipt_without_path_query_header_or_raw_error(tm
     assert receipts["obb-model"].media_type == "application/onnx"
 
 
+def test_acquire_rejects_unknown_review_member_without_calling_transport(tmp_path: Path, fake_transport: FakeTransport) -> None:
+    review_root = tmp_path / "external-review"
+    review_root.mkdir()
+    unknown = review_root / "unreviewed.bin"
+    unknown.write_bytes(b"keep this user file")
+    calls: list[str] = []
+
+    def recording_transport(spec: AssetSpec) -> tuple[bytes, tuple[str, ...], str]:
+        calls.append(spec.asset_id)
+        return fake_transport(spec)
+
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        acquire_assets(review_root, recording_transport)
+    assert calls == []
+    assert unknown.read_bytes() == b"keep this user file"
+
+
 def test_validate_receipts_rejects_missing_extra_or_changed_bytes(tmp_path: Path, fake_transport: FakeTransport) -> None:
     review_root = tmp_path / "external-review"
     _acquire_review(review_root, fake_transport)
     (review_root / OFFICIAL_ASSETS[0].public_relative_path).unlink()
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
-        verify_review_assets(OFFICIAL_ASSETS, review_root)
+        validate_receipts(review_root)
     _acquire_review(review_root, fake_transport)
     (review_root / "unreviewed.bin").write_bytes(b"not approved")
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
-        verify_review_assets(OFFICIAL_ASSETS, review_root)
+        validate_receipts(review_root)
     (review_root / "unreviewed.bin").unlink()
     (review_root / OFFICIAL_ASSETS[1].public_relative_path).write_bytes(b"changed")
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_LENGTH"):
-        verify_review_assets(OFFICIAL_ASSETS, review_root)
+        validate_receipts(review_root)
+
+
+def test_validate_receipts_rejects_extra_top_level_and_asset_receipt_fields(tmp_path: Path, fake_transport: FakeTransport) -> None:
+    review_root = tmp_path / "external-review"
+    _acquire_review(review_root, fake_transport)
+    receipt_path = review_root / "receipt.json"
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["raw_error"] = "do not accept undeclared fields"
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        validate_receipts(review_root)
+
+    _acquire_review(review_root, fake_transport)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    payload["assets"]["boats-image"]["raw_header"] = "do not accept undeclared fields"
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        validate_receipts(review_root)
 
 
 def test_containment_helpers_reject_reparse_components_and_escape_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,7 +242,7 @@ def test_acquire_keeps_existing_batch_when_a_later_asset_fails(tmp_path: Path, f
         return fake_transport(spec)
 
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_NETWORK"):
-        acquire_assets(OFFICIAL_ASSETS, review_root, failing_transport)
+        acquire_assets(review_root, failing_transport)
     assert _files(review_root) == before
     assert not list(review_root.glob(".demo-assets-stage-*"))
 

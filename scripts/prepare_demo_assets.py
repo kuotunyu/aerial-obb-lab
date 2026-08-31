@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Callable, Iterable
+from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 import urllib.request
@@ -186,13 +186,6 @@ def urlopen_transport(spec: AssetSpec) -> tuple[bytes, tuple[str, ...], str]:
         raise AssetPreparationError("network") from None
 
 
-def _require_official_specs(specs: Iterable[AssetSpec]) -> tuple[AssetSpec, ...]:
-    fixed = tuple(specs)
-    if fixed != OFFICIAL_ASSETS:
-        raise AssetPreparationError("scope")
-    return fixed
-
-
 def _media_receipt(spec: AssetSpec, body: bytes, content_type: str, redirect_hosts: tuple[str, ...]) -> AssetReceipt:
     if len(body) != spec.expected_bytes or (spec.asset_id == "obb-model" and len(body) > MODEL_HARD_CEILING):
         raise AssetPreparationError("length")
@@ -249,14 +242,17 @@ def _walk_files(root: Path) -> set[str]:
     return files
 
 
-def _load_receipts(specs: tuple[AssetSpec, ...], review_root: Path) -> dict[str, AssetReceipt]:
+def _load_receipts(review_root: Path) -> dict[str, AssetReceipt]:
     receipt_path = checked_child(review_root, Path("receipt.json"))
     try:
         raw = json.loads(receipt_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict) or set(raw) != {"assets", "schemaVersion"} or raw["schemaVersion"] != 1:
             raise ValueError
         assets = raw["assets"]
-        if not isinstance(assets, dict) or set(assets) != {spec.asset_id for spec in specs}:
+        if not isinstance(assets, dict) or set(assets) != {spec.asset_id for spec in OFFICIAL_ASSETS}:
+            raise ValueError
+        receipt_keys = {"asset_id", "source_url", "redirect_hosts", "bytes", "sha256", "media_type", "width", "height"}
+        if not all(isinstance(value, dict) and set(value) == receipt_keys for value in assets.values()):
             raise ValueError
         receipts = {
             asset_id: AssetReceipt(
@@ -270,14 +266,13 @@ def _load_receipts(specs: tuple[AssetSpec, ...], review_root: Path) -> dict[str,
     return receipts
 
 
-def verify_review_assets(specs: Iterable[AssetSpec], review_root: Path) -> dict[str, AssetReceipt]:
-    fixed = _require_official_specs(specs)
+def validate_receipts(review_root: Path) -> dict[str, AssetReceipt]:
     root = _checked_root(review_root)
-    expected = {"receipt.json", *(spec.public_relative_path for spec in fixed)}
+    expected = {"receipt.json", *(spec.public_relative_path for spec in OFFICIAL_ASSETS)}
     if _walk_files(root) != expected:
         raise AssetPreparationError("receipt")
-    receipts = _load_receipts(fixed, root)
-    for spec in fixed:
+    receipts = _load_receipts(root)
+    for spec in OFFICIAL_ASSETS:
         body = checked_child(root, Path(spec.public_relative_path)).read_bytes()
         stored = receipts.get(spec.asset_id)
         current = _media_receipt(spec, body, {"boats-image": "image/jpeg", "obb-model": "application/octet-stream", "ultralytics-license": "text/plain"}[spec.asset_id], stored.redirect_hosts if stored else ())
@@ -325,13 +320,31 @@ def _new_stage(root: Path) -> Path:
     return Path(tempfile.mkdtemp(prefix=".demo-assets-stage-", dir=_checked_root(root, create=True)))
 
 
-def acquire_assets(specs: Iterable[AssetSpec], review_root: Path, transport: Callable[[AssetSpec], tuple[bytes, tuple[str, ...], str]] = urlopen_transport) -> dict[str, AssetReceipt]:
-    fixed = _require_official_specs(specs)
+def _reject_unknown_review_members(root: Path) -> None:
+    allowed_files = {"receipt.json", *(spec.public_relative_path for spec in OFFICIAL_ASSETS)}
+    allowed_directories = {"samples", "models", "third_party"}
+    safe_root = _checked_root(root)
+    for directory, names, file_names in os.walk(safe_root, followlinks=False):
+        current = Path(directory)
+        for name in names:
+            candidate = current / name
+            relative = candidate.relative_to(safe_root).as_posix()
+            if is_reparse_point(candidate) or relative not in allowed_directories:
+                raise AssetPreparationError("receipt")
+        for name in file_names:
+            candidate = current / name
+            relative = candidate.relative_to(safe_root).as_posix()
+            if is_reparse_point(candidate) or relative not in allowed_files:
+                raise AssetPreparationError("receipt")
+
+
+def acquire_assets(review_root: Path, transport: Callable[[AssetSpec], tuple[bytes, tuple[str, ...], str]] = urlopen_transport) -> dict[str, AssetReceipt]:
     root = _checked_root(review_root, create=True)
+    _reject_unknown_review_members(root)
     stage = _new_stage(root)
     try:
         receipts: dict[str, AssetReceipt] = {}
-        for spec in fixed:
+        for spec in OFFICIAL_ASSETS:
             try:
                 body, redirects, content_type = transport(spec)
             except AssetPreparationError:
@@ -344,8 +357,8 @@ def acquire_assets(specs: Iterable[AssetSpec], review_root: Path, transport: Cal
             destination.write_bytes(body)
             receipts[spec.asset_id] = receipt
         checked_child(stage, Path("receipt.json")).write_text(json.dumps(_receipt_payload(receipts), sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        verify_review_assets(fixed, stage)
-        _replace_batch(root, stage, tuple([*(spec.public_relative_path for spec in fixed), "receipt.json"]))
+        validate_receipts(stage)
+        _replace_batch(root, stage, tuple([*(spec.public_relative_path for spec in OFFICIAL_ASSETS), "receipt.json"]))
         return receipts
     finally:
         shutil.rmtree(stage, ignore_errors=True)
@@ -399,7 +412,7 @@ def publish_assets(review_root: Path, pages_root: Path) -> None:
         raise AssetPreparationError("scope")
     pages = _checked_root(requested_pages, create=True)
     _reject_stale_managed_pages(pages)
-    receipts = verify_review_assets(OFFICIAL_ASSETS, review)
+    receipts = validate_receipts(review)
     stage = _new_stage(pages)
     targets = tuple([*(spec.public_relative_path for spec in OFFICIAL_ASSETS), "demo-model.json", "THIRD_PARTY_NOTICES.md"])
     try:
@@ -419,10 +432,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if len(arguments) == 3 and arguments[0] in {"acquire", "verify"} and arguments[1] == "--review-root":
             if arguments[0] == "acquire":
-                acquire_assets(OFFICIAL_ASSETS, Path(arguments[2]))
+                acquire_assets(Path(arguments[2]))
                 print("[OK] DEMO_ASSETS_ACQUIRED")
             else:
-                verify_review_assets(OFFICIAL_ASSETS, Path(arguments[2]))
+                validate_receipts(Path(arguments[2]))
                 print("[OK] DEMO_ASSETS_VERIFIED")
             return 0
         if len(arguments) == 5 and arguments[0] == "publish" and arguments[1] == "--review-root" and arguments[3] == "--pages-root":
