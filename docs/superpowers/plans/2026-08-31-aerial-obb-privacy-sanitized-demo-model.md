@@ -451,6 +451,7 @@ git commit -m "feat: add real-image browser OBB demo"
 - Modify: `demo/web/index.html` only for semantic failures proved by browser RED
 - Modify: `demo/web/style.css` only for responsive/focus failures proved by browser RED
 - Modify: `scripts/browser_smoke.py`
+- Modify: `scripts/pages_artifact_check.py` only to freeze reviewed Task 4 text digests after all browser behavior is GREEN
 
 **Interfaces:**
 - Consumes: Task 3 real demo and existing candidate-session lifecycle.
@@ -491,7 +492,7 @@ git diff --check
 Fresh reviewers inspect every failure cleanup and privacy assertion. Resolve via original implementer, stage exact changed paths, and commit:
 
 ```powershell
-git add demo/web/app.js demo/web/demo-assets.js demo/web/index.html demo/web/style.css scripts/browser_smoke.py
+git add demo/web/app.js demo/web/demo-assets.js demo/web/index.html demo/web/style.css scripts/browser_smoke.py scripts/pages_artifact_check.py
 git diff --cached --check
 git commit -m "fix: harden live demo recovery and accessibility"
 ```
