@@ -4,7 +4,7 @@
 - **Repository:** `kuotunyu/aerial-obb-lab`
 - **Design branch:** `feat/pages-live-real-image-demo`
 - **Design parent:** `8116e79399af3523c9972216fdf2287e586098db`
-- **Status:** Design approved; written-spec review pending
+- **Status:** Approved for implementation planning
 - **Scope:** preserve the approved real-image-first browser demo by deriving one privacy-safe,
   inference-equivalent AGPL ONNX from the exact official Ultralytics release model
 
