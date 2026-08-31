@@ -358,6 +358,7 @@ git commit -m "feat: admit privacy-sanitized demo assets"
 - Delete: `demo/web/fixtures/showcase.svg`
 - Modify: `scripts/browser_smoke.py`
 - Modify: `scripts/pages_artifact_check.py`
+- Modify: `tests/js/browser_parity_runner.js`
 - Modify: `tests/test_browser_parity.py`
 - Modify: `tests/test_pages_artifact_check.py`
 - Modify: `tests/test_package_release.py`
@@ -407,6 +408,10 @@ must now fail if `showcase-fixture.js`, `fixtures/showcase.svg`, or any Syntheti
 `showcase-fixture.js`. Remove only that test and its now-dead dedicated helper/constant while preserving all
 pure OBB preprocessing, decode, schema, geometry, and Python/browser parity tests. This scoped removal is
 required so deleting the production fixture and running the complete parity file are not contradictory.
+Its Node helper `tests/js/browser_parity_runner.js` also directly imports that production fixture. Remove only
+that import and the duplicate showcase-derived branch, and point the preserved end-to-end literal assertions
+at the runner's existing fixture-derived `detections` and `corners` outputs. Do not change
+`tests/fixtures/browser_parity.json` or weaken any pure OBB assertion.
 
 - [ ] **Step 6: Run Task 3 GREEN**
 
@@ -423,7 +428,7 @@ git diff --check
 Complete fresh spec/quality review and fix rounds, then stage exactly Task 3 files and commit:
 
 ```powershell
-git add demo/web/demo-assets.js demo/web/index.html demo/web/style.css demo/web/app.js demo/web/showcase-fixture.js demo/web/fixtures/showcase.svg scripts/browser_smoke.py scripts/pages_artifact_check.py tests/test_browser_parity.py tests/test_pages_artifact_check.py tests/test_package_release.py
+git add demo/web/demo-assets.js demo/web/index.html demo/web/style.css demo/web/app.js demo/web/showcase-fixture.js demo/web/fixtures/showcase.svg scripts/browser_smoke.py scripts/pages_artifact_check.py tests/js/browser_parity_runner.js tests/test_browser_parity.py tests/test_pages_artifact_check.py tests/test_package_release.py
 git diff --cached --check
 git commit -m "feat: add real-image browser OBB demo"
 ```
