@@ -6,7 +6,7 @@
 - **Current design parent:** `633b1d44c72e6a1eef51dbc63b29304cf2f4c000`
 - **Implementation dependency:** the approved accessibility/runtime follow-up at
   `24039db9e07e327b55433086241ac574430c4531`
-- **Status:** Owner-approved direction; pending written spec review
+- **Status:** Approved for implementation planning
 - **Scope:** replace the public synthetic-first experience with one real aerial image and one genuine,
   click-to-run browser OBB demo; keep BYOM as an advanced secondary path
 
