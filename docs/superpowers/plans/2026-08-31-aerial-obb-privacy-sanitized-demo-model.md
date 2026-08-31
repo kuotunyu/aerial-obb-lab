@@ -351,6 +351,7 @@ git commit -m "feat: admit privacy-sanitized demo assets"
 
 **Files:**
 - Create: `demo/web/demo-assets.js`
+- Modify: `demo/web/README.md`
 - Modify: `demo/web/index.html`
 - Modify: `demo/web/style.css`
 - Modify: `demo/web/app.js`
@@ -404,6 +405,13 @@ In the same GREEN, remove the transitional Synthetic paths from the Pages allowl
 real-demo JS/image/derivative/manifest/license/notice inventory authoritative. A current-tree verifier pass
 must now fail if `showcase-fixture.js`, `fixtures/showcase.svg`, or any Synthetic reference remains.
 
+Because `demo/web/README.md` ships inside the Pages artifact, update its current usage instructions in Task 3
+and include Markdown in the Synthetic-reference scan. First add a verifier regression that fails on a
+Synthetic reference in a staged Markdown file; after the scanner is GREEN, observe the current-tree failure
+against the stale README, then replace only its current Synthetic-first instructions with the real-image
+original → Detect → result flow. Task 5 may refine broader documentation but must not reintroduce the stale
+mode.
+
 `tests/test_browser_parity.py` contains one obsolete production-Synthetic contract that imports
 `showcase-fixture.js`. Remove only that test and its now-dead dedicated helper/constant while preserving all
 pure OBB preprocessing, decode, schema, geometry, and Python/browser parity tests. This scoped removal is
@@ -428,7 +436,7 @@ git diff --check
 Complete fresh spec/quality review and fix rounds, then stage exactly Task 3 files and commit:
 
 ```powershell
-git add demo/web/demo-assets.js demo/web/index.html demo/web/style.css demo/web/app.js demo/web/showcase-fixture.js demo/web/fixtures/showcase.svg scripts/browser_smoke.py scripts/pages_artifact_check.py tests/js/browser_parity_runner.js tests/test_browser_parity.py tests/test_pages_artifact_check.py tests/test_package_release.py
+git add demo/web/demo-assets.js demo/web/README.md demo/web/index.html demo/web/style.css demo/web/app.js demo/web/showcase-fixture.js demo/web/fixtures/showcase.svg scripts/browser_smoke.py scripts/pages_artifact_check.py tests/js/browser_parity_runner.js tests/test_browser_parity.py tests/test_pages_artifact_check.py tests/test_package_release.py
 git diff --cached --check
 git commit -m "feat: add real-image browser OBB demo"
 ```
