@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, asdict
 import hashlib
 import inspect
 import io
@@ -15,6 +15,7 @@ from PIL import Image
 import pytest
 
 import scripts.prepare_demo_assets as demo_assets
+from scripts.sanitize_demo_model import SanitizationReceipt
 from scripts.prepare_demo_assets import (
     AssetPreparationError,
     AssetReceipt,
@@ -74,8 +75,8 @@ class FakeTransport:
 
 
 @pytest.fixture
-def fake_transport() -> FakeTransport:
-    return FakeTransport(
+def fake_transport(monkeypatch: pytest.MonkeyPatch) -> FakeTransport:
+    transport = FakeTransport(
         {
             spec.asset_id: (
                 _body_for(spec.asset_id, spec.expected_bytes),
@@ -85,6 +86,17 @@ def fake_transport() -> FakeTransport:
             for spec in OFFICIAL_ASSETS
         }
     )
+    monkeypatch.setattr(
+        demo_assets,
+        "OFFICIAL_SHA256",
+        {
+            spec.asset_id: hashlib.sha256(
+                transport.responses[spec.asset_id][0]
+            ).hexdigest()
+            for spec in OFFICIAL_ASSETS
+        },
+    )
+    return transport
 
 
 def _acquire_review(review_root: Path, transport: FakeTransport) -> dict[str, AssetReceipt]:
@@ -99,6 +111,194 @@ def _files(root: Path) -> dict[str, bytes]:
     }
 
 
+def _admitted_review(
+    tmp_path: Path,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, SanitizationReceipt]:
+    review_root = tmp_path / "external-review"
+    monkeypatch.setattr(
+        demo_assets,
+        "OFFICIAL_SHA256",
+        {
+            spec.asset_id: hashlib.sha256(
+                fake_transport.responses[spec.asset_id][0]
+            ).hexdigest()
+            for spec in OFFICIAL_ASSETS
+        },
+    )
+    receipts = _acquire_review(review_root, fake_transport)
+    derivative = b"privacy-safe-derivative"
+    sanitization = SanitizationReceipt(
+        source_bytes=receipts["obb-model"].bytes,
+        source_sha256=receipts["obb-model"].sha256,
+        output_bytes=len(derivative),
+        output_sha256=hashlib.sha256(derivative).hexdigest(),
+        onnx_version="1.22.0",
+        protobuf_version="6.32.0",
+        removed_metadata_entries=1,
+        modified_field="ModelProto.metadata_props[0].value",
+        modification_date="2026-08-31",
+        structural_equivalent=True,
+        checker_passed=True,
+        privacy_passed=True,
+        deterministic=True,
+    )
+    sanitized = review_root / "sanitized"
+    sanitized.mkdir()
+    (sanitized / "yolo26n-obb-privacy-sanitized.onnx").write_bytes(derivative)
+    (sanitized / "sanitization-receipt.json").write_text(
+        json.dumps(asdict(sanitization), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        demo_assets,
+        "validate_sanitized_model",
+        lambda *_args: sanitization,
+    )
+    monkeypatch.setattr(demo_assets, "require_browser_parity", lambda _root: None)
+    return review_root, sanitization
+
+
+def test_validate_admitted_assets_requires_exact_source_and_sanitized_layout(
+    tmp_path: Path,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    review_root, sanitization = _admitted_review(
+        tmp_path, fake_transport, monkeypatch
+    )
+
+    admitted = demo_assets.validate_admitted_assets(review_root)
+
+    assert admitted.sanitization == sanitization
+    assert set(admitted.receipts) == {
+        "boats-image",
+        "obb-model",
+        "ultralytics-license",
+    }
+    (review_root / "unexpected.bin").write_bytes(b"not admitted")
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.validate_admitted_assets(review_root)
+
+
+def test_publish_never_copies_upstream_model_and_writes_exact_derivative_set(
+    tmp_path: Path,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(
+        ["git", "init", str(repo_root)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+    )
+    monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
+    review_root, sanitization = _admitted_review(
+        tmp_path, fake_transport, monkeypatch
+    )
+    pages_root = repo_root / "demo" / "web"
+
+    publish_assets(review_root, pages_root)
+
+    assert sorted(_files(pages_root)) == [
+        "THIRD_PARTY_NOTICES.md",
+        "demo-model.json",
+        "models/yolo26n-obb-privacy-sanitized.onnx",
+        "samples/boats.jpg",
+        "third_party/ULTRALYTICS-AGPL-3.0.txt",
+        "third_party/yolo26n-obb-privacy-sanitization.json",
+    ]
+    assert not (pages_root / "models" / "yolo26n-obb.onnx").exists()
+    assert (
+        hashlib.sha256(
+            (pages_root / "models" / "yolo26n-obb-privacy-sanitized.onnx").read_bytes()
+        ).hexdigest()
+        == sanitization.output_sha256
+    )
+
+
+def test_manifest_and_sanitization_record_are_closed_and_privacy_safe(
+    tmp_path: Path,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    subprocess.run(
+        ["git", "init", str(repo_root)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+    )
+    monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
+    review_root, sanitization = _admitted_review(
+        tmp_path, fake_transport, monkeypatch
+    )
+    pages_root = repo_root / "demo" / "web"
+
+    publish_assets(review_root, pages_root)
+
+    manifest_text = (pages_root / "demo-model.json").read_text(encoding="utf-8")
+    record_text = (
+        pages_root / "third_party" / "yolo26n-obb-privacy-sanitization.json"
+    ).read_text(encoding="utf-8")
+    notice_text = (pages_root / "THIRD_PARTY_NOTICES.md").read_text(
+        encoding="utf-8"
+    )
+    manifest = json.loads(manifest_text)
+    record = json.loads(record_text)
+    assert set(manifest) == {
+        "classes",
+        "defaultConfidence",
+        "id",
+        "image",
+        "input",
+        "license",
+        "model",
+        "notice",
+        "output",
+        "provenance",
+        "sanitization",
+        "schemaVersion",
+    }
+    assert set(record) == {
+        "derivative",
+        "license",
+        "provenance",
+        "sanitizer",
+        "schemaVersion",
+        "source",
+        "transformation",
+        "verification",
+    }
+    assert manifest["model"]["path"] == "models/yolo26n-obb-privacy-sanitized.onnx"
+    assert manifest["model"]["sourceSha256"] == sanitization.source_sha256
+    assert manifest["sanitization"]["path"] == "third_party/yolo26n-obb-privacy-sanitization.json"
+    assert record["transformation"] == {
+        "modificationDate": "2026-08-31",
+        "modifiedField": "ModelProto.metadata_props[0].value",
+        "modificationStatus": "metadata-only",
+        "removedMetadataEntries": 1,
+    }
+    assert record["verification"]["browserParityPassed"] is True
+    public_text = manifest_text + record_text
+    assert "C:\\Users\\" not in public_text
+    assert "raw_header" not in public_text
+    assert "redirect_hosts" not in public_text
+    assert "tensor" not in public_text.casefold()
+    assert OFFICIAL_ASSETS[1].source_url in notice_text
+    assert (
+        "https://github.com/kuotunyu/aerial-obb-lab/blob/"
+        "924fda756801f906e6cb2ea174978fd4b6c37c2c/"
+        "scripts/sanitize_demo_model.py"
+    ) in notice_text
+
+
 def test_official_asset_specs_are_immutable_and_same_origin_publishable() -> None:
     assert OFFICIAL_ASSETS == (
         AssetSpec("boats-image", "https://ultralytics.com/images/boats.jpg", 194_872, ("ultralytics.com", "www.ultralytics.com", "github.com", "release-assets.githubusercontent.com"), "samples/boats.jpg"),
@@ -108,8 +308,15 @@ def test_official_asset_specs_are_immutable_and_same_origin_publishable() -> Non
     assert list(inspect.signature(acquire_assets).parameters) == ["review_root", "transport"]
     assert list(inspect.signature(validate_receipts).parameters) == ["review_root"]
     assert list(inspect.signature(publish_assets).parameters) == ["review_root", "pages_root"]
+    assert demo_assets.OFFICIAL_SHA256 == {
+        "boats-image": "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f",
+        "obb-model": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38",
+        "ultralytics-license": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+    }
     with pytest.raises(FrozenInstanceError):
         OFFICIAL_ASSETS[0].asset_id = "different"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        demo_assets.OFFICIAL_SHA256["boats-image"] = "different"  # type: ignore[index]
 
 
 def test_acquire_rejects_status_redirect_host_length_and_content_type_drift(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -204,6 +411,25 @@ def test_acquire_rejects_unknown_review_member_without_calling_transport(tmp_pat
     assert unknown.read_bytes() == b"keep this user file"
 
 
+def test_acquire_rejects_stale_sanitized_members_without_network(
+    tmp_path: Path,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    review_root, _sanitization = _admitted_review(
+        tmp_path, fake_transport, monkeypatch
+    )
+    calls: list[str] = []
+
+    def recording_transport(spec: AssetSpec) -> tuple[bytes, tuple[str, ...], str]:
+        calls.append(spec.asset_id)
+        return fake_transport(spec)
+
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        acquire_assets(review_root, recording_transport)
+    assert calls == []
+
+
 def test_validate_receipts_rejects_missing_extra_or_changed_bytes(tmp_path: Path, fake_transport: FakeTransport) -> None:
     review_root = tmp_path / "external-review"
     _acquire_review(review_root, fake_transport)
@@ -264,11 +490,21 @@ def test_containment_helpers_reject_reparse_components_and_escape_paths(tmp_path
         demo_assets.checked_child(root, Path("models") / "model.onnx")
 
 
-def test_acquire_keeps_existing_batch_when_a_later_asset_fails(tmp_path: Path, fake_transport: FakeTransport) -> None:
+def test_acquire_keeps_existing_batch_when_a_later_asset_fails(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
     review_root = tmp_path / "external-review"
     _acquire_review(review_root, fake_transport)
     before = _files(review_root)
     fake_transport.responses["boats-image"] = (_jpeg_bytes(OFFICIAL_ASSETS[0].expected_bytes, (200, 20, 20)), (), "image/jpeg")
+    monkeypatch.setattr(
+        demo_assets,
+        "OFFICIAL_SHA256",
+        {
+            **demo_assets.OFFICIAL_SHA256,
+            "boats-image": hashlib.sha256(
+                fake_transport.responses["boats-image"][0]
+            ).hexdigest(),
+        },
+    )
 
     def failing_transport(spec: AssetSpec) -> tuple[bytes, tuple[str, ...], str]:
         if spec.asset_id == "obb-model": raise AssetPreparationError("network")
@@ -281,11 +517,27 @@ def test_acquire_keeps_existing_batch_when_a_later_asset_fails(tmp_path: Path, f
 
 
 def test_publish_rejects_review_root_inside_git_and_wrong_pages_root(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
-    repo_root = tmp_path / "repo"; repo_root.mkdir(); (repo_root / ".git").mkdir()
+    repo_root = tmp_path / "repo"; repo_root.mkdir()
+    subprocess.run(
+        ["git", "init", str(repo_root)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+    )
     monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
     pages_root = repo_root / "demo" / "web"
     external_review = tmp_path / "external-review"
     _acquire_review(external_review, fake_transport)
+    calls: list[str] = []
+
+    def recording_transport(spec: AssetSpec) -> tuple[bytes, tuple[str, ...], str]:
+        calls.append(spec.asset_id)
+        return fake_transport(spec)
+
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_SCOPE"):
+        acquire_assets(repo_root / "review", recording_transport)
+    assert calls == []
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_SCOPE"):
         publish_assets(repo_root / "review", pages_root)
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_SCOPE"):
@@ -293,7 +545,14 @@ def test_publish_rejects_review_root_inside_git_and_wrong_pages_root(tmp_path: P
 
 
 def test_publish_rejects_stale_managed_page_leaf(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
-    repo_root = tmp_path / "repo"; repo_root.mkdir(); (repo_root / ".git").mkdir()
+    repo_root = tmp_path / "repo"; repo_root.mkdir()
+    subprocess.run(
+        ["git", "init", str(repo_root)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+    )
     monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
     review_root = tmp_path / "external-review"
     _acquire_review(review_root, fake_transport)
@@ -306,32 +565,44 @@ def test_publish_rejects_stale_managed_page_leaf(tmp_path: Path, fake_transport:
     assert _files(pages_root) == {"models/stale.onnx": b"stale"}
 
 
-def test_publish_writes_only_three_approved_paths_and_closed_manifest(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_publish_replaces_the_complete_derivative_batch_atomically(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
     repo_root = tmp_path / "repo"; repo_root.mkdir()
     subprocess.run(["git", "init", str(repo_root)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)
     monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
     pages_root = repo_root / "demo" / "web"
     review_root = tmp_path / "external-review"
-    receipts = _acquire_review(review_root, fake_transport)
+    review_root, sanitization = _admitted_review(tmp_path, fake_transport, monkeypatch)
     publish_assets(review_root, pages_root)
     assert sorted(_files(pages_root)) == [
         "THIRD_PARTY_NOTICES.md",
         "demo-model.json",
-        "models/yolo26n-obb.onnx",
+        "models/yolo26n-obb-privacy-sanitized.onnx",
         "samples/boats.jpg",
         "third_party/ULTRALYTICS-AGPL-3.0.txt",
+        "third_party/yolo26n-obb-privacy-sanitization.json",
     ]
     manifest = json.loads((pages_root / "demo-model.json").read_text(encoding="utf-8"))
     assert set(manifest) == {
         "classes", "defaultConfidence", "id", "image", "input", "license", "model",
-        "notice", "output", "schemaVersion",
+        "notice", "output", "provenance", "sanitization", "schemaVersion",
     }
-    assert manifest["image"]["sha256"] == receipts["boats-image"].sha256
-    assert manifest["model"]["sha256"] == receipts["obb-model"].sha256
-    assert manifest["license"]["sha256"] == receipts["ultralytics-license"].sha256
-    assert manifest["output"] == {"name": "output0", "rowWidth": 7, "layout": ["cx", "cy", "w", "h", "confidence", "class", "angleRadians"]}
+    assert manifest["model"]["sha256"] == sanitization.output_sha256
+    assert manifest["model"]["sourceSha256"] == sanitization.source_sha256
+    assert manifest["output"] == {"name": "output0", "dims": [1, "N", 7], "type": "float32", "rowWidth": 7, "layout": ["cx", "cy", "w", "h", "confidence", "class", "angleRadians"]}
     assert not ({"results", "detections", "boxes", "tensor", "runtime", "url"} & set(manifest))
     before = _files(pages_root)
+    real_write_text = Path.write_text
+
+    def corrupt_staged_manifest(path: Path, data: str, *args: object, **kwargs: object) -> int:
+        if path.name == "demo-model.json" and ".demo-assets-stage-" in path.as_posix():
+            data += " "
+        return real_write_text(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", corrupt_staged_manifest)
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        publish_assets(review_root, pages_root)
+    assert _files(pages_root) == before
+    monkeypatch.setattr(Path, "write_text", real_write_text)
     real_replace, calls = os.replace, 0
 
     def fail_second_replace(source: object, destination: object) -> None:
@@ -345,6 +616,23 @@ def test_publish_writes_only_three_approved_paths_and_closed_manifest(tmp_path: 
         publish_assets(review_root, pages_root)
     assert _files(pages_root) == before
     assert not list(pages_root.glob(".demo-assets-stage-*"))
+
+    monkeypatch.setattr(demo_assets.os, "replace", real_replace)
+    (pages_root / "samples" / "boats.jpg").write_bytes(b"previous-sample")
+    before_rollback_failure = _files(pages_root)
+    rollback_calls = 0
+
+    def fail_replacement_and_first_rollback(source: object, destination: object) -> None:
+        nonlocal rollback_calls
+        rollback_calls += 1
+        if rollback_calls in {2, 3}:
+            raise OSError("simulated")
+        real_replace(source, destination)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(demo_assets.os, "replace", fail_replacement_and_first_rollback)
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_SCOPE"):
+        publish_assets(review_root, pages_root)
+    assert _files(pages_root) == before_rollback_failure
 
 
 def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.CaptureFixture[str]) -> None:

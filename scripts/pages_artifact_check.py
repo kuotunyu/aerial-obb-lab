@@ -1,7 +1,8 @@
-"""Verify the exact, publishable ``demo/web`` privacy boundary.
+"""Verify the local-only transitional ``demo/web`` privacy boundary.
 
 This checker is deliberately read-only and Python-standard-library-only so it can
-run in repository preflight and directly against a staged Pages tree.
+run in repository preflight. Task 2 intentionally admits the reviewed Synthetic
+UI beside the derivative assets; this state is not a final Pages candidate.
 """
 
 from __future__ import annotations
@@ -28,10 +29,20 @@ REQUIRED_FILES = (
     "fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "fonts/IBM-Plex-OFL.txt",
     "README.md",
+    "samples/boats.jpg",
+    "models/yolo26n-obb-privacy-sanitized.onnx",
+    "demo-model.json",
+    "third_party/ULTRALYTICS-AGPL-3.0.txt",
+    "third_party/yolo26n-obb-privacy-sanitization.json",
+    "THIRD_PARTY_NOTICES.md",
 )
 ALLOWED_FILES = frozenset(REQUIRED_FILES)
-ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts"))
+ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts", "models", "samples", "third_party"))
 FONT_PATH = "fonts/IBMPlexSansCondensed-SemiBold.woff2"
+MODEL_PATH = "models/yolo26n-obb-privacy-sanitized.onnx"
+IMAGE_PATH = "samples/boats.jpg"
+BINARY_PUBLIC_PATHS = frozenset((FONT_PATH, MODEL_PATH, IMAGE_PATH))
+SOURCE_MODEL_SHA256 = "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".svg", ".txt"}
 RUNTIME_TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".svg"}
 FORBIDDEN_MODEL_SUFFIXES = {
@@ -77,6 +88,9 @@ ABSOLUTE_USER_PATH_RE = re.compile(
     )
     '''
 )
+ABSOLUTE_USER_PATH_BYTES_RE = re.compile(
+    rb"(?i)(?:[a-z]:[\\/]+(?:users|documents[ ]and[ ]settings)[\\/]+|/(?:users|home)/)"
+)
 URL_RE = re.compile(r'''(?:(?:https?:)?//)[^\s"'`<>()\[\]{}]+''', re.I)
 GITHUB_NAVIGATION_RE = re.compile(
     r'''<a\b[^>]*\bhref\s*=\s*["'](https://github\.com/[^"']+)["'][^>]*>''',
@@ -104,6 +118,14 @@ REVIEWED_ASSET_DIGESTS = {
     "fonts/IBMPlexSansCondensed-SemiBold.woff2": (
         "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d",
         "reviewed font bytes differ",
+    ),
+    IMAGE_PATH: (
+        "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f",
+        "reviewed sample image bytes differ",
+    ),
+    MODEL_PATH: (
+        "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+        "published model bytes differ",
     ),
 }
 REVIEWED_TEXT_DIGESTS = {
@@ -139,7 +161,30 @@ REVIEWED_TEXT_DIGESTS = {
         "458772e09e2d1ed4d034c323228cf42fd20e8f2079dc4f389bb7d916740745a4",
         "reviewed README bytes differ",
     ),
+    "demo-model.json": (
+        "9dab4fa0b93ae4f4fabc1467af032535485f84dd2df11aefa5f27d1ab38d5f54",
+        "reviewed demo manifest bytes differ",
+    ),
+    "third_party/ULTRALYTICS-AGPL-3.0.txt": (
+        "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+        "reviewed Ultralytics license bytes differ",
+    ),
+    "third_party/yolo26n-obb-privacy-sanitization.json": (
+        "e0e03b45e5750ebe21070e93ef4f2c537f6040f471980f55428aa4d69d7a659b",
+        "reviewed sanitization record bytes differ",
+    ),
+    "THIRD_PARTY_NOTICES.md": (
+        "3988f1b9b5bb47a95067210af64dd4088ffb161df747d10ff9e99779ae69de07",
+        "reviewed third-party notice bytes differ",
+    ),
 }
+
+APPROVED_PROVENANCE_URLS = frozenset(
+    (
+        "https://ultralytics.com/images/boats.jpg",
+        "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
+    )
+)
 
 
 def _is_link(path: Path) -> bool:
@@ -177,6 +222,13 @@ def _read_public_text(path: Path, relative: str, errors: list[str]) -> str | Non
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _check_model_binary(binary: bytes, digest: str, errors: list[str]) -> None:
+    if ABSOLUTE_USER_PATH_BYTES_RE.search(binary):
+        errors.append(f"{MODEL_PATH}: binary contains absolute user path")
+    if digest == SOURCE_MODEL_SHA256:
+        errors.append(f"{MODEL_PATH}: upstream model bytes are forbidden")
+
+
 def _scan_runtime_urls(relative: str, text: str, errors: list[str]) -> None:
     approved_context_spans = (
         {match.span(1) for match in GITHUB_NAVIGATION_RE.finditer(text)}
@@ -190,6 +242,11 @@ def _scan_runtime_urls(relative: str, text: str, errors: list[str]) -> None:
     for match in URL_RE.finditer(text):
         url = match.group(0)
         if url.startswith(ORT_PACKAGE_BASE):
+            continue
+        if relative in {
+            "demo-model.json",
+            "third_party/yolo26n-obb-privacy-sanitization.json",
+        } and url in APPROVED_PROVENANCE_URLS:
             continue
         if match.span() in approved_context_spans:
             continue
@@ -388,11 +445,14 @@ def verify_pages_tree(root: Path) -> list[str]:
             continue
         if stat.st_nlink != 1:
             errors.append(f"{relative}: hard link count is {stat.st_nlink}")
-        if stat.st_size > ONE_MIB and relative != FONT_PATH:
+        if stat.st_size > ONE_MIB and relative not in {FONT_PATH, MODEL_PATH}:
             errors.append(f"{relative}: file exceeds 1 MiB")
 
         suffix = path.suffix.casefold()
-        if suffix in FORBIDDEN_MODEL_SUFFIXES or suffix in FORBIDDEN_ARCHIVE_SUFFIXES:
+        if (
+            (suffix in FORBIDDEN_MODEL_SUFFIXES and relative != MODEL_PATH)
+            or suffix in FORBIDDEN_ARCHIVE_SUFFIXES
+        ):
             errors.append(f"{relative}: forbidden model/runtime artifact")
         if FORBIDDEN_PATH_TOKEN_RE.search(relative):
             errors.append(f"{relative}: forbidden DOTA-derived path")
@@ -423,7 +483,14 @@ def verify_pages_tree(root: Path) -> list[str]:
                 if actual_digest != expected_digest:
                     errors.append(f"{relative}: {reason}")
 
-        if relative == FONT_PATH:
+        if relative in BINARY_PUBLIC_PATHS:
+            if relative == MODEL_PATH:
+                try:
+                    binary = path.read_bytes()
+                except OSError:
+                    errors.append(f"{relative}: cannot read file")
+                else:
+                    _check_model_binary(binary, hashlib.sha256(binary).hexdigest(), errors)
             continue
         if suffix not in TEXT_SUFFIXES:
             errors.append(f"{relative}: unexpected binary file")

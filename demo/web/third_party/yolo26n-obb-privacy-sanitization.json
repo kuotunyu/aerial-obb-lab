@@ -1,0 +1,44 @@
+{
+  "derivative": {
+    "bytes": 10207127,
+    "path": "models/yolo26n-obb-privacy-sanitized.onnx",
+    "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
+  },
+  "license": {
+    "path": "third_party/ULTRALYTICS-AGPL-3.0.txt",
+    "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+    "spdx": "AGPL-3.0-only"
+  },
+  "provenance": {
+    "commercialUseCleared": false,
+    "endorsement": false,
+    "trainingDataset": "DOTAv1",
+    "upstream": "Ultralytics YOLO26n-OBB"
+  },
+  "sanitizer": {
+    "onnxVersion": "1.22.0",
+    "path": "scripts/sanitize_demo_model.py",
+    "protobufVersion": "7.36.0",
+    "version": "924fda756801f906e6cb2ea174978fd4b6c37c2c"
+  },
+  "schemaVersion": 1,
+  "source": {
+    "bytes": 10207250,
+    "release": "v8.4.0",
+    "sha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38",
+    "url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx"
+  },
+  "transformation": {
+    "modificationDate": "2026-08-31",
+    "modificationStatus": "metadata-only",
+    "modifiedField": "ModelProto.metadata_props[0].value",
+    "removedMetadataEntries": 1
+  },
+  "verification": {
+    "browserParityPassed": true,
+    "checkerPassed": true,
+    "deterministic": true,
+    "privacyPassed": true,
+    "structuralEquivalent": true
+  }
+}

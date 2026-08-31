@@ -12,12 +12,22 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+from types import MappingProxyType
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 import urllib.request
 
 from PIL import Image, UnidentifiedImageError
+
+if __name__ == "__main__":
+    repository_root = str(Path(__file__).resolve().parents[1])
+    if repository_root not in sys.path:
+        sys.path.insert(0, repository_root)
+    sys.modules.setdefault("scripts.prepare_demo_assets", sys.modules[__name__])
+
+if TYPE_CHECKING:
+    from scripts.sanitize_demo_model import SanitizationReceipt
 
 
 ERROR_CODES = {
@@ -64,6 +74,47 @@ OFFICIAL_ASSETS = (
     AssetSpec("ultralytics-license", "https://raw.githubusercontent.com/ultralytics/assets/v8.4.0/LICENSE", 34_523,
               ("raw.githubusercontent.com",), "third_party/ULTRALYTICS-AGPL-3.0.txt"),
 )
+OFFICIAL_SHA256 = MappingProxyType({
+    "boats-image": "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f",
+    "obb-model": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38",
+    "ultralytics-license": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+})
+SOURCE_REVIEW_PATHS = {
+    "boats-image": "samples/boats.jpg",
+    "obb-model": "models/yolo26n-obb.onnx",
+    "ultralytics-license": "licenses/ULTRALYTICS-AGPL-3.0.txt",
+}
+SANITIZED_MODEL_REVIEW_PATH = "sanitized/yolo26n-obb-privacy-sanitized.onnx"
+SANITIZATION_RECEIPT_REVIEW_PATH = "sanitized/sanitization-receipt.json"
+DERIVATIVE_PUBLIC_PATH = "models/yolo26n-obb-privacy-sanitized.onnx"
+SANITIZATION_RECORD_PUBLIC_PATH = (
+    "third_party/yolo26n-obb-privacy-sanitization.json"
+)
+LICENSE_PUBLIC_PATH = "third_party/ULTRALYTICS-AGPL-3.0.txt"
+PUBLIC_ASSET_PATHS = (
+    "samples/boats.jpg",
+    DERIVATIVE_PUBLIC_PATH,
+    "demo-model.json",
+    LICENSE_PUBLIC_PATH,
+    SANITIZATION_RECORD_PUBLIC_PATH,
+    "THIRD_PARTY_NOTICES.md",
+)
+SOURCE_REVIEW_FILES = frozenset({"receipt.json", *SOURCE_REVIEW_PATHS.values()})
+ADMITTED_REVIEW_FILES = frozenset(
+    {
+        *SOURCE_REVIEW_FILES,
+        SANITIZED_MODEL_REVIEW_PATH,
+        SANITIZATION_RECEIPT_REVIEW_PATH,
+    }
+)
+SOURCE_RELEASE = "v8.4.0"
+SANITIZER_VERSION = "924fda756801f906e6cb2ea174978fd4b6c37c2c"
+
+
+@dataclass(frozen=True)
+class AdmittedAssets:
+    receipts: dict[str, AssetReceipt]
+    sanitization: "SanitizationReceipt"
 
 
 class AssetPreparationError(Exception):
@@ -223,7 +274,10 @@ def _media_receipt(spec: AssetSpec, body: bytes, content_type: str, redirect_hos
         if "GNU AFFERO GENERAL PUBLIC LICENSE" not in text or "Version 3" not in text:
             raise AssetPreparationError("media")
         media_type = "text/plain"
-    return AssetReceipt(spec.asset_id, spec.source_url, redirect_hosts, len(body), hashlib.sha256(body).hexdigest(), media_type, width, height)
+    digest = hashlib.sha256(body).hexdigest()
+    if digest != OFFICIAL_SHA256[spec.asset_id]:
+        raise AssetPreparationError("digest")
+    return AssetReceipt(spec.asset_id, spec.source_url, redirect_hosts, len(body), digest, media_type, width, height)
 
 
 def _receipt_payload(receipts: dict[str, AssetReceipt]) -> dict[str, object]:
@@ -240,7 +294,13 @@ def _walk_files(root: Path) -> set[str]:
             if is_reparse_point(candidate):
                 raise AssetPreparationError("scope")
         for name in file_names:
-            files.add((current / name).relative_to(safe_root).as_posix())
+            candidate = current / name
+            try:
+                if candidate.stat().st_nlink != 1:
+                    raise AssetPreparationError("receipt")
+            except OSError:
+                raise AssetPreparationError("receipt") from None
+            files.add(candidate.relative_to(safe_root).as_posix())
     return files
 
 
@@ -268,14 +328,11 @@ def _load_receipts(review_root: Path) -> dict[str, AssetReceipt]:
     return receipts
 
 
-def validate_receipts(review_root: Path) -> dict[str, AssetReceipt]:
+def _validate_receipt_contents(review_root: Path) -> dict[str, AssetReceipt]:
     root = _checked_root(review_root)
-    expected = {"receipt.json", *(spec.public_relative_path for spec in OFFICIAL_ASSETS)}
-    if _walk_files(root) != expected:
-        raise AssetPreparationError("receipt")
     receipts = _load_receipts(root)
     for spec in OFFICIAL_ASSETS:
-        body = checked_child(root, Path(spec.public_relative_path)).read_bytes()
+        body = checked_child(root, Path(SOURCE_REVIEW_PATHS[spec.asset_id])).read_bytes()
         stored = receipts.get(spec.asset_id)
         current = _media_receipt(spec, body, {"boats-image": "image/jpeg", "obb-model": "application/octet-stream", "ultralytics-license": "text/plain"}[spec.asset_id], stored.redirect_hosts if stored else ())
         if stored != current:
@@ -285,6 +342,53 @@ def validate_receipts(review_root: Path) -> dict[str, AssetReceipt]:
                 raise AssetPreparationError("digest")
             raise AssetPreparationError("receipt")
     return receipts
+
+
+def validate_receipts(review_root: Path) -> dict[str, AssetReceipt]:
+    root = _checked_root(review_root)
+    if _walk_files(root) != SOURCE_REVIEW_FILES:
+        raise AssetPreparationError("receipt")
+    return _validate_receipt_contents(root)
+
+
+def validate_source_receipts(review_root: Path) -> dict[str, AssetReceipt]:
+    root = _checked_root(review_root)
+    files = _walk_files(root)
+    if files not in {SOURCE_REVIEW_FILES, ADMITTED_REVIEW_FILES}:
+        raise AssetPreparationError("receipt")
+    return _validate_receipt_contents(root)
+
+
+def sanitize_official_model(source: Path, output: Path, receipt: Path) -> "SanitizationReceipt":
+    from scripts.sanitize_demo_model import sanitize_official_model as implementation
+
+    return implementation(source, output, receipt)
+
+
+def validate_sanitized_model(source: Path, output: Path, receipt: Path) -> "SanitizationReceipt":
+    from scripts.sanitize_demo_model import validate_sanitized_model as implementation
+
+    return implementation(source, output, receipt)
+
+
+def validate_admitted_assets(review_root: Path) -> AdmittedAssets:
+    _require_external_review(review_root)
+    root = _checked_root(review_root)
+    if _walk_files(root) != ADMITTED_REVIEW_FILES:
+        raise AssetPreparationError("receipt")
+    receipts = validate_source_receipts(root)
+    sanitization = validate_sanitized_model(
+        checked_child(root, Path(SOURCE_REVIEW_PATHS["obb-model"])),
+        checked_child(root, Path(SANITIZED_MODEL_REVIEW_PATH)),
+        checked_child(root, Path(SANITIZATION_RECEIPT_REVIEW_PATH)),
+    )
+    model = receipts["obb-model"]
+    if (
+        sanitization.source_bytes != model.bytes
+        or sanitization.source_sha256 != model.sha256
+    ):
+        raise AssetPreparationError("receipt")
+    return AdmittedAssets(receipts=receipts, sanitization=sanitization)
 
 
 def _replace_batch(root: Path, stage: Path, paths: tuple[str, ...]) -> None:
@@ -308,13 +412,22 @@ def _replace_batch(root: Path, stage: Path, paths: tuple[str, ...]) -> None:
             os.replace(checked_child(stage, Path(relative)), checked_child(root, Path(relative)))
             applied.append(relative)
     except (AssetPreparationError, OSError):
+        rollback_failed = False
         for relative in reversed(applied):
             destination = checked_child(root, Path(relative))
             backup = backups / relative
-            if originals[relative] and backup.is_file():
-                os.replace(backup, destination)
-            elif destination.exists():
-                destination.unlink()
+            try:
+                if originals[relative] and backup.is_file():
+                    try:
+                        os.replace(backup, destination)
+                    except OSError:
+                        shutil.copyfile(backup, destination)
+                elif destination.exists():
+                    destination.unlink()
+            except (OSError, AssetPreparationError):
+                rollback_failed = True
+        if rollback_failed:
+            raise AssetPreparationError("scope") from None
         raise AssetPreparationError("scope") from None
 
 
@@ -323,8 +436,8 @@ def _new_stage(root: Path) -> Path:
 
 
 def _reject_unknown_review_members(root: Path) -> None:
-    allowed_files = {"receipt.json", *(spec.public_relative_path for spec in OFFICIAL_ASSETS)}
-    allowed_directories = {"samples", "models", "third_party"}
+    allowed_files = SOURCE_REVIEW_FILES
+    allowed_directories = {"samples", "models", "licenses"}
     safe_root = _checked_root(root)
     for directory, names, file_names in os.walk(safe_root, followlinks=False):
         current = Path(directory)
@@ -341,6 +454,7 @@ def _reject_unknown_review_members(root: Path) -> None:
 
 
 def acquire_assets(review_root: Path, transport: Callable[[AssetSpec], tuple[bytes, tuple[str, ...], str]] = urlopen_transport) -> dict[str, AssetReceipt]:
+    _require_external_review(review_root)
     root = _checked_root(review_root, create=True)
     _reject_unknown_review_members(root)
     stage = _new_stage(root)
@@ -354,13 +468,13 @@ def acquire_assets(review_root: Path, transport: Callable[[AssetSpec], tuple[byt
             except Exception:
                 raise AssetPreparationError("network") from None
             receipt = _media_receipt(spec, body, content_type, tuple(redirects))
-            destination = checked_child(stage, Path(spec.public_relative_path))
+            destination = checked_child(stage, Path(SOURCE_REVIEW_PATHS[spec.asset_id]))
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(body)
             receipts[spec.asset_id] = receipt
         checked_child(stage, Path("receipt.json")).write_text(json.dumps(_receipt_payload(receipts), sort_keys=True, indent=2) + "\n", encoding="utf-8")
         validate_receipts(stage)
-        _replace_batch(root, stage, tuple([*(spec.public_relative_path for spec in OFFICIAL_ASSETS), "receipt.json"]))
+        _replace_batch(root, stage, tuple([*SOURCE_REVIEW_PATHS.values(), "receipt.json"]))
         return receipts
     finally:
         shutil.rmtree(stage, ignore_errors=True)
@@ -380,26 +494,148 @@ def _git_worktree_roots(repo_root: Path) -> set[Path]:
     return roots
 
 
-def _manifest(receipts: dict[str, AssetReceipt]) -> dict[str, object]:
+def _require_external_review(review_root: Path) -> None:
+    requested = Path(os.path.abspath(review_root)).resolve(strict=False)
+    repo = _checked_root(REPO_ROOT)
+    if any(
+        requested == worktree or requested.is_relative_to(worktree)
+        for worktree in _git_worktree_roots(repo)
+    ):
+        raise AssetPreparationError("scope")
+
+
+def require_browser_parity(review_root: Path) -> None:
+    from scripts.model_parity_smoke import run_parity
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="aerial-obb-publish-parity-") as directory:
+            report = Path(directory) / "report.json"
+            run_parity(review_root, report)
+            payload = json.loads(report.read_text(encoding="utf-8"))
+    except Exception as error:
+        if hasattr(error, "code"):
+            raise
+        raise AssetPreparationError("receipt") from None
+    if (
+        not isinstance(payload, dict)
+        or set(payload)
+        != {
+            "runtime",
+            "input",
+            "output",
+            "output_bytes_equal",
+            "detections_equal",
+            "accepted_ship",
+            "verdict",
+        }
+        or payload.get("output_bytes_equal") is not True
+        or payload.get("detections_equal") is not True
+        or payload.get("accepted_ship") is not True
+        or payload.get("verdict") != "PASS"
+    ):
+        raise AssetPreparationError("receipt")
+
+
+def _manifest(admitted: AdmittedAssets) -> dict[str, object]:
+    receipts, sanitization = admitted.receipts, admitted.sanitization
     image, model, license_asset = receipts["boats-image"], receipts["obb-model"], receipts["ultralytics-license"]
     return {
         "schemaVersion": 1, "id": "ultralytics-yolo26n-obb-demo",
-        "image": {"path": "samples/boats.jpg", "mediaType": "image/jpeg", "bytes": image.bytes, "sha256": image.sha256, "width": image.width, "height": image.height},
-        "model": {"path": "models/yolo26n-obb.onnx", "source": OFFICIAL_ASSETS[1].source_url, "release": "v8.4.0", "license": "AGPL-3.0-only", "bytes": model.bytes, "sha256": model.sha256},
-        "license": {"path": "third_party/ULTRALYTICS-AGPL-3.0.txt", "bytes": license_asset.bytes, "sha256": license_asset.sha256},
+        "image": {"path": "samples/boats.jpg", "source": OFFICIAL_ASSETS[0].source_url, "mediaType": "image/jpeg", "bytes": image.bytes, "sha256": image.sha256, "width": image.width, "height": image.height},
+        "model": {"path": DERIVATIVE_PUBLIC_PATH, "mediaType": "application/onnx", "source": OFFICIAL_ASSETS[1].source_url, "release": SOURCE_RELEASE, "license": "AGPL-3.0-only", "modificationStatus": "metadata-only", "bytes": sanitization.output_bytes, "sha256": sanitization.output_sha256, "sourceSha256": model.sha256},
+        "sanitization": {"path": SANITIZATION_RECORD_PUBLIC_PATH, "modifiedField": sanitization.modified_field, "modificationDate": sanitization.modification_date, "removedMetadataEntries": sanitization.removed_metadata_entries},
+        "license": {"path": LICENSE_PUBLIC_PATH, "bytes": license_asset.bytes, "sha256": license_asset.sha256},
         "input": {"name": "images", "dims": [1, 3, 1024, 1024], "type": "float32", "channelOrder": "RGB", "normalization": "divide-by-255", "letterboxValue": 114},
-        "output": {"name": "output0", "rowWidth": 7, "layout": ["cx", "cy", "w", "h", "confidence", "class", "angleRadians"]},
+        "output": {"name": "output0", "dims": [1, "N", 7], "type": "float32", "rowWidth": 7, "layout": ["cx", "cy", "w", "h", "confidence", "class", "angleRadians"]},
         "classes": ["plane", "ship", "storage tank", "baseball diamond", "tennis court", "basketball court", "ground track field", "harbor", "bridge", "large vehicle", "small vehicle", "helicopter", "roundabout", "soccer ball field", "swimming pool"],
         "defaultConfidence": 0.25, "notice": "THIRD_PARTY_NOTICES.md",
+        "provenance": {"upstream": "Ultralytics YOLO26n-OBB", "trainingDataset": "DOTAv1", "status": "privacy-sanitized AGPL derivative"},
     }
 
 
-def _notices(receipts: dict[str, AssetReceipt]) -> str:
-    return "# Third-party notices\n\nThe bundled Ultralytics assets are subject to AGPL-3.0-only. The unmodified license text is included at `third_party/ULTRALYTICS-AGPL-3.0.txt`.\n\nLicense SHA-256: `" + receipts["ultralytics-license"].sha256 + "`\n"
+def _sanitization_record(admitted: AdmittedAssets) -> dict[str, object]:
+    receipts, sanitization = admitted.receipts, admitted.sanitization
+    return {
+        "schemaVersion": 1,
+        "source": {"url": OFFICIAL_ASSETS[1].source_url, "release": SOURCE_RELEASE, "bytes": sanitization.source_bytes, "sha256": sanitization.source_sha256},
+        "derivative": {"path": DERIVATIVE_PUBLIC_PATH, "bytes": sanitization.output_bytes, "sha256": sanitization.output_sha256},
+        "sanitizer": {"path": "scripts/sanitize_demo_model.py", "version": SANITIZER_VERSION, "onnxVersion": sanitization.onnx_version, "protobufVersion": sanitization.protobuf_version},
+        "transformation": {"modificationStatus": "metadata-only", "removedMetadataEntries": sanitization.removed_metadata_entries, "modifiedField": sanitization.modified_field, "modificationDate": sanitization.modification_date},
+        "verification": {"structuralEquivalent": sanitization.structural_equivalent, "checkerPassed": sanitization.checker_passed, "privacyPassed": sanitization.privacy_passed, "deterministic": sanitization.deterministic, "browserParityPassed": True},
+        "license": {"spdx": "AGPL-3.0-only", "path": LICENSE_PUBLIC_PATH, "sha256": receipts["ultralytics-license"].sha256},
+        "provenance": {"upstream": "Ultralytics YOLO26n-OBB", "trainingDataset": "DOTAv1", "endorsement": False, "commercialUseCleared": False},
+    }
+
+
+def _notices(admitted: AdmittedAssets) -> str:
+    receipts = admitted.receipts
+    return (
+        "# Third-party notices\n\n"
+        "The bundled model is a privacy-sanitized AGPL derivative of Ultralytics "
+        "YOLO26n-OBB from release v8.4.0. One non-inference metadata entry was "
+        "removed on 2026-08-31; the graph and weights were verified unchanged. "
+        "The model was trained on DOTAv1.\n\n"
+        "The complete, unmodified AGPL-3.0-only license text is included at "
+        "`third_party/ULTRALYTICS-AGPL-3.0.txt`. The transformation record is "
+        "`third_party/yolo26n-obb-privacy-sanitization.json`, and the sanitizer "
+        "source is `scripts/sanitize_demo_model.py`.\n\n"
+        f"Upstream release: {OFFICIAL_ASSETS[1].source_url}\n\n"
+        "Sanitizer source: https://github.com/kuotunyu/aerial-obb-lab/blob/"
+        f"{SANITIZER_VERSION}/scripts/sanitize_demo_model.py\n\n"
+        "Corresponding repository source: https://github.com/kuotunyu/aerial-obb-lab\n\n"
+        "This project is not endorsed by Ultralytics and makes no commercial-use "
+        "clearance claim.\n\n"
+        f"License SHA-256: `{receipts['ultralytics-license'].sha256}`\n"
+    )
+
+
+def _validate_public_stage(stage: Path, admitted: AdmittedAssets) -> None:
+    try:
+        if _walk_files(stage) != set(PUBLIC_ASSET_PATHS):
+            raise AssetPreparationError("receipt")
+        receipts, sanitization = admitted.receipts, admitted.sanitization
+        expected_binary = {
+            "samples/boats.jpg": (
+                receipts["boats-image"].bytes,
+                receipts["boats-image"].sha256,
+            ),
+            DERIVATIVE_PUBLIC_PATH: (
+                sanitization.output_bytes,
+                sanitization.output_sha256,
+            ),
+            LICENSE_PUBLIC_PATH: (
+                receipts["ultralytics-license"].bytes,
+                receipts["ultralytics-license"].sha256,
+            ),
+        }
+        for relative, (expected_bytes, expected_digest) in expected_binary.items():
+            body = checked_child(stage, Path(relative)).read_bytes()
+            if len(body) != expected_bytes or hashlib.sha256(body).hexdigest() != expected_digest:
+                raise AssetPreparationError("receipt")
+        expected_text = {
+            "demo-model.json": json.dumps(_manifest(admitted), sort_keys=True, indent=2) + "\n",
+            SANITIZATION_RECORD_PUBLIC_PATH: json.dumps(
+                _sanitization_record(admitted), sort_keys=True, indent=2
+            )
+            + "\n",
+            "THIRD_PARTY_NOTICES.md": _notices(admitted),
+        }
+        for relative, expected in expected_text.items():
+            if checked_child(stage, Path(relative)).read_text(encoding="utf-8") != expected:
+                raise AssetPreparationError("receipt")
+    except AssetPreparationError:
+        raise
+    except (OSError, UnicodeError, ValueError):
+        raise AssetPreparationError("receipt") from None
 
 
 def _reject_stale_managed_pages(pages: Path) -> None:
-    approved = {spec.public_relative_path for spec in OFFICIAL_ASSETS}
+    approved = {
+        "samples/boats.jpg",
+        DERIVATIVE_PUBLIC_PATH,
+        LICENSE_PUBLIC_PATH,
+        SANITIZATION_RECORD_PUBLIC_PATH,
+    }
     for directory in ("samples", "models", "third_party"):
         checked_child(pages, Path(directory))
     for relative in _walk_files(pages):
@@ -412,20 +648,31 @@ def publish_assets(review_root: Path, pages_root: Path) -> None:
     repo = _checked_root(REPO_ROOT)
     expected_pages = (repo / "demo" / "web").resolve(strict=False)
     requested_pages = Path(os.path.abspath(pages_root)).resolve(strict=False)
-    if requested_pages != expected_pages or any(review == worktree or review.is_relative_to(worktree) for worktree in _git_worktree_roots(repo)):
+    if requested_pages != expected_pages:
         raise AssetPreparationError("scope")
+    _require_external_review(review)
     pages = _checked_root(requested_pages, create=True)
     _reject_stale_managed_pages(pages)
-    receipts = validate_receipts(review)
+    admitted = validate_admitted_assets(review)
+    require_browser_parity(review)
     stage = _new_stage(pages)
-    targets = tuple([*(spec.public_relative_path for spec in OFFICIAL_ASSETS), "demo-model.json", "THIRD_PARTY_NOTICES.md"])
+    targets = PUBLIC_ASSET_PATHS
     try:
-        for spec in OFFICIAL_ASSETS:
-            destination = checked_child(stage, Path(spec.public_relative_path))
+        copies = (
+            (SOURCE_REVIEW_PATHS["boats-image"], "samples/boats.jpg"),
+            (SANITIZED_MODEL_REVIEW_PATH, DERIVATIVE_PUBLIC_PATH),
+            (SOURCE_REVIEW_PATHS["ultralytics-license"], LICENSE_PUBLIC_PATH),
+        )
+        for source_relative, public_relative in copies:
+            destination = checked_child(stage, Path(public_relative))
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(checked_child(review, Path(spec.public_relative_path)).read_bytes())
-        checked_child(stage, Path("demo-model.json")).write_text(json.dumps(_manifest(receipts), sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        checked_child(stage, Path("THIRD_PARTY_NOTICES.md")).write_text(_notices(receipts), encoding="utf-8")
+            destination.write_bytes(checked_child(review, Path(source_relative)).read_bytes())
+        record = checked_child(stage, Path(SANITIZATION_RECORD_PUBLIC_PATH))
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text(json.dumps(_sanitization_record(admitted), sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        checked_child(stage, Path("demo-model.json")).write_text(json.dumps(_manifest(admitted), sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        checked_child(stage, Path("THIRD_PARTY_NOTICES.md")).write_text(_notices(admitted), encoding="utf-8")
+        _validate_public_stage(stage, admitted)
         _replace_batch(pages, stage, targets)
     finally:
         shutil.rmtree(stage, ignore_errors=True)
@@ -434,12 +681,25 @@ def publish_assets(review_root: Path, pages_root: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     try:
-        if len(arguments) == 3 and arguments[0] in {"acquire", "verify"} and arguments[1] == "--review-root":
+        if len(arguments) == 3 and arguments[0] in {"acquire", "sanitize", "verify"} and arguments[1] == "--review-root":
             if arguments[0] == "acquire":
                 acquire_assets(Path(arguments[2]))
                 print("[OK] DEMO_ASSETS_ACQUIRED")
+            elif arguments[0] == "sanitize":
+                _require_external_review(Path(arguments[2]))
+                review = _checked_root(Path(arguments[2]))
+                validate_receipts(review)
+                sanitized = checked_child(review, Path("sanitized"))
+                sanitized.mkdir()
+                sanitize_official_model(
+                    checked_child(review, Path(SOURCE_REVIEW_PATHS["obb-model"])),
+                    checked_child(review, Path(SANITIZED_MODEL_REVIEW_PATH)),
+                    checked_child(review, Path(SANITIZATION_RECEIPT_REVIEW_PATH)),
+                )
+                validate_admitted_assets(review)
+                print("[OK] DEMO_MODEL_SANITIZED")
             else:
-                validate_receipts(Path(arguments[2]))
+                validate_admitted_assets(Path(arguments[2]))
                 print("[OK] DEMO_ASSETS_VERIFIED")
             return 0
         if len(arguments) == 5 and arguments[0] == "publish" and arguments[1] == "--review-root" and arguments[3] == "--pages-root":
@@ -450,8 +710,8 @@ def main(argv: list[str] | None = None) -> int:
     except AssetPreparationError as error:
         print(f"[FAIL] {error.code}")
         return 1
-    except Exception:
-        print(f"[FAIL] {ERROR_CODES['network']}")
+    except Exception as error:
+        print(f"[FAIL] {getattr(error, 'code', ERROR_CODES['network'])}")
         return 1
 
 
