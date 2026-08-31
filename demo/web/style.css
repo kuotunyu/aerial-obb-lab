@@ -44,6 +44,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   background: var(--page);
 }
@@ -203,6 +207,83 @@ td,
   margin-top: 12px;
 }
 
+.demo-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  align-items: end;
+  gap: 32px;
+  padding: 22px 0 12px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.demo-intro h2,
+.demo-intro p {
+  margin: 0;
+}
+
+.demo-intro h2 {
+  max-width: 24ch;
+  font-family: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  font-size: clamp(30px, 4vw, 56px);
+  font-weight: 600;
+  line-height: 0.98;
+  letter-spacing: -0.025em;
+}
+
+.demo-intro > p {
+  padding-bottom: 4px;
+  color: var(--muted);
+}
+
+.eyebrow {
+  margin-bottom: 8px !important;
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.demo-figure {
+  position: relative;
+  margin: 12px 0 0;
+  overflow: hidden;
+  border: 1px solid var(--canvas-line);
+  background: var(--canvas);
+}
+
+.demo-figure figcaption {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 8px 12px;
+  background: rgba(8, 21, 38, 0.88);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 760;
+  letter-spacing: 0.025em;
+}
+
+.demo-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 68vh;
+  object-fit: cover;
+}
+
+.demo-action-zone {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(170px, 0.55fr) minmax(320px, 2fr);
+  gap: 10px;
+  align-items: stretch;
+  margin: 10px 0 22px;
+}
+
+.demo-action-zone .status {
+  margin: 0;
+}
+
 .control-rail {
   min-width: 0;
   padding: 16px;
@@ -266,25 +347,40 @@ h3 {
   margin-top: 6px;
 }
 
-#showcaseBtn {
+#demoDetectBtn,
+.secondary-action {
   width: 100%;
-  min-height: 44px;
-  margin-top: 12px;
+  min-height: 52px;
   border: 2px solid var(--ink);
   border-radius: 0;
-  background: var(--surface-muted);
-  color: var(--ink);
+  background: var(--ink);
+  color: #ffffff;
   font-weight: 780;
   cursor: pointer;
 }
 
-#showcaseBtn:hover {
-  background: var(--accent-soft);
+.secondary-action {
+  background: var(--surface-muted);
+  color: var(--ink);
 }
 
-#showcaseBtn:focus-visible {
+#demoDetectBtn:hover:not(:disabled),
+.secondary-action:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+#demoDetectBtn:focus-visible,
+.secondary-action:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
+}
+
+#demoDetectBtn:disabled {
+  border-color: var(--disabled);
+  background: var(--disabled);
+  cursor: wait;
 }
 
 .file-control {
@@ -561,6 +657,53 @@ input[type="range"]:focus-visible {
   min-width: 0;
 }
 
+.result-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
+  gap: 14px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.result-controls .control-block,
+.result-controls .class-filter {
+  margin-top: 0;
+}
+
+.byom-panel {
+  margin-top: 18px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.byom-panel summary {
+  min-height: 48px;
+  padding: 10px 14px;
+  color: var(--ink);
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.byom-panel summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.byom-panel .control-rail {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr) minmax(180px, 0.45fr);
+  gap: 14px;
+  align-items: end;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.byom-panel .file-stack {
+  grid-template-columns: 1fr 1fr;
+}
+
 .result-heading {
   min-height: 64px;
   align-items: flex-start;
@@ -806,6 +949,21 @@ footer code {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     margin-top: 12px;
+  }
+
+  .demo-intro,
+  .demo-action-zone,
+  .result-controls,
+  .byom-panel .control-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .demo-figure img {
+    max-height: none;
+  }
+
+  .byom-panel .file-stack {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .result-workspace {

@@ -1,8 +1,7 @@
-"""Verify the local-only transitional ``demo/web`` privacy boundary.
+"""Verify the final real-demo-only ``demo/web`` privacy boundary.
 
 This checker is deliberately read-only and Python-standard-library-only so it can
-run in repository preflight. Task 2 intentionally admits the reviewed Synthetic
-UI beside the derivative assets; this state is not a final Pages candidate.
+run in repository preflight and admit only the reviewed public asset inventory.
 """
 
 from __future__ import annotations
@@ -23,9 +22,8 @@ REQUIRED_FILES = (
     "index.html",
     "app.js",
     "obb.js",
-    "showcase-fixture.js",
+    "demo-assets.js",
     "style.css",
-    "fixtures/showcase.svg",
     "fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "fonts/IBM-Plex-OFL.txt",
     "README.md",
@@ -100,7 +98,7 @@ SVG_NAMESPACE_RE = re.compile(
     r'''\bxmlns\s*=\s*["'](http://www\.w3\.org/2000/svg)["']''', re.I
 )
 FORBIDDEN_BROWSER_API_RE = re.compile(
-    r"\b(?:localStorage|sessionStorage|indexedDB|caches|fetch|XMLHttpRequest|"
+    r"\b(?:localStorage|sessionStorage|indexedDB|caches|XMLHttpRequest|"
     r"WebSocket|EventSource|sendBeacon|serviceWorker)\b|\bnavigator\.storage\b"
 )
 REMOTE_MODEL_FETCH_RE = re.compile(
@@ -130,35 +128,31 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "4a09df2370c56e59dff9337a5754605c7bc28a36effdeba1e4321778396c8325",
+        "616fc0252410212fe5406953308e50cfc597cd92ebf0ade27b1785e86066a5a9",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "5e56a01b3973becfc6f806dc2063e13d16a56ae0ad35e0b64e81e03b7c4613ff",
+        "3b4de4978d411bda06c90392b99258993ed69c031737ecaecaa98099ef7bf7e6",
         "reviewed application bytes differ",
     ),
     "obb.js": (
         "c2c83882a1cb1b6d76ab48d12784af6c2ef526be08d4fe1b7ed23798b7350043",
         "reviewed geometry bytes differ",
     ),
-    "showcase-fixture.js": (
-        "d56958508b82d18028b9026aa8fd40235cba49174a2593118e8c7f8e41f478f6",
-        "reviewed showcase data bytes differ",
+    "demo-assets.js": (
+        "8d66746927b37b0e22c2c292c01e3972e17e9302cbeee3c8b8c86ed9540f3767",
+        "reviewed demo asset loader bytes differ",
     ),
     "style.css": (
-        "5685625db34b50b25f41006f7a57684830c68f8c10971fd0917707ad2e00332b",
+        "70cfd7920c508d3e833a865b467653086a9a5e443f8d98a2a1bd0b01bbda961c",
         "reviewed stylesheet bytes differ",
-    ),
-    "fixtures/showcase.svg": (
-        "8dab1056011c99a21ad2a01d088956a444308f61cb57b0e6f5bafd3e2f0dd5bf",
-        "reviewed synthetic fixture bytes differ",
     ),
     "fonts/IBM-Plex-OFL.txt": (
         "9590325331b1975eac408dc78e7d369c042f565cee8aa9e34d6b40524f400972",
         "reviewed font license bytes differ",
     ),
     "README.md": (
-        "458772e09e2d1ed4d034c323228cf42fd20e8f2079dc4f389bb7d916740745a4",
+        "8bc13d6e4c6cd3528be42a874e1809f23d0127d5f757811d295a58df947308a7",
         "reviewed README bytes differ",
     ),
     "demo-model.json": (
@@ -387,13 +381,14 @@ def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: lis
 
     html = texts.get("index.html")
     if html is not None:
-        for reference in ("style.css", "obb.js", "showcase-fixture.js", "app.js"):
+        for reference in ("style.css", "obb.js", "demo-assets.js", "app.js"):
             if reference not in html:
                 errors.append(f"index.html: required reference is missing: {reference}")
 
-    fixture = texts.get("showcase-fixture.js")
-    if fixture is not None and 'imageUrl: "fixtures/showcase.svg"' not in fixture:
-        errors.append("showcase-fixture.js: exact synthetic fixture reference is missing")
+    demo_assets = texts.get("demo-assets.js")
+    model_reference = 'path: "models/yolo26n-obb-privacy-sanitized.onnx"'
+    if demo_assets is not None and model_reference not in demo_assets:
+        errors.append("demo-assets.js: exact derivative model path is missing")
 
     style = texts.get("style.css")
     font_reference = 'url("fonts/IBMPlexSansCondensed-SemiBold.woff2")'
@@ -403,11 +398,6 @@ def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: lis
     license_text = texts.get("fonts/IBM-Plex-OFL.txt")
     if license_text is not None and "SIL OPEN FONT LICENSE Version 1.1" not in license_text:
         errors.append("fonts/IBM-Plex-OFL.txt: SIL Open Font License 1.1 text is missing")
-
-    fixture_path = root / "fixtures" / "showcase.svg"
-    if fixture_path.is_file() and _is_link(fixture_path):
-        errors.append("fixtures/showcase.svg: required fixture must be a regular file")
-
 
 def verify_pages_tree(root: Path) -> list[str]:
     """Return deterministic ``path: reason`` violations without modifying *root*."""
@@ -504,6 +494,8 @@ def verify_pages_tree(root: Path) -> list[str]:
             errors.append(f"{relative}: token-shaped string")
         if ABSOLUTE_USER_PATH_RE.search(text):
             errors.append(f"{relative}: absolute user path")
+        if "synthetic" in text.casefold():
+            errors.append(f"{relative}: current Synthetic reference is forbidden")
         if suffix in RUNTIME_TEXT_SUFFIXES:
             _scan_runtime_urls(relative, text, errors)
             if REMOTE_MODEL_FETCH_RE.search(text):

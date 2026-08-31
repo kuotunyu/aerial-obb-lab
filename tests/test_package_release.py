@@ -93,7 +93,7 @@ def test_ci_uses_current_node24_action_majors() -> None:
     assert workflow.count("actions/setup-node@v7") == 1
 
 
-def test_ci_runs_a_headless_synthetic_browser_smoke() -> None:
+def test_ci_runs_the_headless_real_demo_browser_smoke() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
         encoding="utf-8"
     )
