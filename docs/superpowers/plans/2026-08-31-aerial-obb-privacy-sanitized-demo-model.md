@@ -259,7 +259,12 @@ verify   -> [OK] DEMO_ASSETS_VERIFIED
 publish  -> [OK] DEMO_ASSETS_PUBLISHED
 ```
 
-`publish` validates source and derivative receipts, rejects unknown/stale/link/hard-link members, stages all six public paths, and atomically replaces only after the complete closed set passes. It never copies `models/yolo26n-obb.onnx`.
+`publish` validates source and derivative receipts, rejects unknown/stale/link/hard-link members, and stages
+all six public paths before replacing any destination. Each destination leaf is replaced atomically; if any
+replacement fails, the complete prior six-file set is restored. This offline local preparation transaction
+does not promise lock-free, all-at-once visibility to a concurrent reader across the six fixed paths. The
+consistent deployment boundary is the completed Git tree and its verified Pages artifact; no workflow deploys
+from the local mutation loop. It never copies `models/yolo26n-obb.onnx`.
 
 - [ ] **Step 3: Write the parity harness RED**
 

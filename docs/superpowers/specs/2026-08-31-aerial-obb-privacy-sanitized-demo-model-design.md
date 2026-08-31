@@ -125,7 +125,14 @@ staging directory outside every repository. It performs this closed sequence:
 7. serialize once with deterministic protobuf serialization;
 8. parse the result again and run `onnx.checker.check_model`;
 9. require zero forbidden path, secret, URL-query, stack, or private-marker matches in the output bytes; and
-10. atomically publish the staged derivative and transformation receipt only after all gates pass.
+10. publish the complete staged public asset set only after all gates pass, using atomic replacement for
+    each destination leaf and restoring the complete prior set if any replacement fails.
+
+This is an offline, repository-local preparation transaction. The six fixed public paths occupy separate
+directory entries, so the design does not claim lock-free, all-at-once visibility to a concurrent reader.
+No repository workflow deploys from this mutation loop: the consistent public boundary is the completed Git
+tree and the verified Pages artifact created from it. Introducing generation pointers, symlinks, or different
+public URLs solely to provide a concurrent-reader namespace switch is outside this design.
 
 Zero matches, more than one match, a match in any other field, parse/check failure, structural drift,
 non-deterministic output, or a remaining privacy match is a stop condition. The sanitizer never performs a
@@ -281,7 +288,8 @@ Focused unit/integration coverage must prove:
 - two independent sanitizations produce identical bytes and digest;
 - output parses, passes ONNX checker, contains no external data, and passes the binary privacy scan;
 - receipts have exact closed schemas and no sensitive values;
-- staging, symlink/reparse containment, atomic replacement, and failure cleanup remain safe;
+- staging, symlink/reparse containment, per-leaf atomic replacement, complete-batch rollback, and failure
+  cleanup remain safe;
 - the unmodified model can never be published or allowlisted;
 - the Windows Git subprocess handles a Unicode worktree path under the default system code page without
   requiring callers to set `PYTHONUTF8`; and
