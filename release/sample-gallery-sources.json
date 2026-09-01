@@ -1,8 +1,15 @@
 {
   "samples": [
     {
+      "alt": "\u5c0f\u578b\u6a5f\u5834\u7684\u771f\u5be6\u822a\u62cd\u539f\u5716",
       "bytes": 306620,
       "derivation": {
+        "bboxWgs84": [
+          -118.456705,
+          34.012771,
+          -118.444705,
+          34.020271
+        ],
         "color": "sRGB",
         "jpegQuality": 90,
         "metadata": "stripped",
@@ -12,10 +19,19 @@
         ]
       },
       "guardrails": {
-        "classFilter": [],
-        "inference": "browser-only",
-        "precomputedOutputs": false,
-        "threshold": 0.25
+        "classIds": [
+          0
+        ],
+        "countMax": 28,
+        "countMin": 18,
+        "representative": {
+          "classId": 0,
+          "cx": 401.0,
+          "cy": 443.1,
+          "h": 19.2,
+          "tolerance": 12.0,
+          "w": 18.3
+        }
       },
       "height": 800,
       "id": "airfield",
@@ -24,22 +40,25 @@
       "sha256": "5a60f3a6c7f8678c200f7051bfcdf378d360d08b1d3e72c62a15e7c6f7ee0c53",
       "source": {
         "acquisitionDate": 1652227200000,
-        "bboxWgs84": [
-          -118.456705,
-          34.012771,
-          -118.444705,
-          34.020271
-        ],
-        "provider": "USGS\uff0fUSDA NAIP",
+        "agency": "USDA",
+        "productId": "m_3411861_sw_11_060_20220511",
         "publicDomainRecord": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+        "service": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
         "year": 2022
       },
       "title": "\u5c0f\u578b\u6a5f\u5834\u822a\u62cd\u7bc4\u4f8b",
       "width": 1280
     },
     {
+      "alt": "\u904b\u52d5\u5834\u9928\u7684\u771f\u5be6\u822a\u62cd\u539f\u5716",
       "bytes": 232752,
       "derivation": {
+        "bboxWgs84": [
+          -121.26521,
+          37.784685,
+          -121.25321,
+          37.792185
+        ],
         "color": "sRGB",
         "jpegQuality": 90,
         "metadata": "stripped",
@@ -49,10 +68,25 @@
         ]
       },
       "guardrails": {
-        "classFilter": [],
-        "inference": "browser-only",
-        "precomputedOutputs": false,
-        "threshold": 0.25
+        "classIds": [
+          3,
+          4,
+          5,
+          6,
+          12,
+          13,
+          14
+        ],
+        "countMax": 2,
+        "countMin": 1,
+        "representative": {
+          "classId": 3,
+          "cx": 643.4,
+          "cy": 532.3,
+          "h": 46.3,
+          "tolerance": 12.0,
+          "w": 52.0
+        }
       },
       "height": 800,
       "id": "sports-complex",
@@ -61,22 +95,25 @@
       "sha256": "22974d633ae13f68e78ccf9d418bae2fd17a3109d6ad92a2390eb5a6666380de",
       "source": {
         "acquisitionDate": 1655164800000,
-        "bboxWgs84": [
-          -121.26521,
-          37.784685,
-          -121.25321,
-          37.792185
-        ],
-        "provider": "USGS\uff0fUSDA NAIP",
+        "agency": "USDA",
+        "productId": "m_3712114_se_10_060_20220614",
         "publicDomainRecord": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+        "service": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
         "year": 2022
       },
       "title": "\u904b\u52d5\u5834\u9928\u822a\u62cd\u7bc4\u4f8b",
       "width": 1280
     },
     {
+      "alt": "\u4f4e\u5bc6\u5ea6\u6e2f\u5340\u7684\u771f\u5be6\u822a\u62cd\u539f\u5716",
       "bytes": 241046,
       "derivation": {
+        "bboxWgs84": [
+          -119.216719,
+          34.14417,
+          -119.200719,
+          34.15417
+        ],
         "color": "sRGB",
         "jpegQuality": 90,
         "metadata": "stripped",
@@ -86,10 +123,21 @@
         ]
       },
       "guardrails": {
-        "classFilter": [],
-        "inference": "browser-only",
-        "precomputedOutputs": false,
-        "threshold": 0.25
+        "classIds": [
+          1,
+          2,
+          7
+        ],
+        "countMax": 26,
+        "countMin": 16,
+        "representative": {
+          "classId": 1,
+          "cx": 951.1,
+          "cy": 443.1,
+          "h": 26.4,
+          "tolerance": 32.9,
+          "w": 164.4
+        }
       },
       "height": 800,
       "id": "harbor",
@@ -98,14 +146,10 @@
       "sha256": "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
       "source": {
         "acquisitionDate": 1652486400000,
-        "bboxWgs84": [
-          -119.216719,
-          34.14417,
-          -119.200719,
-          34.15417
-        ],
-        "provider": "USGS\uff0fUSDA NAIP",
+        "agency": "USDA",
+        "productId": "m_3411955_sw_11_060_20220514",
         "publicDomainRecord": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+        "service": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
         "year": 2022
       },
       "title": "\u4f4e\u5bc6\u5ea6\u6e2f\u5340\u822a\u62cd\u7bc4\u4f8b",

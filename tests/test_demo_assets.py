@@ -751,6 +751,36 @@ def test_gallery_receipt_rejects_mutated_canonical_sample_contract(tmp_path: Pat
 @pytest.mark.parametrize(
     "path,value",
     [
+        pytest.param(("samples", 0, "alt"), "uncharted image", id="sample.alt"),
+        pytest.param(("samples", 0, "guardrails", "classIds"), [99], id="guardrails.classIds"),
+        pytest.param(("samples", 0, "guardrails", "countMin"), 0, id="guardrails.countMin"),
+        pytest.param(("samples", 0, "guardrails", "representative", "classId"), 1, id="representative.classId"),
+        pytest.param(("samples", 0, "guardrails", "representative", "tolerance"), 0, id="representative.tolerance"),
+    ],
+)
+def test_gallery_receipt_rejects_invalid_canonical_guardrail_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: tuple[object, ...], value: object
+) -> None:
+    """Even a future canonical receipt cannot weaken the public sample guardrails."""
+    root = Path(__file__).resolve().parents[1]
+    payload = json.loads((root / "release/sample-gallery-sources.json").read_text("utf-8"))
+    target: object = payload
+    for key in path[:-1]: target = target[key]  # type: ignore[index]
+    target[path[-1]] = value  # type: ignore[index]
+    repo = tmp_path / "repo"; (repo / "release").mkdir(parents=True)
+    canonical = repo / "release" / "sample-gallery-sources.json"
+    canonical.write_text(json.dumps(payload), encoding="utf-8")
+    pages = tmp_path / "web" / "samples"; pages.mkdir(parents=True)
+    for item in payload["samples"]:
+        (pages.parent / item["path"]).write_bytes((root / "demo/web" / item["path"]).read_bytes())
+    monkeypatch.setattr(demo_assets, "REPO_ROOT", repo)
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.validate_gallery_publication(pages.parent, canonical)
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
         pytest.param(("schemaVersion",), 2, id="root.schemaVersion"),
         pytest.param(("samples",), [], id="root.samples-order"),
         pytest.param(("samples", 0, "id"), "unknown", id="sample.id-unknown"),
@@ -798,10 +828,11 @@ def test_gallery_receipt_rejects_each_closed_contract_mutation(tmp_path: Path, p
 
 @pytest.mark.parametrize("path,key,operation", [
     *[pytest.param((), key, operation, id=f"root.{key}-{operation}") for key in ("schemaVersion", "samples") for operation in ("missing", "extra")],
-    *[pytest.param(("samples", 0), key, operation, id=f"sample.{key}-{operation}") for key in ("bytes", "derivation", "guardrails", "height", "id", "mediaType", "path", "sha256", "source", "title", "width") for operation in ("missing", "extra")],
-    *[pytest.param(("samples", 0, "source"), key, operation, id=f"source.{key}-{operation}") for key in ("provider", "publicDomainRecord", "year", "acquisitionDate", "bboxWgs84") for operation in ("missing", "extra")],
-    *[pytest.param(("samples", 0, "derivation"), key, operation, id=f"derivation.{key}-{operation}") for key in ("outputSize", "color", "jpegQuality", "metadata") for operation in ("missing", "extra")],
-    *[pytest.param(("samples", 0, "guardrails"), key, operation, id=f"guardrails.{key}-{operation}") for key in ("threshold", "classFilter", "precomputedOutputs", "inference") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0), key, operation, id=f"sample.{key}-{operation}") for key in ("alt", "bytes", "derivation", "guardrails", "height", "id", "mediaType", "path", "sha256", "source", "title", "width") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0, "source"), key, operation, id=f"source.{key}-{operation}") for key in ("service", "productId", "publicDomainRecord", "year", "acquisitionDate", "agency") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0, "derivation"), key, operation, id=f"derivation.{key}-{operation}") for key in ("bboxWgs84", "outputSize", "color", "jpegQuality", "metadata") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0, "guardrails"), key, operation, id=f"guardrails.{key}-{operation}") for key in ("classIds", "countMin", "countMax", "representative") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0, "guardrails", "representative"), key, operation, id=f"representative.{key}-{operation}") for key in ("classId", "cx", "cy", "w", "h", "tolerance") for operation in ("missing", "extra")],
 ])
 def test_gallery_receipt_rejects_each_nested_missing_or_extra_key(tmp_path: Path, path: tuple[object, ...], key: str, operation: str) -> None:
     """Every canonical key independently rejects omission and extension."""

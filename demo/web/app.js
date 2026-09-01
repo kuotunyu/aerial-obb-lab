@@ -242,7 +242,7 @@ function setSampleSelection(sampleId) {
   sampleOptions.forEach((option) => {
     option.setAttribute("aria-pressed", String(option.dataset.sampleId === sampleId));
   });
-  demoOriginalImage.alt = `${sample.title}的真實航拍原圖`;
+  demoOriginalImage.alt = sample.alt;
 }
 
 function loadSelectedDemoImage(sample, token) {
@@ -325,7 +325,7 @@ async function selectDemoSample(sampleId) {
     demoDetectBtn.disabled = false;
     sampleState.textContent = "Original · ready";
     setInitialSummary();
-    setStatus("原圖已載入 · 尚未 Detect。");
+    setStatus(`已選擇 ${sample.title} · 原圖已載入 · 尚未 Detect。`);
     return generation;
   } catch (_error) {
     if (isCurrentGeneration(generation)) reportFailure("DEMO_IMAGE_DECODE");
@@ -818,10 +818,4 @@ fileDrop.addEventListener("drop", (event) => {
   if (file) void loadImageFile(file);
 });
 
-if (demoOriginalImage.complete && demoOriginalImage.naturalWidth) {
-  resetToDemoOriginal();
-} else {
-  demoDetectBtn.disabled = true;
-  demoOriginalImage.addEventListener("load", resetToDemoOriginal, {once: true});
-  demoOriginalImage.addEventListener("error", () => reportFailure("IMAGE_DECODE"), {once: true});
-}
+void selectDemoSample(state.selectedSampleId);

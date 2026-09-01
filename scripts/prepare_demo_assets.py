@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 import hashlib
 import io
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -407,22 +408,64 @@ def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[s
         expected_paths = ["samples/airfield.jpg", "samples/sports-complex.jpg", "samples/harbor.jpg"]
         if [item.get("path") if isinstance(item, dict) else None for item in samples] != expected_paths:
             raise ValueError
-        sample_keys = {"id", "title", "path", "bytes", "sha256", "mediaType", "width", "height", "source", "derivation", "guardrails"}
-        source_keys = {"provider", "publicDomainRecord", "year", "acquisitionDate", "bboxWgs84"}
-        derivation = {"outputSize": [1280, 800], "color": "sRGB", "jpegQuality": 90, "metadata": "stripped"}
-        guardrails = {"threshold": 0.25, "classFilter": [], "precomputedOutputs": False, "inference": "browser-only"}
+        sample_keys = {"id", "title", "alt", "path", "bytes", "sha256", "mediaType", "width", "height", "source", "derivation", "guardrails"}
+        source_keys = {"service", "productId", "year", "acquisitionDate", "agency", "publicDomainRecord"}
+        derivation_keys = {"bboxWgs84", "outputSize", "color", "jpegQuality", "metadata"}
+        guardrail_keys = {"classIds", "countMin", "countMax", "representative"}
+        representative_keys = {"classId", "cx", "cy", "w", "h", "tolerance"}
+        expected_alts = {
+            "airfield": "小型機場的真實航拍原圖",
+            "sports-complex": "運動場館的真實航拍原圖",
+            "harbor": "低密度港區的真實航拍原圖",
+        }
+        expected_class_ids = {
+            "airfield": [0],
+            "sports-complex": [3, 4, 5, 6, 12, 13, 14],
+            "harbor": [1, 2, 7],
+        }
+        def finite_number(value: object) -> bool:
+            return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
+        def integer(value: object) -> bool:
+            return isinstance(value, int) and not isinstance(value, bool)
+
         for item in samples:
             if not isinstance(item, dict) or set(item) != sample_keys:
                 raise ValueError
             source = item["source"]
             if (
                 not isinstance(source, dict) or set(source) != source_keys
-                or source["provider"] != "USGS／USDA NAIP"
+                or source["service"] != "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer"
+                or not isinstance(source["productId"], str) or not source["productId"]
+                or source["agency"] != "USDA"
                 or source["publicDomainRecord"] != "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39"
                 or not isinstance(source["year"], int) or not isinstance(source["acquisitionDate"], int)
-                or not isinstance(source["bboxWgs84"], list) or len(source["bboxWgs84"]) != 4
-                or item["derivation"] != derivation or item["guardrails"] != guardrails
+                or not isinstance(item["derivation"], dict) or set(item["derivation"]) != derivation_keys
+                or item["derivation"].get("outputSize") != [1280, 800] or item["derivation"].get("color") != "sRGB" or item["derivation"].get("jpegQuality") != 90 or item["derivation"].get("metadata") != "stripped"
+                or not isinstance(item["derivation"].get("bboxWgs84"), list) or len(item["derivation"]["bboxWgs84"]) != 4
+                or not isinstance(item["guardrails"], dict) or set(item["guardrails"]) != guardrail_keys
+                or not isinstance(item["guardrails"].get("classIds"), list) or not item["guardrails"]["classIds"]
+                or not isinstance(item["guardrails"].get("countMin"), int) or not isinstance(item["guardrails"].get("countMax"), int) or item["guardrails"]["countMin"] < 1 or item["guardrails"]["countMin"] > item["guardrails"]["countMax"]
+                or not isinstance(item["guardrails"].get("representative"), dict) or set(item["guardrails"]["representative"]) != representative_keys
                 or item["mediaType"] != "image/jpeg" or item["width"] != 1280 or item["height"] != 800
+            ):
+                raise ValueError
+            guardrails = item["guardrails"]
+            representative = guardrails["representative"]
+            if (
+                not isinstance(item["id"], str) or item["alt"] != expected_alts[item["id"]]
+                or not isinstance(item["title"], str) or not item["title"]
+                or not integer(item["bytes"]) or item["bytes"] < 1
+                or not isinstance(item["sha256"], str) or len(item["sha256"]) != 64
+                or not isinstance(source["productId"], str) or not source["productId"]
+                or not integer(source["year"]) or not integer(source["acquisitionDate"])
+                or any(not finite_number(value) or value < -180 or value > 180 for value in item["derivation"]["bboxWgs84"])
+                or guardrails["classIds"] != expected_class_ids[item["id"]]
+                or any(not integer(value) for value in guardrails["classIds"])
+                or not integer(guardrails["countMin"]) or not integer(guardrails["countMax"])
+                or not integer(representative["classId"]) or representative["classId"] not in guardrails["classIds"]
+                or any(not finite_number(representative[key]) for key in ("cx", "cy", "w", "h", "tolerance"))
+                or representative["w"] <= 0 or representative["h"] <= 0 or representative["tolerance"] <= 0
             ):
                 raise ValueError
         public = _walk_files(pages)

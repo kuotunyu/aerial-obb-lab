@@ -755,9 +755,19 @@ _PUBLIC_SAMPLE_TITLES = {
     "sports-complex": "運動場館航拍範例",
     "harbor": "低密度港區航拍範例",
 }
+_PUBLIC_SAMPLE_ALTS = {
+    "airfield": "小型機場的真實航拍原圖",
+    "sports-complex": "運動場館的真實航拍原圖",
+    "harbor": "低密度港區的真實航拍原圖",
+}
+_TARGET_CLASS_IDS = {
+    "airfield": (0,),
+    "sports-complex": (3, 4, 5, 6, 12, 13, 14),
+    "harbor": (1, 2, 7),
+}
 
 
-def _public_sample_record(record: dict[str, object]) -> dict[str, object]:
+def _public_sample_record(record: dict[str, object], observation: dict[str, object]) -> dict[str, object]:
     """Convert one reviewed record to the deliberately small public receipt shape."""
     category = record["category"]
     image = record["image"]
@@ -765,9 +775,31 @@ def _public_sample_record(record: dict[str, object]) -> dict[str, object]:
     derivation = record["derivation"]
     if not isinstance(category, str) or not isinstance(image, dict) or not isinstance(source, dict) or not isinstance(derivation, dict):
         raise GalleryError("GALLERY_RECORD")
+    detections = observation.get("detections")
+    classes = _TARGET_CLASS_IDS.get(category)
+    if not isinstance(detections, list) or not classes or not detections:
+        raise GalleryError("GALLERY_RECORD")
+    matching = [
+        item for item in detections
+        if isinstance(item, dict) and item.get("classId") in classes
+    ]
+    if not matching:
+        raise GalleryError("GALLERY_RECORD")
+    try:
+        representative = max(matching, key=lambda item: float(item["confidence"]))
+        class_id = representative["classId"]
+        values = {key: float(representative[key]) for key in ("cx", "cy", "w", "h")}
+        if not isinstance(class_id, int) or any(not math.isfinite(value) or value <= 0 for key, value in values.items() if key in {"w", "h"}) or any(not math.isfinite(value) for value in values.values()):
+            raise ValueError
+        count = len(detections)
+        delta = max(1, math.ceil(count * 0.20))
+        tolerance = max(12.0, round(max(values["w"], values["h"]) * 0.20, 1))
+    except (KeyError, TypeError, ValueError):
+        raise GalleryError("GALLERY_RECORD") from None
     return {
         "id": category,
         "title": _PUBLIC_SAMPLE_TITLES[category],
+        "alt": _PUBLIC_SAMPLE_ALTS[category],
         "path": f"samples/{category}.jpg",
         "bytes": image["bytes"],
         "sha256": image["sha256"],
@@ -775,23 +807,30 @@ def _public_sample_record(record: dict[str, object]) -> dict[str, object]:
         "width": OUTPUT_SIZE[0],
         "height": OUTPUT_SIZE[1],
         "source": {
-            "provider": "USGS／USDA NAIP",
+            "service": source["service"],
+            "productId": source["name"],
+            "agency": source["agency"],
             "publicDomainRecord": source["publicDomainRecord"],
             "year": source["year"],
             "acquisitionDate": source["acquisitionDate"],
-            "bboxWgs84": source["bboxWgs84"],
         },
         "derivation": {
+            "bboxWgs84": source["bboxWgs84"],
             "outputSize": derivation["outputSize"],
             "color": derivation["color"],
             "jpegQuality": derivation["jpegQuality"],
             "metadata": derivation["metadata"],
         },
         "guardrails": {
-            "threshold": derivation["threshold"],
-            "classFilter": derivation["classFilter"],
-            "precomputedOutputs": False,
-            "inference": "browser-only",
+            "classIds": list(classes),
+            "countMin": max(1, count - delta),
+            "countMax": count + delta,
+            "representative": {
+                "classId": class_id,
+                "cx": round(values["cx"], 1), "cy": round(values["cy"], 1),
+                "w": round(values["w"], 1), "h": round(values["h"], 1),
+                "tolerance": tolerance,
+            },
         },
     }
 
@@ -872,7 +911,21 @@ def publish_approved_gallery(
     if any(review == worktree or review.is_relative_to(worktree) for worktree in _git_worktree_roots(REPO_ROOT)):
         raise GalleryError("GALLERY_SCOPE")
     approved = validate_approved_gallery(report, review)
-    receipt_payload = {"schemaVersion": 1, "samples": [_public_sample_record(record) for record in approved]}
+    observations = _read_json(_checked_child(review, "observations.json"))
+    if not isinstance(observations, dict):
+        raise GalleryError("GALLERY_RECORD")
+    try:
+        validate_observations(observations, _acquired_pool(review), review)
+        observed_by_id = {item["candidateId"]: item for item in observations["candidates"] if isinstance(item, dict)}
+        receipt_payload = {
+            "schemaVersion": 1,
+            "samples": [
+                _public_sample_record(record, observed_by_id[record["candidateId"]])
+                for record in approved
+            ],
+        }
+    except (KeyError, TypeError, ValueError):
+        raise GalleryError("GALLERY_RECORD") from None
     stage = Path(tempfile.mkdtemp(prefix=".gallery-publish-", dir=str(pages.parent)))
     try:
         (stage / "samples").mkdir()

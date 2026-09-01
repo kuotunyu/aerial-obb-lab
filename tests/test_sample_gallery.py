@@ -191,7 +191,10 @@ def invalid_source_tuning_and_privacy_mutations(record: dict) -> tuple[dict, ...
 @pytest.fixture
 def approved_gallery_report(tmp_path: Path, valid_candidate_record: dict) -> dict:
     records = []
-    for recipe in (CANDIDATE_RECIPES[0], CANDIDATE_RECIPES[3], CANDIDATE_RECIPES[6]):
+    for recipe in (
+        CANDIDATE_RECIPES[0], CANDIDATE_RECIPES[1], CANDIDATE_RECIPES[3],
+        CANDIDATE_RECIPES[4], CANDIDATE_RECIPES[6], CANDIDATE_RECIPES[7],
+    ):
         record = deepcopy(valid_candidate_record)
         record["candidateId"] = recipe.candidate_id
         record["category"] = recipe.category
@@ -201,8 +204,24 @@ def approved_gallery_report(tmp_path: Path, valid_candidate_record: dict) -> dic
             (tmp_path / str(valid_candidate_record["image"]["reviewName"])).read_bytes()
         )
         records.append(record)
-    return {"schemaVersion": 1, "threshold": 0.25, "records": records,
-            "visualReview": {record["candidateId"]: "approved" for record in records}}
+    (tmp_path / "candidate-records.json").write_text(
+        __import__("json").dumps({"schemaVersion": 1, "records": records}), encoding="utf-8"
+    )
+    family = {"airfield": 0, "sports-complex": 3, "harbor": 1}
+    observations = {
+        "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
+        "candidates": [
+            {"candidateId": record["candidateId"], "category": record["category"],
+             "runCompleted": True, "numericRuntime": 1.0, "visualReview": "unreviewed",
+             "detections": [{"classId": family[record["category"]], "confidence": 0.9,
+                             "cx": 100.0, "cy": 200.0, "w": 40.0, "h": 30.0, "angle": 0.0}]}
+            for record in records
+        ],
+    }
+    (tmp_path / "observations.json").write_text(__import__("json").dumps(observations), encoding="utf-8")
+    approved = [records[0], records[2], records[4]]
+    return {"schemaVersion": 1, "threshold": 0.25, "records": approved,
+            "visualReview": {record["candidateId"]: "approved" for record in approved}}
 
 
 def test_candidate_recipes_are_exact_conus_naip_only() -> None:

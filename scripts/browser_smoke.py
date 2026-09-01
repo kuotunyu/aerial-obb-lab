@@ -112,7 +112,11 @@ def _scenario_ort_stub(
     elif run_mode == "delayed":
         run_body = f"""
           return new Promise((resolve) => {{
-            globalThis.__resolveDemoRun = () => resolve((() => {{ {output} }})());
+            globalThis.__delayedRunSettled = false;
+            globalThis.__resolveDemoRun = () => {{
+              resolve((() => {{ {output} }})());
+              queueMicrotask(() => {{ globalThis.__delayedRunSettled = true; }});
+            }};
           }});
         """
     else:
@@ -424,7 +428,7 @@ def _assert_real_sample_result(page: object, sample_id: str, run_count: int) -> 
         raise RuntimeError("gallery run does not expose the selected fixed title")
     if page.locator("#demoOriginalImage").get_attribute("src") != sample["path"]:
         raise RuntimeError("gallery run loaded a different original than the selected sample")
-    if page.locator("#demoOriginalImage").get_attribute("alt") != f"{sample['title']}的真實航拍原圖":
+    if page.locator("#demoOriginalImage").get_attribute("alt") != sample["alt"]:
         raise RuntimeError("main original alt text does not describe the active sample")
     image_layout = page.locator("#demoOriginalImage").evaluate(
         "image => [getComputedStyle(image).objectFit, image.naturalWidth, image.naturalHeight]"
@@ -442,25 +446,103 @@ def _assert_real_sample_result(page: object, sample_id: str, run_count: int) -> 
         raise RuntimeError("gallery sample run lacks a numeric runtime")
     if page.evaluate("globalThis.__demoRunCount") != run_count:
         raise RuntimeError("gallery sample run did not execute the expected real session.run")
+    detections = _assert_one_filtered_output_list(page)
+    guardrails = sample["guardrails"]
+    if set(guardrails) != {"classIds", "countMin", "countMax", "representative"}:
+        raise RuntimeError("active sample manifest lacks the closed output-guardrail interface")
+    if not guardrails["countMin"] <= len(detections) <= guardrails["countMax"]:
+        raise RuntimeError("real filtered count falls outside the active sample guardrail range")
+    class_ids = {
+        name: int(value)
+        for value, name in page.locator(".class-cb").evaluate_all(
+            "items => items.map(item => [item.value, item.parentElement.textContent])"
+        )
+    }
+    actual_ids = {class_ids[item["class"]] for item in detections}
+    if not actual_ids.intersection(guardrails["classIds"]):
+        raise RuntimeError("real filtered output lacks an admitted target-family class")
+    representative = guardrails["representative"]
+    matching = [
+        item for item in detections
+        if class_ids[item["class"]] == representative["classId"]
+        and all(abs(float(item[key]) - float(representative[key])) <= float(representative["tolerance"]) for key in ("cx", "cy", "w", "h"))
+    ]
+    if not matching:
+        raise RuntimeError("real filtered output lacks a detection within the admitted representative tolerance")
+
+
+def _assert_one_filtered_output_list(page: object) -> list[dict[str, float | int | str]]:
     rows = [
         row.locator("td").all_text_contents()
         for row in page.locator("#resultsBody tr:not([data-empty='true'])").all()
     ]
     if not rows or any(len(row) != 5 for row in rows):
         raise RuntimeError("gallery sample run did not render a filtered detection table")
-    if page.locator("#summaryCount").inner_text() != str(len(rows)):
-        raise RuntimeError("gallery summary does not represent the table's filtered list")
     description = page.locator("#canvasDescription").inner_text()
-    if any(f"class={row[0]}" not in description or f"confidence={row[1]}" not in description for row in rows):
-        raise RuntimeError("gallery non-live description differs from the filtered table list")
+    pattern = re.compile(
+        r"class=([^;]+); confidence=([0-9.]+); center-x=([0-9.]+) px; "
+        r"center-y=([0-9.]+) px; width=([0-9.]+) px; height=([0-9.]+) px; "
+        r"angle=(-?[0-9.]+)°\."
+    )
+    described = [
+        {
+            "class": match.group(1), "confidence": float(match.group(2)),
+            "cx": float(match.group(3)), "cy": float(match.group(4)),
+            "w": float(match.group(5)), "h": float(match.group(6)),
+            "angle": float(match.group(7)),
+        }
+        for match in pattern.finditer(description)
+    ]
+    if len(described) != len(rows):
+        raise RuntimeError("non-live description does not contain one ordered record per table row")
+    for row, detection in zip(rows, described):
+        if row[0] != detection["class"] or not math.isclose(float(row[1]), detection["confidence"], abs_tol=0.0005):
+            raise RuntimeError("table class/confidence differs from its ordered non-live description")
+        if any(
+            not math.isclose(float(actual), float(expected), abs_tol=0.11)
+            for actual, expected in zip(row[2:], (detection["w"], detection["h"], detection["angle"]))
+        ):
+            raise RuntimeError("table geometry differs from its ordered non-live description")
+    if page.locator("#summaryCount").inner_text() != str(len(described)):
+        raise RuntimeError("gallery summary count does not represent the filtered list")
+    if page.locator("#summaryTop").inner_text() != f"{max(item['confidence'] for item in described):.3f}":
+        raise RuntimeError("gallery summary top confidence does not represent the filtered list")
+    if any(
+        described[index]["confidence"] < described[index + 1]["confidence"]
+        for index in range(len(described) - 1)
+    ):
+        raise RuntimeError("table and description no longer retain the shared confidence order")
+    identities = {
+        (item["class"], item["confidence"], item["cx"], item["cy"], item["w"], item["h"], item["angle"])
+        for item in described
+    }
+    if len(identities) != len(described):
+        raise RuntimeError("filtered output contains duplicate detection identities")
     polygons = page.evaluate("globalThis.__obbStrokedPolygons")
-    if len(polygons) != len(rows) or any(len(polygon["points"]) != 4 for polygon in polygons):
-        raise RuntimeError("gallery polygons differ from the shared filtered list")
-    guardrails = sample["guardrails"]
-    if guardrails != {"classFilter": [], "inference": "browser-only", "precomputedOutputs": False, "threshold": 0.25}:
-        raise RuntimeError("gallery result is not checked against the admitted manifest guardrails")
-    if page.locator("#confSlider").input_value() != "0.25" or page.locator(".class-cb:checked").count() != 0:
-        raise RuntimeError("gallery result did not use the selected sample's shared guardrail filters")
+    if len(polygons) != len(described) or any(len(polygon["points"]) != 4 for polygon in polygons):
+        raise RuntimeError("canvas polygons do not have one identity per filtered detection")
+    for detection, polygon in zip(described, polygons):
+        angle = math.radians(float(detection["angle"]))
+        cos_angle, sin_angle = math.cos(angle), math.sin(angle)
+        expected = [
+            (
+                float(detection["cx"]) + x * cos_angle - y * sin_angle,
+                float(detection["cy"]) + x * sin_angle + y * cos_angle,
+            )
+            for x, y in (
+                (-float(detection["w"]) / 2, -float(detection["h"]) / 2),
+                (float(detection["w"]) / 2, -float(detection["h"]) / 2),
+                (float(detection["w"]) / 2, float(detection["h"]) / 2),
+                (-float(detection["w"]) / 2, float(detection["h"]) / 2),
+            )
+        ]
+        if any(
+            abs(actual_axis - expected_axis) > 0.55
+            for actual, wanted in zip(polygon["points"], expected)
+            for actual_axis, expected_axis in zip(actual, wanted)
+        ):
+            raise RuntimeError("canvas polygon geometry differs from its filtered detection identity")
+    return described
 
 
 def assert_safe_sample_failure(page: object) -> None:
@@ -474,6 +556,102 @@ def assert_safe_sample_failure(page: object) -> None:
         raise RuntimeError("sample decode failure retained stale table rows")
     if page.locator(".sample-option:not([disabled])").count() < 2:
         raise RuntimeError("sample decode failure disabled unrelated examples")
+
+
+def _assert_neutral_current_sample(page: object, sample_id: str) -> None:
+    sample = page.evaluate(
+        "([id]) => DemoAssets.getSampleCatalog().find((candidate) => candidate.id === id)",
+        arg=[sample_id],
+    )
+    if not sample:
+        raise RuntimeError("race assertion could not load the admitted winning sample")
+    if page.locator('.sample-option[aria-pressed="true"]').get_attribute("data-sample-id") != sample_id:
+        raise RuntimeError("race left the wrong aria-pressed sample selected")
+    if sample["title"] not in page.locator(f'[data-sample-id="{sample_id}"]').inner_text():
+        raise RuntimeError("race lost the winning sample title")
+    original = page.locator("#demoOriginalImage")
+    if original.get_attribute("src") != sample["path"] or original.get_attribute("alt") != sample["alt"]:
+        raise RuntimeError("race restored the wrong active original identity")
+    neutral = page.evaluate(
+        "[summaryCount.textContent, runtimeValue.textContent, "
+        "resultsBody.querySelectorAll(\"tr:not([data-empty='true'])\").length, "
+        "canvasFrame.hidden, viewToggleBtn.hidden, demoDetectBtn.disabled]"
+    )
+    expected_status = f"已選擇 {sample['title']} · 原圖已載入 · 尚未 Detect。"
+    if neutral != ["0", "—", 0, True, True, False] or page.locator("#canvasDescription").inner_text() != "尚無 detection result。" or page.locator("#sampleState").inner_text() != "Original · ready" or page.locator("#status").inner_text() != expected_status:
+        raise RuntimeError(f"race published stale state into the winning sample: {neutral!r}")
+
+
+def _assert_initial_airfield_failure(
+    page: object,
+    requests: list[str],
+    console_messages: list[str],
+    page_errors: list[str],
+) -> None:
+    assert_safe_sample_failure(page)
+    _assert_failure_cleanup(page)
+    if page.locator('.sample-option[aria-pressed="true"]').get_attribute("data-sample-id") != "airfield":
+        raise RuntimeError("initial sample failure did not preserve the selected airfield identity")
+    if not page.locator("#demoDetectBtn").is_disabled() or page.locator("#sampleState").inner_text() == "Original · ready":
+        raise RuntimeError("initial sample failure left a misleading ready/Detect state")
+    _assert_privacy_surfaces(
+        page, requests, console_messages, page_errors, _privacy_sentinels()
+    )
+    page.locator('[data-sample-id="harbor"]').click()
+    page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
+    if page.locator("#status").get_attribute("data-kind") == "error":
+        raise RuntimeError("healthy selection did not recover the failed initial sample")
+
+
+def _run_initial_airfield_failure(
+    *,
+    hold_until_app_attaches: bool,
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    from playwright.sync_api import Route, sync_playwright
+
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
+            _record_evidence(page, requests, console_messages, page_errors)
+            held: list[Route] = []
+
+            def route_airfield(route: Route) -> None:
+                if hold_until_app_attaches:
+                    held.append(route)
+                else:
+                    route.fulfill(status=200, content_type="image/jpeg", body=b"not-a-jpeg")
+
+            page.route("**/samples/airfield.jpg", route_airfield)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
+            if hold_until_app_attaches:
+                page.wait_for_function("document.querySelector('#demoDetectBtn').disabled === true")
+                if not held:
+                    raise RuntimeError("initial-airfield hold did not intercept the production image request")
+                for route in held:
+                    route.fulfill(status=200, content_type="image/jpeg", body=b"not-a-jpeg")
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'error'")
+            _assert_initial_airfield_failure(page, requests, console_messages, page_errors)
+        finally:
+            browser.close()
+
+
+def run_initial_sample_failures(
+    executable_path: Path | None = None, base_url: str | None = None,
+) -> None:
+    """Initial admitted-image failures use the same safe recovery as later selections."""
+    _run_initial_airfield_failure(
+        hold_until_app_attaches=True, executable_path=executable_path, base_url=base_url
+    )
+    _run_initial_airfield_failure(
+        hold_until_app_attaches=False, executable_path=executable_path, base_url=base_url
+    )
 
 
 def run_sample_gallery_failures(
@@ -545,7 +723,11 @@ def _run_sample_switch_after_delayed_inference(
         browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
             page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
             page.add_init_script(SRI_STUB_SHIM)
+            _record_evidence(page, requests, console_messages, page_errors)
             page.route(
                 ORT_CDN_URL,
                 lambda route: route.fulfill(
@@ -558,18 +740,27 @@ def _run_sample_switch_after_delayed_inference(
             page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
             page.locator("#demoDetectBtn").click()
             page.wait_for_function("typeof globalThis.__resolveDemoRun === 'function'")
+            before_runs = page.evaluate("globalThis.__demoRunCount")
+            before_inference_requests = [
+                request for request in requests
+                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
+            ]
             page.locator('[data-sample-id="sports-complex"]').click()
             page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
             page.evaluate("globalThis.__resolveDemoRun()")
-            page.wait_for_timeout(150)
-            if page.locator("#demoOriginalImage").get_attribute("src") != "samples/sports-complex.jpg":
-                raise RuntimeError("delayed inference restored the previous sample original")
-            stale = page.evaluate(
-                "[summaryCount.textContent, runtimeValue.textContent, canvasFrame.hidden, "
-                "viewToggleBtn.hidden, sampleState.textContent]"
+            page.wait_for_function("globalThis.__delayedRunSettled === true")
+            _assert_neutral_current_sample(page, "sports-complex")
+            if page.evaluate("globalThis.__demoRunCount") != before_runs:
+                raise RuntimeError("delayed inference created an extra run after the later selector won")
+            after_inference_requests = [
+                request for request in requests
+                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
+            ]
+            if after_inference_requests != before_inference_requests:
+                raise RuntimeError("delayed inference requested an extra runtime, manifest, or model")
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, _privacy_sentinels()
             )
-            if stale != ["0", "—", True, True, "Original · ready"]:
-                raise RuntimeError(f"delayed inference published stale sample state: {stale!r}")
         finally:
             browser.close()
 
@@ -649,7 +840,11 @@ def run_superseded_reload(executable_path: Path | None = None, base_url: str | N
         browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
             page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
             page.add_init_script(SRI_STUB_SHIM)
+            _record_evidence(page, requests, console_messages, page_errors)
             page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=_scenario_ort_stub(lifecycle=True)))
             held: list[Route] = []
             page.route("**/samples/sports-complex.jpg", lambda route: held.append(route))
@@ -657,13 +852,28 @@ def run_superseded_reload(executable_path: Path | None = None, base_url: str | N
             page.wait_for_function("demoOriginalImage.complete && demoOriginalImage.naturalWidth > 0")
             page.locator("#demoDetectBtn").click(); page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
             run_count = page.evaluate("globalThis.__demoRunCount")
+            before_inference_requests = [
+                request for request in requests
+                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
+            ]
             page.locator('[data-sample-id="sports-complex"]').click()
             page.wait_for_function("document.querySelector('#sampleState').textContent.includes('Loading')")
             page.locator('[data-sample-id="harbor"]').click()
-            for route in held: route.continue_()
             page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-            if page.locator('#demoOriginalImage').get_attribute('src') != 'samples/harbor.jpg' or page.evaluate("globalThis.__demoRunCount") != run_count:
-                raise RuntimeError("superseded reload started inference or restored the old sample")
+            for route in held: route.continue_()
+            page.wait_for_load_state("networkidle")
+            _assert_neutral_current_sample(page, "harbor")
+            if page.evaluate("globalThis.__demoRunCount") != run_count:
+                raise RuntimeError("superseded image decode started inference")
+            after_inference_requests = [
+                request for request in requests
+                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
+            ]
+            if after_inference_requests != before_inference_requests:
+                raise RuntimeError("superseded image decode requested an extra runtime, manifest, or model")
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, _privacy_sentinels()
+            )
         finally:
             browser.close()
 
@@ -1883,6 +2093,12 @@ def run_accessibility(
             page.wait_for_function("document.querySelector('[aria-pressed=\"true\"]')?.dataset.sampleId === 'sports-complex'")
             if page.evaluate("document.activeElement?.dataset.sampleId") != "sports-complex":
                 raise RuntimeError("Space selection moved focus away from the activated sample")
+            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
+            sports_title = "運動場館航拍範例"
+            if page.locator("#status").inner_text() != f"已選擇 {sports_title} · 原圖已載入 · 尚未 Detect。" or page.locator("#status").inner_text().count(sports_title) != 1:
+                raise RuntimeError("shared polite status does not announce the newly selected sports title exactly once")
+            if sports_title in page.locator("#canvasDescription").inner_text():
+                raise RuntimeError("non-live detailed description duplicated the selected sports title")
             page.keyboard.press("Tab")
             if page.evaluate("document.activeElement?.dataset.sampleId") != "harbor":
                 raise RuntimeError("Tab does not reach the final sample option")
@@ -1895,6 +2111,11 @@ def run_accessibility(
             if page.evaluate("document.activeElement?.dataset.sampleId") != "harbor":
                 raise RuntimeError("Enter selection moved focus away from the activated sample")
             page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
+            harbor_title = "低密度港區航拍範例"
+            if page.locator("#status").inner_text() != f"已選擇 {harbor_title} · 原圖已載入 · 尚未 Detect。" or page.locator("#status").inner_text().count(harbor_title) != 1:
+                raise RuntimeError("shared polite status does not announce the newly selected harbor title exactly once")
+            if harbor_title in page.locator("#canvasDescription").inner_text():
+                raise RuntimeError("non-live detailed description duplicated the selected harbor title")
             page.keyboard.press("Tab")
             if page.evaluate("document.activeElement?.id") != "demoDetectBtn":
                 raise RuntimeError("Detect does not follow the sample group in keyboard order")
@@ -2424,6 +2645,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=(
             "sample-gallery",
             "sample-gallery-failures",
+            "initial-sample-failures",
             "held-decode",
             "invalid-selector",
             "superseded-reload",
@@ -2452,6 +2674,8 @@ def main(argv: list[str] | None = None) -> int:
             run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
         elif args.scenario == "sample-gallery-failures":
             run_sample_gallery_failures(args.executable_path, args.base_url)
+        elif args.scenario == "initial-sample-failures":
+            run_initial_sample_failures(args.executable_path, args.base_url)
         elif args.scenario == "held-decode":
             run_held_decode(args.executable_path, args.base_url)
         elif args.scenario == "invalid-selector":
@@ -2505,6 +2729,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
             run_sample_gallery_failures(args.executable_path, args.base_url)
+            run_initial_sample_failures(args.executable_path, args.base_url)
             run_held_decode(args.executable_path, args.base_url)
             run_invalid_selector(args.executable_path, args.base_url)
             run_superseded_reload(args.executable_path, args.base_url)
@@ -2537,6 +2762,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[OK] Real sample gallery initial state")
     elif args.scenario == "sample-gallery-failures":
         print("[OK] Real sample gallery failures are safe and recoverable")
+    elif args.scenario == "initial-sample-failures":
+        print("[OK] Initial real sample failures are safe and recoverable")
     elif args.scenario == "held-decode":
         print("[OK] Held real sample decode clears stale result state")
     elif args.scenario == "invalid-selector":
