@@ -1286,6 +1286,10 @@ def run_accessibility(
                 """
             ):
                 raise RuntimeError("claim notice does not precede the first primary control")
+            claim_box = page.locator("#claimBoundary").bounding_box()
+            action_box = page.locator("#demoDetectBtn").bounding_box()
+            if claim_box is None or action_box is None or claim_box["y"] >= action_box["y"]:
+                raise RuntimeError("claim notice lost visual priority over the first primary control")
             names = page.evaluate(
                 """
                 () => ({
@@ -1304,21 +1308,88 @@ def run_accessibility(
                 raise RuntimeError("confidence input lost its stable name or label")
             if any(item != ["class-filter", 1] for item in names["classes"]):
                 raise RuntimeError("class inputs lost stable names or labels")
-            headings = page.locator("h1, h2, h3, h4, h5, h6").evaluate_all(
-                "items => items.map(item => Number(item.tagName.slice(1)))"
+            headings = page.evaluate(
+                """
+                () => ({
+                  page: document.querySelector('h1')?.tagName,
+                  controls: controlsTitle.tagName,
+                  result: resultTitle.tagName,
+                  sample: sampleTitle.tagName,
+                  table: tableTitle.tagName,
+                  byom: byomPanel.querySelector('summary')?.tagName,
+                })
+                """
             )
-            if headings[0] != 1 or any(
-                current > previous + 1 for previous, current in zip(headings, headings[1:])
-            ):
-                raise RuntimeError("heading order skips a semantic level")
+            if headings != {
+                "page": "H1",
+                "controls": "H2",
+                "result": "H2",
+                "sample": "H3",
+                "table": "H3",
+                "byom": "SUMMARY",
+            }:
+                raise RuntimeError(f"workbench heading hierarchy is wrong: {headings!r}")
             description = page.locator("#canvasDescription")
+            if (
+                page.locator("#canvas").get_attribute("aria-describedby")
+                != "canvasDescription"
+                or page.locator("#canvasDescription").count() != 1
+            ):
+                raise RuntimeError("canvas lost its single textual-description target")
             if description.get_attribute("aria-live") is not None:
                 raise RuntimeError("canvas description unexpectedly became live")
             if description.inner_text() != "尚無 detection result。":
                 raise RuntimeError("empty canvas description is stale")
             status = page.locator("#status")
-            if status.get_attribute("aria-live") != "polite":
-                raise RuntimeError("status lost its deliberate polite live region")
+            polite_regions = page.locator('[aria-live="polite"]')
+            if (
+                status.get_attribute("aria-live") != "polite"
+                or polite_regions.count() != 1
+                or polite_regions.first.get_attribute("id") != "status"
+            ):
+                raise RuntimeError("status is not the only deliberate polite live region")
+
+            page.locator("main#mainContent").focus()
+            initial_focus_order = []
+            for _ in range(20):
+                page.keyboard.press("Tab")
+                focused = page.evaluate(
+                    """
+                    () => {
+                      const active = document.activeElement;
+                      if (!active) return '';
+                      if (active.id) return `#${active.id}`;
+                      if (active.matches('#byomPanel summary')) return '#byomPanel summary';
+                      if (active.matches('.source-links a')) return '.source-links a';
+                      return active.tagName.toLowerCase();
+                    }
+                    """
+                )
+                initial_focus_order.append(focused)
+                if focused == ".source-links a":
+                    break
+            try:
+                detect_index = initial_focus_order.index("#demoDetectBtn")
+                byom_index = initial_focus_order.index("#byomPanel summary")
+                source_index = initial_focus_order.index(".source-links a")
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"initial keyboard order misses a required stop: {initial_focus_order!r}"
+                ) from exc
+            if not detect_index < byom_index < source_index:
+                raise RuntimeError(
+                    f"initial keyboard order leaves the workbench sequence: {initial_focus_order!r}"
+                )
+            if not page.evaluate(
+                """
+                () => Boolean(
+                  resultControls.compareDocumentPosition(byomPanel) &
+                  Node.DOCUMENT_POSITION_FOLLOWING
+                )
+                """
+            ):
+                raise RuntimeError("BYOM disclosure no longer follows the filters")
+
             page.locator("#demoDetectBtn").click()
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'success'"
@@ -1329,7 +1400,12 @@ def run_accessibility(
                 raise RuntimeError("accessible description diverged from the sorted visible table")
             if "confidence=" in status.inner_text() or "center-x=" in status.inner_text():
                 raise RuntimeError("live status duplicates the full detection announcement")
-            for selector in ("#demoDetectBtn", "#byomPanel summary", ".source-links a"):
+            for selector in (
+                "#demoDetectBtn",
+                "#byomPanel summary",
+                ".table-scroll",
+                ".source-links a",
+            ):
                 target = page.locator(selector).first
                 target.focus()
                 page.keyboard.press("Tab")
@@ -1342,7 +1418,7 @@ def run_accessibility(
                     }
                     """
                 )
-                if focus[0] == "none" or focus[1] < 1:
+                if focus[0] == "none" or focus[1] < 3:
                     raise RuntimeError(f"keyboard focus indicator is not visible for {selector}")
             normal_motion = page.evaluate(
                 """
@@ -1430,10 +1506,39 @@ def _assert_responsive_layout(page: object, label: str) -> None:
     ):
         target = page.locator(selector).first
         if target.count() != 1 or not target.is_visible():
-            raise RuntimeError(f"{label} layout hides a required demo or source element")
+            raise RuntimeError(
+                f"{label} layout hides required demo or source element {selector}"
+            )
         box = target.bounding_box()
         if box is None or box["x"] < -1 or box["x"] + box["width"] > page.evaluate("innerWidth") + 1:
-            raise RuntimeError(f"{label} layout clips a required demo or source element")
+            raise RuntimeError(
+                f"{label} layout clips required demo or source element {selector}"
+            )
+    rail_box = page.locator("#controlRail").bounding_box()
+    viewport_box = page.locator("#resultViewport").bounding_box()
+    if label == "desktop":
+        if (
+            rail_box is None
+            or viewport_box is None
+            or viewport_box["x"] <= rail_box["x"] + rail_box["width"]
+        ):
+            raise RuntimeError("desktop result viewport is not right of the control rail")
+        return
+
+    ordered = [
+        "#sampleCard",
+        "#resultViewport",
+        ".result-summary",
+        "#resultControls",
+        ".detections",
+        "#byomPanel",
+    ]
+    boxes = [page.locator(selector).bounding_box() for selector in ordered]
+    if any(box is None for box in boxes):
+        raise RuntimeError(f"{label} layout hides an ordered workbench section")
+    tops = [box["y"] for box in boxes if box is not None]
+    if tops != sorted(tops):
+        raise RuntimeError(f"{label} workbench visual order is wrong: {tops!r}")
 
 
 def run_responsive(

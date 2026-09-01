@@ -924,7 +924,7 @@ footer code {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 959px) {
   .page-shell {
     width: calc(100% - 20px);
     padding-top: 10px;
@@ -952,22 +952,77 @@ footer code {
   }
 
   .workbench {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     gap: 14px;
     margin-top: 12px;
   }
 
-  .result-workspace {
-    display: block;
-  }
-
-  .control-rail {
-    width: 100%;
-    padding: 14px;
-  }
-
+  #controlRail,
+  #resultWorkspace,
   .result-heading {
-    min-height: 0;
+    display: contents;
+  }
+
+  .rail-heading {
+    order: 1;
+    padding: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .sample-card {
+    order: 2;
+    margin-top: 0;
+    padding: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  #status {
+    order: 3;
+    margin: 0;
+  }
+
+  #runtimeRetryBtn {
+    order: 4;
+    margin: 0;
+  }
+
+  .result-heading-copy {
+    order: 5;
+    padding: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  #resultViewport {
+    order: 6;
+  }
+
+  .result-summary {
+    order: 7;
+    width: 100%;
+    margin-top: 0;
+    background: var(--surface);
+  }
+
+  #resultControls {
+    order: 8;
+    margin-top: 0;
+  }
+
+  .detections {
+    order: 9;
+    width: 100%;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  #byomPanel {
+    order: 10;
+    margin-top: 0;
   }
 
   .result-viewport {
