@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 import hashlib
 import io
 import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -32,6 +34,8 @@ SOURCE_FIELDS = (
 )
 SERVICE_JSON_CAP = 256 * 1024
 RASTER_CAP = 25 * 1024 * 1024
+_AGENCY_IDENTITY = re.compile(r"(?<![a-z0-9])(?:usda|fsa)(?![a-z0-9])")
+_NAIP_YEAR_RANGE = range(2003, 2027)
 CHUNK_SIZE = 65_536
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OFFICIAL_DOWNLOAD_HOST = "earthexplorer.usgs.gov"
@@ -161,6 +165,27 @@ def _checked_child(root: Path, name: str) -> Path:
     except ValueError:
         raise GalleryError("GALLERY_SCOPE") from None
     return child
+
+
+def checked_descendant(root: Path, path: Path) -> Path:
+    """Return a reparse-free existing-or-new descendant of an exact review root."""
+    safe_root = _checked_root(root)
+    requested = Path(path)
+    if ".." in requested.parts:
+        raise GalleryError("GALLERY_SCOPE")
+    child = Path(os.path.abspath(requested))
+    try:
+        relative = child.relative_to(safe_root)
+    except ValueError:
+        raise GalleryError("GALLERY_SCOPE") from None
+    if not relative.parts:
+        raise GalleryError("GALLERY_SCOPE")
+    current = safe_root
+    for component in relative.parts:
+        current = current / component
+        if (current.exists() or current.is_symlink()) and is_reparse_point(current):
+            raise GalleryError("GALLERY_SCOPE")
+    return current
 
 
 def _git_worktree_roots(repo_root: Path) -> set[Path]:
@@ -328,9 +353,28 @@ def _valid_source(attributes: dict[str, object], recipe: CandidateRecipe) -> tup
         raise GalleryError("GALLERY_RECORD")
     agency = str(values["agency"] or "").casefold()
     product = f"{name} {raster_name}".casefold()
-    if not ("usda" in agency or "fsa" in agency):
+    year, acquisition_date = values["Year"], values["acquisition_date"]
+    if not _AGENCY_IDENTITY.search(agency):
         raise GalleryError("GALLERY_RECORD")
     if any(term in product or term in agency for term in ("hro", "commercial")):
+        raise GalleryError("GALLERY_RECORD")
+    if isinstance(year, bool) or not isinstance(year, int) or year not in _NAIP_YEAR_RANGE:
+        raise GalleryError("GALLERY_RECORD")
+    if isinstance(acquisition_date, str) and acquisition_date:
+        try:
+            parsed_date = date.fromisoformat(acquisition_date)
+        except ValueError:
+            raise GalleryError("GALLERY_RECORD") from None
+        valid_date = acquisition_date == parsed_date.isoformat()
+    elif isinstance(acquisition_date, int) and not isinstance(acquisition_date, bool):
+        try:
+            parsed_date = datetime.fromtimestamp(acquisition_date / 1000, tz=timezone.utc).date()
+        except (OverflowError, OSError, ValueError):
+            raise GalleryError("GALLERY_RECORD") from None
+        valid_date = 10**12 <= acquisition_date < 2 * 10**12
+    else:
+        raise GalleryError("GALLERY_RECORD")
+    if not valid_date or parsed_date.year not in _NAIP_YEAR_RANGE:
         raise GalleryError("GALLERY_RECORD")
     values["download_url"] = _normalized_official_download_url(values["download_url"])
     west, south, east, north = recipe.bbox_wgs84
@@ -439,10 +483,82 @@ _TOP_LEVEL = {"schemaVersion", "candidateId", "category", "source", "derivation"
 _SOURCE = {"service", "publicDomainRecord", "objectId", "rasterIds", "name", "rasterName", "year", "acquisitionDate", "agency", "downloadUrl", "responseSha256", "bboxWgs84", "resolutionValue", "resolutionUnits", "bandCount", "sensorType"}
 _DERIVATION = {"outputSize", "color", "jpegQuality", "metadata", "threshold", "classFilter"}
 _IMAGE = {"reviewName", "bytes", "sha256", "mediaType"}
+MODEL_SHA256 = "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
+_REPORT_KEYS = {"schemaVersion", "threshold", "modelSha256", "candidates"}
+_CANDIDATE_KEYS = {"candidateId", "category", "runCompleted", "numericRuntime", "detections", "visualReview"}
+_DETECTION_KEYS = {"classId", "confidence", "cx", "cy", "w", "h", "angle"}
 
 
 def _digest(value: object) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+
+
+def source_valid_pool(records: object, review_root: Path) -> tuple[dict[str, object], ...]:
+    if not isinstance(records, (list, tuple)):
+        raise ValueError("GALLERY_OBSERVATION")
+    pool: list[dict[str, object]] = []
+    seen: set[str] = set()
+    counts = {"airfield": 0, "sports-complex": 0, "harbor": 0}
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("GALLERY_OBSERVATION")
+        try:
+            validate_candidate_record(record, review_root)
+            candidate_id = record["candidateId"]
+            category = record["category"]
+        except (GalleryError, KeyError, TypeError):
+            raise ValueError("GALLERY_OBSERVATION") from None
+        if not isinstance(candidate_id, str) or candidate_id in seen or category not in counts:
+            raise ValueError("GALLERY_OBSERVATION")
+        seen.add(candidate_id)
+        counts[category] += 1
+        pool.append(record)
+    if any(count < 2 or count > 3 for count in counts.values()):
+        raise ValueError("GALLERY_OBSERVATION")
+    return tuple(pool)
+
+
+def validate_observations(
+    report: dict[str, object], records: object | None = None, review_root: Path | None = None
+) -> None:
+    """Validate the closed report against the exact acquired source-valid pool."""
+    if not isinstance(report, dict) or set(report) != _REPORT_KEYS:
+        raise ValueError("GALLERY_OBSERVATION")
+    if report["schemaVersion"] != 1 or report["threshold"] != DEFAULT_CONFIDENCE or report["modelSha256"] != MODEL_SHA256:
+        raise ValueError("GALLERY_OBSERVATION")
+    candidates = report["candidates"]
+    if not isinstance(candidates, list):
+        raise ValueError("GALLERY_OBSERVATION")
+    try:
+        pool = source_valid_pool(records, review_root) if records is not None and review_root is not None else ()
+    except (GalleryError, ValueError):
+        raise ValueError("GALLERY_OBSERVATION") from None
+    if not pool:
+        raise ValueError("GALLERY_OBSERVATION")
+    expected = {str(record["candidateId"]): str(record["category"]) for record in pool}
+    seen: set[str] = set()
+    for item in candidates:
+        if not isinstance(item, dict) or set(item) != _CANDIDATE_KEYS:
+            raise ValueError("GALLERY_OBSERVATION")
+        candidate_id, category = item["candidateId"], item["category"]
+        if not isinstance(candidate_id, str) or candidate_id in seen or expected.get(candidate_id) != category:
+            raise ValueError("GALLERY_OBSERVATION")
+        if item["runCompleted"] is not True or item["visualReview"] != "unreviewed":
+            raise ValueError("GALLERY_OBSERVATION")
+        seen.add(candidate_id)
+        runtime = item["numericRuntime"]
+        if isinstance(runtime, bool) or not isinstance(runtime, (int, float)) or not math.isfinite(runtime) or runtime < 0:
+            raise ValueError("GALLERY_OBSERVATION")
+        detections = item["detections"]
+        if not isinstance(detections, list):
+            raise ValueError("GALLERY_OBSERVATION")
+        for detection in detections:
+            if not isinstance(detection, dict) or set(detection) != _DETECTION_KEYS:
+                raise ValueError("GALLERY_OBSERVATION")
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in detection.values()):
+                raise ValueError("GALLERY_OBSERVATION")
+    if seen != set(expected):
+        raise ValueError("GALLERY_OBSERVATION")
 
 
 def validate_candidate_record(record: dict[str, object], review_root: Path) -> None:
@@ -463,13 +579,15 @@ def validate_candidate_record(record: dict[str, object], review_root: Path) -> N
             raise ValueError
         if source["bboxWgs84"] != list(recipe.bbox_wgs84) or not isinstance(source["objectId"], int) or source["rasterIds"] != [source["objectId"]]:
             raise ValueError
-        name, raster_name = source["name"], source["rasterName"]
-        if not isinstance(name, str) or not name.strip() or not isinstance(raster_name, str) or not raster_name.strip():
-            raise ValueError
-        agency, product = str(source["agency"] or "").casefold(), f"{name} {raster_name}".casefold()
-        if not ("usda" in agency or "fsa" in agency) or any(term in product or term in agency for term in ("hro", "commercial")):
-            raise ValueError
-        if not isinstance(source["downloadUrl"], str) or source["downloadUrl"] != _normalized_official_download_url(source["downloadUrl"]):
+        source_attributes = {
+            "OBJECTID": source["objectId"], "Name": source["name"], "Year": source["year"],
+            "raster_name": source["rasterName"], "download_url": source["downloadUrl"],
+            "acquisition_date": source["acquisitionDate"], "agency": source["agency"],
+            "resolution_value": source["resolutionValue"], "resolution_units": source["resolutionUnits"],
+            "band_count": source["bandCount"], "sensor_type": source["sensorType"],
+        }
+        selected_id, canonical_source = _valid_source(source_attributes, recipe)
+        if selected_id != source["objectId"] or source["downloadUrl"] != canonical_source["download_url"]:
             raise ValueError
         if not _digest(source["responseSha256"]):
             raise ValueError
@@ -484,7 +602,22 @@ def validate_candidate_record(record: dict[str, object], review_root: Path) -> N
         name = str(image["reviewName"])
         if Path(name).is_absolute() or "/" in name or "\\" in name:
             raise ValueError
+        review = _checked_root(review_root)
+        candidate = _checked_child(review, name)
+        if not candidate.is_file() or candidate.is_symlink():
+            raise ValueError
+        data = candidate.read_bytes()
+        if len(data) != image["bytes"] or hashlib.sha256(data).hexdigest() != image["sha256"] or not data.startswith(b"\xff\xd8\xff") or not data.endswith(b"\xff\xd9"):
+            raise ValueError
+        with Image.open(io.BytesIO(data)) as decoded:
+            decoded.load()
+            if decoded.format != "JPEG" or decoded.size != OUTPUT_SIZE or decoded.mode != "RGB":
+                raise ValueError
+            if decoded.getexif() or decoded.info.get("icc_profile") is not None or decoded.info.get("comment") is not None:
+                raise ValueError
     except (KeyError, TypeError, ValueError):
+        raise GalleryError("GALLERY_RECORD") from None
+    except (OSError, UnidentifiedImageError):
         raise GalleryError("GALLERY_RECORD") from None
 
 
@@ -513,6 +646,16 @@ def _read_json(path: Path) -> object:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
+        raise GalleryError("GALLERY_RECORD") from None
+
+
+def _acquired_pool(review_root: Path) -> tuple[dict[str, object], ...]:
+    data = _read_json(_checked_child(review_root, "candidate-records.json"))
+    if not isinstance(data, dict) or set(data) != {"schemaVersion", "records"} or data.get("schemaVersion") != 1:
+        raise GalleryError("GALLERY_RECORD")
+    try:
+        return source_valid_pool(data["records"], review_root)
+    except (GalleryError, KeyError, ValueError):
         raise GalleryError("GALLERY_RECORD") from None
 
 
@@ -556,16 +699,18 @@ def acquire_all(
 
 def approve(review_root: Path, observations: Path, pointer: Path) -> None:
     root = _checked_root(review_root)
-    data = _read_json(_checked_child(root, "candidate-records.json"))
     observed = _read_json(observations)
-    if not isinstance(data, dict) or set(data) != {"schemaVersion", "records"} or not isinstance(data["records"], list):
+    if not isinstance(observed, dict):
         raise GalleryError("GALLERY_RECORD")
-    if not isinstance(observed, dict) or observed.get("threshold") != DEFAULT_CONFIDENCE or not isinstance(observed.get("candidates"), list):
-        raise GalleryError("GALLERY_RECORD")
-    observed_ids = {item.get("candidateId") for item in observed["candidates"] if isinstance(item, dict) and item.get("runCompleted") is True}
+    try:
+        pool = _acquired_pool(root)
+        validate_observations(observed, pool, root)
+    except (GalleryError, ValueError):
+        raise GalleryError("GALLERY_RECORD") from None
+    observed_ids = {record["candidateId"] for record in pool}
     choices: list[dict[str, object]] = []
     for category in ("airfield", "sports-complex", "harbor"):
-        options = [record for record in data["records"] if isinstance(record, dict) and record.get("category") == category and record.get("candidateId") in observed_ids]
+        options = [record for record in pool if record.get("category") == category and record.get("candidateId") in observed_ids]
         print(f"{category}: " + ", ".join(str(option["candidateId"]) for option in options))
         selected = input("Approved candidate ID: ").strip()
         matches = [option for option in options if option.get("candidateId") == selected]
@@ -587,7 +732,18 @@ def verify_approved(review_root: Path) -> None:
     report = _read_json(_checked_child(root, "approved-gallery.json"))
     if not isinstance(report, dict):
         raise GalleryError("GALLERY_RECORD")
-    validate_approved_gallery(report, root)
+    approved = validate_approved_gallery(report, root)
+    pool = _acquired_pool(root)
+    by_id = {record["candidateId"]: record for record in pool}
+    if any(by_id.get(record["candidateId"]) != record for record in approved):
+        raise GalleryError("GALLERY_RECORD")
+    observed = _read_json(_checked_child(root, "observations.json"))
+    if not isinstance(observed, dict):
+        raise GalleryError("GALLERY_RECORD")
+    try:
+        validate_observations(observed, pool, root)
+    except ValueError:
+        raise GalleryError("GALLERY_RECORD") from None
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -135,6 +135,18 @@ class PoolTransport(FakeNaipTransport):
         return body, url
 
 
+class ParseFailureTransport(FakeNaipTransport):
+    def __call__(self, request: dict) -> tuple[bytes, str]:
+        body, url = super().__call__(request)
+        return (b"{}", url) if request["kind"] == "query" else (body, url)
+
+
+class DerivationFailureTransport(FakeNaipTransport):
+    def __call__(self, request: dict) -> tuple[bytes, str]:
+        body, url = super().__call__(request)
+        return (b"not-a-jpeg", url) if request["kind"] == "export" else (body, url)
+
+
 @pytest.fixture
 def fake_naip_transport() -> FakeNaipTransport:
     return FakeNaipTransport()
@@ -142,7 +154,7 @@ def fake_naip_transport() -> FakeNaipTransport:
 
 @pytest.fixture
 def valid_candidate_record(tmp_path: Path, fake_naip_transport: FakeNaipTransport) -> dict:
-    return acquire_candidate(CANDIDATE_RECIPES[0], tmp_path / "review", fake_naip_transport)
+    return acquire_candidate(CANDIDATE_RECIPES[0], tmp_path, fake_naip_transport)
 
 
 def invalid_source_tuning_and_privacy_mutations(record: dict) -> tuple[dict, ...]:
@@ -176,7 +188,7 @@ def invalid_source_tuning_and_privacy_mutations(record: dict) -> tuple[dict, ...
 
 
 @pytest.fixture
-def approved_gallery_report(valid_candidate_record: dict) -> dict:
+def approved_gallery_report(tmp_path: Path, valid_candidate_record: dict) -> dict:
     records = []
     for recipe in (CANDIDATE_RECIPES[0], CANDIDATE_RECIPES[3], CANDIDATE_RECIPES[6]):
         record = deepcopy(valid_candidate_record)
@@ -184,6 +196,9 @@ def approved_gallery_report(valid_candidate_record: dict) -> dict:
         record["category"] = recipe.category
         record["source"]["bboxWgs84"] = list(recipe.bbox_wgs84)
         record["image"]["reviewName"] = f"{recipe.candidate_id}.jpg"
+        (tmp_path / str(record["image"]["reviewName"])).write_bytes(
+            (tmp_path / str(valid_candidate_record["image"]["reviewName"])).read_bytes()
+        )
         records.append(record)
     return {"schemaVersion": 1, "threshold": 0.25, "records": records,
             "visualReview": {record["candidateId"]: "approved" for record in records}}
@@ -211,6 +226,16 @@ def test_derivation_is_deterministic_1280_by_800_srgb_jpeg_without_metadata(
         assert image.mode == "RGB"
         assert image.getexif() == {}
         assert image.info.get("icc_profile") is None
+
+
+def test_candidate_record_rebinds_the_recorded_review_bytes_before_use(
+    tmp_path: Path, fake_naip_transport: FakeNaipTransport
+) -> None:
+    review = tmp_path / "review"
+    record = acquire_candidate(CANDIDATE_RECIPES[0], review, fake_naip_transport)
+    (review / str(record["image"]["reviewName"])).write_bytes(b"not-a-jpeg")
+    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+        validate_candidate_record(record, review)
 
 
 def test_derivation_uses_the_single_mosaic_identity_when_catalog_rows_overlap(tmp_path: Path) -> None:
@@ -269,6 +294,102 @@ def test_acquisition_pool_keeps_network_failures_fatal(tmp_path: Path) -> None:
         gallery.acquire_all(tmp_path / "external-review", PoolTransport(fatal=True))
 
 
+def test_acquisition_pool_keeps_parse_failures_fatal(tmp_path: Path) -> None:
+    root = tmp_path / "external-review"
+    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+        gallery.acquire_all(root, ParseFailureTransport())
+    assert not (root / "candidate-records.json").exists()
+
+
+def test_acquisition_pool_keeps_derivation_failures_fatal(tmp_path: Path) -> None:
+    root = tmp_path / "external-review"
+    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+        gallery.acquire_all(root, DerivationFailureTransport())
+    assert not (root / "candidate-records.json").exists()
+
+
+def test_acquisition_pool_keeps_containment_failures_fatal(tmp_path: Path) -> None:
+    root = tmp_path / "external-review"
+    transport = FakeNaipTransport()
+
+    def contaminating_transport(request: dict) -> tuple[bytes, str]:
+        if request["kind"] == "query":
+            (root / ".gallery-stage" / "unrelated").write_bytes(b"x")
+        return transport(request)
+
+    with pytest.raises(GalleryError, match="GALLERY_SCOPE"):
+        gallery.acquire_all(root, contaminating_transport)
+    assert not (root / "candidate-records.json").exists()
+
+
+def test_acquisition_pool_keeps_write_failures_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "external-review"
+    original_write = Path.write_text
+
+    def refusing_batch_write(path: Path, *args: object, **kwargs: object) -> int:
+        if path.name == "candidate-records.json":
+            raise OSError("write failed")
+        return original_write(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", refusing_batch_write)
+    with pytest.raises(OSError):
+        gallery.acquire_all(root, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    assert not (root / "candidate-records.json").exists()
+
+
+def test_approval_rejects_a_completed_pool_with_the_wrong_model_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    review = tmp_path / "external-review"
+    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    observations = {
+        "schemaVersion": 1, "threshold": 0.25, "modelSha256": "0" * 64,
+        "candidates": [
+            {"candidateId": record["candidateId"], "category": record["category"], "runCompleted": True,
+             "numericRuntime": 1.0, "detections": [], "visualReview": "unreviewed"}
+            for record in records
+        ],
+    }
+    (review / "observations.json").write_text(__import__("json").dumps(observations), encoding="utf-8")
+    selections = iter(("airfield-watsonville", "sports-big-league-manteca", "harbor-port-hueneme"))
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(selections))
+    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+        gallery.approve(review, review / "observations.json", tmp_path / "pointer.txt")
+    assert not (review / "approved-gallery.json").exists()
+
+
+def test_observation_report_requires_the_complete_acquired_pool(tmp_path: Path) -> None:
+    review = tmp_path / "external-review"
+    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    report = {
+        "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
+        "candidates": [
+            {"candidateId": record["candidateId"], "category": record["category"], "runCompleted": True,
+             "numericRuntime": 1.0, "detections": [], "visualReview": "unreviewed"}
+            for record in records
+        ],
+    }
+    validate_observations(report, records, review)
+    report["candidates"].pop()
+    with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):
+        validate_observations(report, records, review)
+
+
+def test_observation_report_accepts_the_authoritative_source_pool_tuple(tmp_path: Path) -> None:
+    review = tmp_path / "external-review"
+    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    pool = source_valid_pool(records, review)
+    report = {
+        "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
+        "candidates": [
+            {"candidateId": record["candidateId"], "category": record["category"], "runCompleted": True,
+             "numericRuntime": 1.0, "detections": [], "visualReview": "unreviewed"}
+            for record in pool
+        ],
+    }
+    validate_observations(report, pool, review)
+
+
 def test_source_valid_pool_requires_two_or_three_records_per_fixed_category(
     tmp_path: Path, valid_candidate_record: dict
 ) -> None:
@@ -279,6 +400,9 @@ def test_source_valid_pool_requires_two_or_three_records_per_fixed_category(
         record["category"] = recipe.category
         record["source"]["bboxWgs84"] = list(recipe.bbox_wgs84)
         record["image"]["reviewName"] = f"{recipe.candidate_id}.jpg"
+        (tmp_path / str(record["image"]["reviewName"])).write_bytes(
+            (tmp_path / str(valid_candidate_record["image"]["reviewName"])).read_bytes()
+        )
         records.append(record)
     pool = source_valid_pool(records, tmp_path)
     assert tuple(record["category"] for record in pool).count("sports-complex") == 2
@@ -294,6 +418,15 @@ def test_smoke_cli_starts_when_run_as_a_script() -> None:
         text=True,
     )
     assert result.returncode == 2
+
+
+def test_smoke_rejects_output_paths_outside_the_exact_review_root(tmp_path: Path) -> None:
+    review = tmp_path / "review"
+    review.mkdir()
+    model = tmp_path / "model.onnx"
+    model.write_bytes(b"")
+    with pytest.raises(GalleryError, match="GALLERY_SCOPE"):
+        smoke.run_smoke(review, model, tmp_path / "observations.json", review / "screenshots")
 
 
 def test_browser_smoke_recognizes_the_actual_byom_model_ready_label() -> None:
@@ -425,6 +558,33 @@ def test_admission_rejects_ambiguous_naip_path_and_private_or_nonproduct_source_
             validate_candidate_record(candidate, tmp_path)
 
 
+def test_admission_rejects_lookalike_agencies_and_invalid_official_dates(
+    tmp_path: Path, valid_candidate_record: dict
+) -> None:
+    record = _official_naip_path_record(valid_candidate_record)
+    mutations = (
+        ("agency", "notusda imagery"),
+        ("agency", "FSAX"),
+        ("year", 0),
+        ("year", "2022"),
+        ("acquisitionDate", "2022-6-15"),
+        ("acquisitionDate", "2027-01-01"),
+    )
+    for key, value in mutations:
+        candidate = deepcopy(record)
+        candidate["source"][key] = value
+        with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+            validate_candidate_record(candidate, tmp_path)
+
+
+def test_admission_accepts_the_official_epoch_millis_acquisition_date(
+    tmp_path: Path, valid_candidate_record: dict
+) -> None:
+    record = _official_naip_path_record(valid_candidate_record)
+    record["source"]["acquisitionDate"] = 1655337600000
+    validate_candidate_record(record, tmp_path)
+
+
 def test_admission_rejects_non_naip_source_hidden_tuning_and_private_fields(
     tmp_path: Path, valid_candidate_record: dict
 ) -> None:
@@ -450,6 +610,24 @@ def test_approved_gallery_requires_one_visually_approved_record_per_fixed_catego
         validate_approved_gallery(missing, tmp_path)
 
 
+def test_approval_verification_rejects_a_candidate_outside_the_acquired_pool(tmp_path: Path) -> None:
+    review = tmp_path / "external-review"
+    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    rejected = acquire_candidate(CANDIDATE_RECIPES[5], tmp_path / "other-review", FakeNaipTransport())
+    (review / str(rejected["image"]["reviewName"])).write_bytes(
+        (tmp_path / "other-review" / str(rejected["image"]["reviewName"])).read_bytes()
+    )
+    choices = [
+        next(record for record in records if record["category"] == "airfield"), rejected,
+        next(record for record in records if record["category"] == "harbor"),
+    ]
+    report = {"schemaVersion": 1, "threshold": 0.25, "records": choices,
+              "visualReview": {str(record["candidateId"]): "approved" for record in choices}}
+    (review / "approved-gallery.json").write_text(__import__("json").dumps(report), encoding="utf-8")
+    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+        gallery.verify_approved(review)
+
+
 def test_observation_report_allows_only_fixed_candidates_and_measured_finite_values() -> None:
     report = {
         "schemaVersion": 1,
@@ -461,7 +639,8 @@ def test_observation_report_allows_only_fixed_candidates_and_measured_finite_val
             "detections": [{"classId": 1, "confidence": 0.5, "cx": 20, "cy": 30, "w": 40, "h": 50, "angle": 0.2}],
         }],
     }
-    validate_observations(report)
+    with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):
+        validate_observations(report)
     bad = deepcopy(report)
     bad["candidates"][0]["detections"][0]["confidence"] = float("nan")
     with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):

@@ -8,7 +8,6 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
-import math
 from pathlib import Path
 import re
 import sys
@@ -23,22 +22,21 @@ if __name__ == "__main__":
 
 from scripts.prepare_sample_gallery import (
     CANDIDATE_RECIPES,
+    checked_descendant,
     DEFAULT_CONFIDENCE,
     GalleryError,
+    MODEL_SHA256,
     RECIPE_BY_ID,
     _checked_root,
     _git_worktree_roots,
     is_reparse_point,
-    validate_candidate_record,
+    source_valid_pool,
+    validate_observations,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo" / "web"
-MODEL_SHA256 = "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
-_REPORT_KEYS = {"schemaVersion", "threshold", "modelSha256", "candidates"}
-_CANDIDATE_KEYS = {"candidateId", "category", "runCompleted", "numericRuntime", "detections", "visualReview"}
-_DETECTION_KEYS = {"classId", "confidence", "cx", "cy", "w", "h", "angle"}
 _DESCRIPTION = re.compile(
     r"class=(?P<class_name>[^;]+); confidence=(?P<confidence>-?[\d.]+); "
     r"center-x=(?P<cx>-?[\d.]+) px; center-y=(?P<cy>-?[\d.]+) px; "
@@ -96,63 +94,6 @@ def _safe_child(root: Path, name: str) -> Path:
     return child
 
 
-def validate_observations(report: dict[str, object]) -> None:
-    """Fail closed on unsafe or synthetic observation-report shapes."""
-    if not isinstance(report, dict) or set(report) != _REPORT_KEYS:
-        raise ValueError("GALLERY_OBSERVATION")
-    if report["schemaVersion"] != 1 or report["threshold"] != DEFAULT_CONFIDENCE or report["modelSha256"] != MODEL_SHA256:
-        raise ValueError("GALLERY_OBSERVATION")
-    candidates = report["candidates"]
-    if not isinstance(candidates, list):
-        raise ValueError("GALLERY_OBSERVATION")
-    seen: set[str] = set()
-    for item in candidates:
-        if not isinstance(item, dict) or set(item) != _CANDIDATE_KEYS:
-            raise ValueError("GALLERY_OBSERVATION")
-        candidate_id, category = item["candidateId"], item["category"]
-        recipe = RECIPE_BY_ID.get(candidate_id) if isinstance(candidate_id, str) else None
-        if recipe is None or candidate_id in seen or category != recipe.category or item["runCompleted"] is not True or item["visualReview"] != "unreviewed":
-            raise ValueError("GALLERY_OBSERVATION")
-        seen.add(candidate_id)
-        runtime = item["numericRuntime"]
-        if isinstance(runtime, bool) or not isinstance(runtime, (int, float)) or not math.isfinite(runtime) or runtime < 0:
-            raise ValueError("GALLERY_OBSERVATION")
-        detections = item["detections"]
-        if not isinstance(detections, list):
-            raise ValueError("GALLERY_OBSERVATION")
-        for detection in detections:
-            if not isinstance(detection, dict) or set(detection) != _DETECTION_KEYS:
-                raise ValueError("GALLERY_OBSERVATION")
-            for key, value in detection.items():
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-                    raise ValueError("GALLERY_OBSERVATION")
-
-
-def source_valid_pool(records: object, review_root: Path) -> tuple[dict[str, object], ...]:
-    if not isinstance(records, list):
-        raise ValueError("GALLERY_OBSERVATION")
-    pool: list[dict[str, object]] = []
-    seen: set[str] = set()
-    counts = {"airfield": 0, "sports-complex": 0, "harbor": 0}
-    for record in records:
-        if not isinstance(record, dict):
-            raise ValueError("GALLERY_OBSERVATION")
-        try:
-            validate_candidate_record(record, review_root)
-            candidate_id = record["candidateId"]
-            category = record["category"]
-        except (GalleryError, KeyError, TypeError):
-            raise ValueError("GALLERY_OBSERVATION") from None
-        if not isinstance(candidate_id, str) or candidate_id in seen or category not in counts:
-            raise ValueError("GALLERY_OBSERVATION")
-        seen.add(candidate_id)
-        counts[category] += 1
-        pool.append(record)
-    if any(count < 2 or count > 3 for count in counts.values()):
-        raise ValueError("GALLERY_OBSERVATION")
-    return tuple(pool)
-
-
 def byom_model_ready(label: str) -> bool:
     return label.strip() == BYOM_MODEL_READY_LABEL
 
@@ -191,10 +132,10 @@ def _candidate_result(page: object, recipe_id: str, category: str) -> dict[str, 
 
 def run_smoke(review_root: Path, model: Path, report: Path, screenshot_dir: Path) -> None:
     review = _external(review_root)
-    report = _safe_child(review, report.name) if report.parent.resolve(strict=False) == review else report
+    report = checked_descendant(review, report)
     if report.exists() or report.is_symlink():
         raise GalleryError("GALLERY_SCOPE")
-    screenshots = _safe_child(review, screenshot_dir.name) if screenshot_dir.parent.resolve(strict=False) == review else screenshot_dir
+    screenshots = checked_descendant(review, screenshot_dir)
     if screenshots.exists() or screenshots.is_symlink():
         raise GalleryError("GALLERY_SCOPE")
     screenshots.mkdir(parents=True, exist_ok=False)
@@ -246,7 +187,7 @@ def run_smoke(review_root: Path, model: Path, report: Path, screenshot_dir: Path
         finally:
             browser.close()
     payload: dict[str, object] = {"schemaVersion": 1, "threshold": DEFAULT_CONFIDENCE, "modelSha256": MODEL_SHA256, "candidates": observations}
-    validate_observations(payload)
+    validate_observations(payload, records, review)
     if {item["candidateId"] for item in observations} != {record["candidateId"] for record in records}:
         raise GalleryError("GALLERY_OBSERVATION")
     report.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
