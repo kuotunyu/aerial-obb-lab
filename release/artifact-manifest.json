@@ -64,7 +64,7 @@
       "digest_mode": "canonical-lf",
       "kind": "unmodified upstream model license text",
       "provenance": "Complete AGPL-3.0-only license text distributed with the privacy-sanitized model derivative.",
-      "source_url": "https://github.com/ultralytics/ultralytics/blob/main/LICENSE",
+      "source_url": "https://raw.githubusercontent.com/ultralytics/assets/v8.4.0/LICENSE",
       "license": "AGPL-3.0-only",
       "restrictions": [
         "Redistribution and network use remain subject to the included AGPL-3.0-only terms."
@@ -74,8 +74,8 @@
   "reviewed_public_artifacts": [
     {
       "path": "demo/web/app.js",
-      "bytes": 24369,
-      "sha256": "17c8d18f1d35bc522cb9865ae3f4e199f261f9a97ef0f5e7c9b2943709e2ce22",
+      "bytes": 24666,
+      "sha256": "e1564c2ee4ab22f5da349efcd27c0d7144adcb64f30b56cd4ea621688171dfe0",
       "digest_mode": "canonical-lf"
     },
     {
@@ -119,8 +119,8 @@
     },
     {
       "path": "docs/assets/browser-workbench.png",
-      "bytes": 842229,
-      "sha256": "c8b54c2409fb27165e90bed7be65e5b36af557f47f3d2b5049e6d7f734749354",
+      "bytes": 841550,
+      "sha256": "5e7264a294110c3974f63fa0e50d186996855a8d3ebed0eebd6dd64e74b8621e",
       "kind": "canonical local interface screenshot",
       "provenance": "Generated from the exact reviewed Pages bytes after genuine local inference with the official sample and privacy-sanitized derivative.",
       "limitations": [

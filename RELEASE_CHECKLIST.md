@@ -38,11 +38,11 @@ fine-tuned checkpoint was published.
 - [x] Notebooks have zero outputs/execution counts and remain synchronized with Jupytext sources.
 - [x] Tracked files and Git history pass token-pattern/privacy checks.
 - [x] Local Markdown links, static assets, loopback HTTP, and JavaScript syntax pass.
-- [ ] Current candidate: run the complete pytest suite without Torch, CUDA, DOTA, tokens, or
+- [x] Current candidate: run the complete pytest suite without Torch, CUDA, DOTA, tokens, or
   downloaded weights.
-- [ ] Current candidate: build and verify the strict committed clean export, including wheel and
+- [x] Current candidate: build and verify the strict committed clean export, including wheel and
   source-distribution rebuild, install, import, link, privacy, artifact, and browser gates.
-- [ ] Current candidate: repeat the complete local CPU, browser, artifact, license, privacy, and
+- [x] Current candidate: repeat the complete local CPU, browser, artifact, license, privacy, and
   clean-export gates from the final committed bytes; official JavaScript actions must retain their
   current Node 24-compatible majors.
 - [ ] Hosted Ubuntu CPU, Windows CPU, and live-demo browser checks remain a separate authorized remote gate.
@@ -60,8 +60,8 @@ fine-tuned checkpoint was published.
   visible in `THIRD_PARTY_NOTICES.md`.
 - [x] Historical v1.0.0: branch, HEAD, status, refs, author, committer, trailers, ignored/private
   paths, and remotes were audited after its final commit.
-- [ ] Current candidate: complete the final branch audit and whole-branch review after the Task 5
-  verification commit.
+- [ ] Current candidate: complete the final branch audit and whole-branch review after the final
+  local verification commit.
 - [x] The historical public branch began at a clean code-only root with no DOTA-derived image,
   private document, owner handle, or private Hugging Face repo identifier.
 - [x] The current candidate adds only the reviewed derivative/sample/license/sanitization inventory;

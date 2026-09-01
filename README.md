@@ -244,7 +244,7 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
 - 首次開啟即在共同 viewport 顯示官方 `boats.jpg` 原圖；按「開始 Detect」才會 lazy-load pinned
   ONNX Runtime Web 與 same-origin privacy-sanitized YOLO26n-OBB derivative，在目前的 browser session
   完成真正 inference，然後在同一位置顯示 rotated polygons、數值 runtime、provenance 與結果表格。
-- 「查看原圖／查看偵測結果」以及 confidence／class filters 都只重繪同一份 cached output，不會重新 inference。
+- 「查看原圖／查看結果」以及 confidence／class filters 都只重繪同一份 cached output，不會重新 inference。
   BYOM 是預設收合的進階入口，user-supplied model／image bytes 同樣只在 Browser 內處理且不會上傳。
 - 第一次 Detect 或 cache miss 會向 jsDelivr 請求 pinned JavaScript 與 WASM assets，所以不是 zero-network。
   SHA-384 SRI 只驗證 `ort.min.js`；runtime 後續取得的 WASM assets 不在該 script SRI 的涵蓋範圍。

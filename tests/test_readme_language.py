@@ -35,6 +35,7 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
         "真正 inference",
         "privacy-sanitized AGPL derivative",
         "BYOM 是預設收合的進階入口",
+        "查看原圖／查看結果",
     ):
         assert token in canonical
     for forbidden in ("Gradio", "demo/space-static/", "demo/space/"):
@@ -100,6 +101,10 @@ def test_release_checklist_separates_historical_publication_from_current_remote_
     assert "separately\n  authorized remote gates" in checklist
     assert "before changing the default branch" not in checklist
     assert "before changing\n  the default branch" not in checklist
-    assert "[ ] Current candidate: run the complete pytest suite" in checklist
-    assert "[ ] Current candidate: build and verify the strict committed clean export" in checklist
+    assert "[x] Current candidate: run the complete pytest suite" in checklist
+    assert "[x] Current candidate: build and verify the strict committed clean export" in checklist
+    assert (
+        "[x] Current candidate: repeat the complete local CPU, browser, artifact, license, privacy, and"
+        in checklist
+    )
     assert "[ ] Current candidate: complete the final branch audit and whole-branch review" in checklist

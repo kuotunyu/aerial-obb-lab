@@ -9,6 +9,8 @@ import shutil
 
 import pytest
 
+from scripts.prepare_demo_assets import OFFICIAL_ASSETS
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -447,12 +449,37 @@ def test_release_checklist_records_completed_clean_history_publication() -> None
         assert token in checklist
     assert "publish the reviewed code-only tree from a clean root commit" in checklist
     assert "[x] Restore branch protection" in checklist
-    for pending in (
-        "[ ] Current candidate: run the complete pytest suite",
-        "[ ] Current candidate: build and verify the strict committed clean export",
-        "[ ] Current candidate: complete the final branch audit and whole-branch review",
+    for completed in (
+        "[x] Current candidate: run the complete pytest suite",
+        "[x] Current candidate: build and verify the strict committed clean export",
+        "[x] Current candidate: repeat the complete local CPU, browser, artifact, license, privacy, and",
     ):
-        assert pending in checklist
+        assert completed in checklist
+    assert (
+        "[ ] Current candidate: complete the final branch audit and whole-branch review"
+        in checklist
+    )
+    assert (
+        "[ ] Hosted Ubuntu CPU, Windows CPU, and live-demo browser checks"
+        in checklist
+    )
+
+
+def test_release_license_source_matches_the_pinned_acquisition_spec() -> None:
+    release_check = load_release_check()
+    acquisition = next(
+        spec for spec in OFFICIAL_ASSETS if spec.asset_id == "ultralytics-license"
+    )
+    manifest = release_check.load_json(ROOT / "release" / "artifact-manifest.json")
+    license_entry = next(
+        item
+        for item in manifest["bundled_third_party_artifacts"]
+        if item["path"] == release_check.APPROVED_MODEL_LICENSE_FILE
+    )
+
+    assert release_check.APPROVED_MODEL_LICENSE_SOURCE_URL == acquisition.source_url
+    assert license_entry["source_url"] == acquisition.source_url
+    assert release_check.verify_artifacts(ROOT) == []
 
 
 def test_committed_tree_contains_only_the_approved_demo_model_and_no_dota_visual() -> None:

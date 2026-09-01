@@ -10,6 +10,7 @@ import zipfile
 import pytest
 
 from scripts.clean_export_check import (
+    APPROVED_MODEL_LICENSE_SOURCE_URL,
     DEFAULT_OUTPUT,
     REQUIRED_MEMBERS,
     archive_policy_errors,
@@ -18,6 +19,7 @@ from scripts.clean_export_check import (
     main,
     verify_snapshot,
 )
+from scripts.prepare_demo_assets import OFFICIAL_ASSETS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -137,6 +139,22 @@ def _repo_external_snapshot(tmp_path: Path) -> Path:
         )
         with zipfile.ZipFile(source) as bundle:
             bundle.extractall(snapshot)
+        modified = subprocess.check_output(
+            ["git", "diff", "HEAD", "--name-only", "-z"],
+            cwd=ROOT,
+            text=False,
+        ).split(b"\0")
+        for raw in modified:
+            if not raw:
+                continue
+            relative = raw.decode("utf-8")
+            current = ROOT / relative
+            exported = snapshot / relative
+            if current.is_file():
+                exported.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(current, exported)
+            elif exported.exists():
+                exported.unlink()
     else:
         shutil.copytree(
             ROOT,
@@ -301,6 +319,23 @@ def test_clean_export_admits_only_the_reviewed_derivative_demo_model() -> None:
     assert archive_policy_errors(["README.md", approved_demo_model], {}) == [
         f"model binary path: {approved_demo_model}"
     ]
+
+
+def test_clean_export_license_source_matches_the_pinned_acquisition_spec() -> None:
+    acquisition = next(
+        spec for spec in OFFICIAL_ASSETS if spec.asset_id == "ultralytics-license"
+    )
+    manifest = json.loads(
+        (ROOT / "release" / "artifact-manifest.json").read_text(encoding="utf-8")
+    )
+    license_entry = next(
+        item
+        for item in manifest["bundled_third_party_artifacts"]
+        if item["path"] == "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt"
+    )
+
+    assert APPROVED_MODEL_LICENSE_SOURCE_URL == acquisition.source_url
+    assert license_entry["source_url"] == acquisition.source_url
 
 
 @pytest.mark.parametrize(

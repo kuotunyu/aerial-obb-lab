@@ -92,7 +92,7 @@ APPROVED_MODEL_LICENSE = "AGPL-3.0-only"
 APPROVED_MODEL_LICENSE_FILE = "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt"
 APPROVED_MODEL_LICENSE_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
 APPROVED_MODEL_LICENSE_SOURCE_URL = (
-    "https://github.com/ultralytics/ultralytics/blob/main/LICENSE"
+    "https://raw.githubusercontent.com/ultralytics/assets/v8.4.0/LICENSE"
 )
 APPROVED_SANITIZATION_RECORD = (
     "demo/web/third_party/yolo26n-obb-privacy-sanitization.json"
