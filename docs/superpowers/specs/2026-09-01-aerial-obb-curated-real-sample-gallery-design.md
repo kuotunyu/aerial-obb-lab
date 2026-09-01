@@ -4,7 +4,7 @@
 - **Repository:** `kuotunyu/aerial-obb-lab`
 - **Design branch:** `feat/pages-live-real-image-demo`
 - **Design parent:** `40a6eb130b6e2cf46b89469750eb10f9133d8a83`
-- **Status:** Design approved; awaiting written spec review
+- **Status:** Approved for implementation planning
 - **Scope:** replace the single dense harbor example with three switchable, public-domain real aerial
   examples while preserving the approved workbench and genuine click-to-run browser inference
 
