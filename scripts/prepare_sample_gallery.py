@@ -488,6 +488,11 @@ MODEL_SHA256 = "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97
 _REPORT_KEYS = {"schemaVersion", "threshold", "modelSha256", "candidates"}
 _CANDIDATE_KEYS = {"candidateId", "category", "runCompleted", "numericRuntime", "detections", "visualReview"}
 _DETECTION_KEYS = {"classId", "confidence", "cx", "cy", "w", "h", "angle"}
+_OBSERVATION_CLASS_FAMILIES = {
+    "airfield": (0,),
+    "sports-complex": (3, 4, 5, 6, 12, 13, 14),
+    "harbor": (1, 2, 7),
+}
 
 
 def _digest(value: object) -> bool:
@@ -551,13 +556,36 @@ def validate_observations(
         if isinstance(runtime, bool) or not isinstance(runtime, (int, float)) or not math.isfinite(runtime) or runtime < 0:
             raise ValueError("GALLERY_OBSERVATION")
         detections = item["detections"]
-        if not isinstance(detections, list):
+        if not isinstance(detections, list) or not detections:
             raise ValueError("GALLERY_OBSERVATION")
+        signatures: set[tuple[object, ...]] = set()
+        has_representative = False
         for detection in detections:
             if not isinstance(detection, dict) or set(detection) != _DETECTION_KEYS:
                 raise ValueError("GALLERY_OBSERVATION")
-            if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in detection.values()):
+            values = detection.values()
+            if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in values):
                 raise ValueError("GALLERY_OBSERVATION")
+            class_id = detection["classId"]
+            confidence = detection["confidence"]
+            cx, cy, width, height, angle = (
+                detection["cx"], detection["cy"], detection["w"], detection["h"], detection["angle"]
+            )
+            if (
+                not isinstance(class_id, int) or not 0 <= class_id < 15
+                or not DEFAULT_CONFIDENCE <= confidence <= 1
+                or not 0 <= cx <= OUTPUT_SIZE[0] or not 0 <= cy <= OUTPUT_SIZE[1]
+                or not 0 < width <= OUTPUT_SIZE[0] or not 0 < height <= OUTPUT_SIZE[1]
+                or not -180 <= angle <= 180
+            ):
+                raise ValueError("GALLERY_OBSERVATION")
+            signature = tuple(detection[key] for key in ("classId", "confidence", "cx", "cy", "w", "h", "angle"))
+            if signature in signatures:
+                raise ValueError("GALLERY_OBSERVATION")
+            signatures.add(signature)
+            has_representative = has_representative or class_id in _OBSERVATION_CLASS_FAMILIES[category]
+        if not has_representative:
+            raise ValueError("GALLERY_OBSERVATION")
     if seen != set(expected):
         raise ValueError("GALLERY_OBSERVATION")
 
@@ -760,11 +788,7 @@ _PUBLIC_SAMPLE_ALTS = {
     "sports-complex": "運動場館的真實航拍原圖",
     "harbor": "低密度港區的真實航拍原圖",
 }
-_TARGET_CLASS_IDS = {
-    "airfield": (0,),
-    "sports-complex": (3, 4, 5, 6, 12, 13, 14),
-    "harbor": (1, 2, 7),
-}
+_TARGET_CLASS_IDS = _OBSERVATION_CLASS_FAMILIES
 
 
 def _public_sample_record(record: dict[str, object], observation: dict[str, object]) -> dict[str, object]:
@@ -1073,6 +1097,9 @@ def main(argv: list[str] | None = None) -> int:
             raise GalleryError("GALLERY_SCOPE")
     except GalleryError as error:
         print(f"[FAIL] {error.code}")
+        return 1
+    except (OSError, ValueError, TypeError, KeyError):
+        print("[FAIL] GALLERY_RECORD")
         return 1
     print("[OK] GALLERY_ADMISSION")
     return 0

@@ -781,6 +781,44 @@ def test_gallery_receipt_rejects_invalid_canonical_guardrail_values(
 @pytest.mark.parametrize(
     "path,value",
     [
+        pytest.param(("samples", 0, "source", "productId"), "m_3411861_sw_11_060_20220512", id="source.productId-date-mismatch"),
+        pytest.param(("samples", 0, "source", "productId"), "unreviewed", id="source.productId-format"),
+        pytest.param(("samples", 0, "source", "year"), 0, id="source.year-zero"),
+        pytest.param(("samples", 0, "source", "year"), True, id="source.year-bool"),
+        pytest.param(("samples", 0, "source", "acquisitionDate"), 0, id="source.acquisitionDate-zero"),
+        pytest.param(("samples", 0, "source", "acquisitionDate"), 1704067200000, id="source.acquisitionDate-year-mismatch"),
+        pytest.param(("samples", 0, "derivation", "bboxWgs84"), [-118.456705, 90.1, -118.444705, 90.2], id="derivation.bbox-latitude"),
+        pytest.param(("samples", 0, "derivation", "bboxWgs84"), [-118.444705, 34.012771, -118.456705, 34.020271], id="derivation.bbox-reversed"),
+        pytest.param(("samples", 0, "derivation", "bboxWgs84"), [-180.0, -90.0, 180.0, 90.0], id="derivation.bbox-span"),
+        pytest.param(("samples", 0, "guardrails", "countMax"), 1_000_000_000, id="guardrails.countMax-ceiling"),
+        pytest.param(("samples", 0, "guardrails", "representative", "cx"), -1.0, id="representative.center-negative"),
+        pytest.param(("samples", 0, "guardrails", "representative", "w"), 1280.1, id="representative.width-outside"),
+        pytest.param(("samples", 0, "guardrails", "representative", "tolerance"), 1_000_000_000.0, id="representative.tolerance-ceiling"),
+    ],
+)
+def test_gallery_receipt_rejects_semantically_invalid_replaced_canonical_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: tuple[object, ...], value: object
+) -> None:
+    """A replaced canonical baseline must still be bounded to public NAIP semantics."""
+    root = Path(__file__).resolve().parents[1]
+    payload = json.loads((root / "release/sample-gallery-sources.json").read_text("utf-8"))
+    target: object = payload
+    for key in path[:-1]: target = target[key]  # type: ignore[index]
+    target[path[-1]] = value  # type: ignore[index]
+    repo = tmp_path / "repo"; (repo / "release").mkdir(parents=True)
+    canonical = repo / "release" / "sample-gallery-sources.json"
+    canonical.write_text(json.dumps(payload), encoding="utf-8")
+    pages = tmp_path / "web" / "samples"; pages.mkdir(parents=True)
+    for item in payload["samples"]:
+        (pages.parent / item["path"]).write_bytes((root / "demo/web" / item["path"]).read_bytes())
+    monkeypatch.setattr(demo_assets, "REPO_ROOT", repo)
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.validate_gallery_publication(pages.parent, canonical)
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
         pytest.param(("schemaVersion",), 2, id="root.schemaVersion"),
         pytest.param(("samples",), [], id="root.samples-order"),
         pytest.param(("samples", 0, "id"), "unknown", id="sample.id-unknown"),

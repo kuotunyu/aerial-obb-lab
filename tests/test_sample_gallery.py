@@ -29,6 +29,15 @@ from scripts.sample_gallery_smoke import (
 )
 
 
+def _valid_observation_detection(category: str) -> dict[str, float | int]:
+    """Return one bounded, category-family detection for observation fixtures."""
+    class_id = {"airfield": 0, "sports-complex": 3, "harbor": 1}[category]
+    return {
+        "classId": class_id, "confidence": 0.9, "cx": 640.0, "cy": 400.0,
+        "w": 40.0, "h": 30.0, "angle": 0.0,
+    }
+
+
 class FakeNaipTransport:
     def __init__(self) -> None:
         self.image = Image.new("RGBA", (16, 12), (33, 101, 157, 120))
@@ -366,7 +375,7 @@ def test_approval_rejects_a_completed_pool_with_the_wrong_model_digest(
         "schemaVersion": 1, "threshold": 0.25, "modelSha256": "0" * 64,
         "candidates": [
             {"candidateId": record["candidateId"], "category": record["category"], "runCompleted": True,
-             "numericRuntime": 1.0, "detections": [], "visualReview": "unreviewed"}
+             "numericRuntime": 1.0, "detections": [_valid_observation_detection(record["category"])], "visualReview": "unreviewed"}
             for record in records
         ],
     }
@@ -385,7 +394,7 @@ def test_observation_report_requires_the_complete_acquired_pool(tmp_path: Path) 
         "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
         "candidates": [
             {"candidateId": record["candidateId"], "category": record["category"], "runCompleted": True,
-             "numericRuntime": 1.0, "detections": [], "visualReview": "unreviewed"}
+             "numericRuntime": 1.0, "detections": [_valid_observation_detection(record["category"])], "visualReview": "unreviewed"}
             for record in records
         ],
     }
@@ -403,7 +412,7 @@ def test_observation_report_accepts_the_authoritative_source_pool_tuple(tmp_path
         "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
         "candidates": [
             {"candidateId": record["candidateId"], "category": record["category"], "runCompleted": True,
-             "numericRuntime": 1.0, "detections": [], "visualReview": "unreviewed"}
+             "numericRuntime": 1.0, "detections": [_valid_observation_detection(record["category"])], "visualReview": "unreviewed"}
             for record in pool
         ],
     }
@@ -759,3 +768,80 @@ def test_observation_report_allows_only_fixed_candidates_and_measured_finite_val
     bad["candidates"][0]["detections"][0]["confidence"] = float("nan")
     with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):
         validate_observations(bad)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        pytest.param("classId", True, id="classId-bool"),
+        pytest.param("classId", 1.5, id="classId-float"),
+        pytest.param("classId", 15, id="classId-outside-family-space"),
+        pytest.param("confidence", False, id="confidence-bool"),
+        pytest.param("confidence", 0.0, id="confidence-below-threshold"),
+        pytest.param("confidence", 1.01, id="confidence-above-one"),
+        pytest.param("cx", -0.1, id="center-x-negative"),
+        pytest.param("cx", 1280.1, id="center-x-outside"),
+        pytest.param("cy", 800.1, id="center-y-outside"),
+        pytest.param("w", 0.0, id="width-zero"),
+        pytest.param("w", 1280.1, id="width-outside"),
+        pytest.param("h", 800.1, id="height-outside"),
+        pytest.param("angle", -180.1, id="angle-below-degree-range"),
+        pytest.param("angle", 180.1, id="angle-above-degree-range"),
+    ],
+)
+def test_observations_reject_invalid_detection_measurement_before_derivation(
+    tmp_path: Path, approved_gallery_report: dict, field: str, value: object
+) -> None:
+    """Only decoded 1280×800 threshold-qualified observations can reach publication."""
+    observations = json.loads((tmp_path / "observations.json").read_text("utf-8"))
+    records = json.loads((tmp_path / "candidate-records.json").read_text("utf-8"))["records"]
+    observations["candidates"][0]["detections"][0][field] = value
+    with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):
+        gallery.validate_observations(observations, records, tmp_path)
+
+
+@pytest.mark.parametrize("mutation", ["empty", "no-family", "duplicate"])
+def test_observations_reject_non_derivable_detection_sets(
+    tmp_path: Path, approved_gallery_report: dict, mutation: str
+) -> None:
+    """Every approved candidate supplies one unique in-family detection before derivation."""
+    observations = json.loads((tmp_path / "observations.json").read_text("utf-8"))
+    records = json.loads((tmp_path / "candidate-records.json").read_text("utf-8"))["records"]
+    detections = observations["candidates"][0]["detections"]
+    if mutation == "empty":
+        observations["candidates"][0]["detections"] = []
+    elif mutation == "no-family":
+        detections[0]["classId"] = 1
+    else:
+        detections.append(deepcopy(detections[0]))
+    with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):
+        gallery.validate_observations(observations, records, tmp_path)
+
+
+def test_publication_rejects_filtered_out_out_of_frame_append_before_count_derivation(
+    tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected rejected detection cannot widen the public count guardrail."""
+    observations_path = tmp_path / "observations.json"
+    observations = json.loads(observations_path.read_text("utf-8"))
+    injected = deepcopy(observations["candidates"][0]["detections"][0])
+    injected.update({"confidence": 0.0, "cx": 1281.0})
+    observations["candidates"][0]["detections"].append(injected)
+    observations_path.write_text(json.dumps(observations), encoding="utf-8")
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
+    receipt = tmp_path / "release" / "sample-gallery-sources.json"
+    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+        gallery.publish_approved_gallery(
+            approved_gallery_report, tmp_path, tmp_path / "demo" / "web", receipt
+        )
+    assert not receipt.exists()
+
+
+def test_gallery_cli_maps_unexpected_publication_error_without_private_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CLI failures stay public-safe even if an unexpected filesystem error escapes."""
+    monkeypatch.setattr(gallery, "acquire_all", lambda _root: (_ for _ in ()).throw(OSError(r"C:\private-review\raw.json")))
+    assert gallery.main(["acquire", "--review-root", str(tmp_path / "external-review")]) == 1
+    assert capsys.readouterr().out == "[FAIL] GALLERY_RECORD\n"

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 import hashlib
 import io
 import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -44,6 +46,9 @@ ERROR_CODES = {
 MODEL_HARD_CEILING = 15 * 1024 * 1024
 CHUNK_SIZE = 65_536
 REPO_ROOT = Path(__file__).resolve().parents[1]
+_NAIP_PRODUCT_ID = re.compile(r"^m_\d{7}_(?:sw|se)_\d{2}_060_(\d{8})$")
+_NAIP_YEAR_RANGE = range(2003, 2027)
+_MAX_GALLERY_DETECTIONS = 1280 * 800
 
 
 @dataclass(frozen=True)
@@ -429,16 +434,25 @@ def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[s
         def integer(value: object) -> bool:
             return isinstance(value, int) and not isinstance(value, bool)
 
+        def safe_exact_https(value: object, expected: str) -> bool:
+            if not isinstance(value, str) or value != expected:
+                return False
+            parsed = urlsplit(value)
+            return (
+                parsed.scheme == "https" and not parsed.username and not parsed.password
+                and not parsed.query and not parsed.fragment
+            )
+
         for item in samples:
             if not isinstance(item, dict) or set(item) != sample_keys:
                 raise ValueError
             source = item["source"]
             if (
                 not isinstance(source, dict) or set(source) != source_keys
-                or source["service"] != "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer"
+                or not safe_exact_https(source["service"], "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer")
                 or not isinstance(source["productId"], str) or not source["productId"]
                 or source["agency"] != "USDA"
-                or source["publicDomainRecord"] != "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39"
+                or not safe_exact_https(source["publicDomainRecord"], "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39")
                 or not isinstance(source["year"], int) or not isinstance(source["acquisitionDate"], int)
                 or not isinstance(item["derivation"], dict) or set(item["derivation"]) != derivation_keys
                 or item["derivation"].get("outputSize") != [1280, 800] or item["derivation"].get("color") != "sRGB" or item["derivation"].get("jpegQuality") != 90 or item["derivation"].get("metadata") != "stripped"
@@ -452,20 +466,37 @@ def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[s
                 raise ValueError
             guardrails = item["guardrails"]
             representative = guardrails["representative"]
+            bbox = item["derivation"]["bboxWgs84"]
+            product_match = _NAIP_PRODUCT_ID.fullmatch(source["productId"])
+            try:
+                acquisition_day = datetime.fromtimestamp(
+                    source["acquisitionDate"] / 1000, tz=timezone.utc
+                ).date()
+                product_day = datetime.strptime(product_match.group(1), "%Y%m%d").date() if product_match else None
+            except (OverflowError, OSError, TypeError, ValueError):
+                raise ValueError from None
+            west, south, east, north = bbox
             if (
                 not isinstance(item["id"], str) or item["alt"] != expected_alts[item["id"]]
                 or not isinstance(item["title"], str) or not item["title"]
                 or not integer(item["bytes"]) or item["bytes"] < 1
                 or not isinstance(item["sha256"], str) or len(item["sha256"]) != 64
-                or not isinstance(source["productId"], str) or not source["productId"]
-                or not integer(source["year"]) or not integer(source["acquisitionDate"])
-                or any(not finite_number(value) or value < -180 or value > 180 for value in item["derivation"]["bboxWgs84"])
+                or not isinstance(source["productId"], str) or product_match is None
+                or not integer(source["year"]) or source["year"] not in _NAIP_YEAR_RANGE
+                or not integer(source["acquisitionDate"]) or not 10**12 <= source["acquisitionDate"] < 2 * 10**12
+                or acquisition_day.year != source["year"] or acquisition_day > datetime.now(timezone.utc).date() or product_day != acquisition_day
+                or any(not finite_number(value) for value in bbox)
+                or not -180 <= west < east <= 180 or not -90 <= south < north <= 90
+                or east - west > 1 or north - south > 1
                 or guardrails["classIds"] != expected_class_ids[item["id"]]
-                or any(not integer(value) for value in guardrails["classIds"])
+                or any(not integer(value) or not 0 <= value < 15 for value in guardrails["classIds"])
                 or not integer(guardrails["countMin"]) or not integer(guardrails["countMax"])
+                or not 1 <= guardrails["countMin"] <= guardrails["countMax"] <= _MAX_GALLERY_DETECTIONS
                 or not integer(representative["classId"]) or representative["classId"] not in guardrails["classIds"]
                 or any(not finite_number(representative[key]) for key in ("cx", "cy", "w", "h", "tolerance"))
-                or representative["w"] <= 0 or representative["h"] <= 0 or representative["tolerance"] <= 0
+                or not 0 <= representative["cx"] <= item["width"] or not 0 <= representative["cy"] <= item["height"]
+                or not 0 < representative["w"] <= item["width"] or not 0 < representative["h"] <= item["height"]
+                or not 0 < representative["tolerance"] <= max(representative["w"], representative["h"])
             ):
                 raise ValueError
         public = _walk_files(pages)
