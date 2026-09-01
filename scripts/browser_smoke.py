@@ -372,6 +372,7 @@ def run_sample_gallery(
         browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
             page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []; messages: list[str] = []; _record_errors(page, requests, messages)
             requests: list[str] = []
             messages: list[str] = []
             _record_errors(page, requests, messages)
@@ -404,6 +405,9 @@ def run_held_decode(
         browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
             page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            _record_errors(page, requests, messages)
             page.add_init_script(SRI_STUB_SHIM)
             page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=ORT_STUB))
             held_images: list[Route] = []
@@ -436,16 +440,22 @@ def run_invalid_selector(executable_path: Path | None = None, base_url: str | No
         browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
             page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            _record_errors(page, requests, messages)
             page.add_init_script(SRI_STUB_SHIM)
             page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=ORT_STUB))
             page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
             page.locator("#demoDetectBtn").click(); page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            before_requests = len(requests); before_runs = page.evaluate("globalThis.__demoRunCount")
             page.evaluate("document.querySelector('[data-sample-id=\"sports-complex\"]').dataset.sampleId = 'unknown'")
             page.locator(".sample-option[value='sports-complex']").click()
             if page.locator("#summaryCount").inner_text() != "0" or not page.locator("#canvasFrame").is_hidden() or not page.locator("#viewToggleBtn").is_hidden():
                 raise RuntimeError("unknown selector retained a stale completed result")
             if page.locator("#status").get_attribute("data-kind") != "error" or not page.locator("#demoDetectBtn").is_disabled():
                 raise RuntimeError("unknown selector did not enter safe disabled failure state")
+            if page.evaluate("globalThis.__demoRunCount") != before_runs or len(requests) != before_requests:
+                raise RuntimeError("unknown selector started an inference or requested an asset")
             page.locator("[data-sample-id='airfield']").click()
             page.wait_for_function("sampleState.textContent === 'Original · ready'")
         finally:
