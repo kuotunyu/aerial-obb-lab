@@ -415,7 +415,7 @@ def run_held_decode(
             page.locator('[data-sample-id="sports-complex"]').click()
             page.wait_for_function("() => document.querySelector('#sampleState').textContent.includes('Loading')")
             held_state = page.evaluate("[summaryCount.textContent, runtimeValue.textContent, demoDetectBtn.disabled, demoDetectBtn.textContent, sampleState.textContent, canvasFrame.hidden, viewToggleBtn.hidden]")
-            if held_state[0] != "0" or held_state[2] is not True or held_state[5:] != [True, True]:
+            if held_state[0] != "0" or held_state[2] is not True or held_state[3] != "開始 Detect" or held_state[5:] != [True, True]:
                 raise RuntimeError(f"held decode leaves stale result or active Detect: {held_state!r}")
             if page.locator("#resultsBody tr[data-empty='true']").count() != 1 or not page.locator("#confSlider").is_disabled():
                 raise RuntimeError("held decode did not clear result controls")
@@ -424,6 +424,30 @@ def run_held_decode(
             for route in held_images:
                 route.continue_()
             page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
+        finally:
+            browser.close()
+
+
+def run_invalid_selector(executable_path: Path | None = None, base_url: str | None = None) -> None:
+    """Unknown selector activation cannot retain a completed inference result."""
+    from playwright.sync_api import sync_playwright
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.add_init_script(SRI_STUB_SHIM)
+            page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=ORT_STUB))
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            page.locator("#demoDetectBtn").click(); page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            page.evaluate("document.querySelector('[data-sample-id=\"sports-complex\"]').dataset.sampleId = 'unknown'")
+            page.locator(".sample-option[value='sports-complex']").click()
+            if page.locator("#summaryCount").inner_text() != "0" or not page.locator("#canvasFrame").is_hidden() or not page.locator("#viewToggleBtn").is_hidden():
+                raise RuntimeError("unknown selector retained a stale completed result")
+            if page.locator("#status").get_attribute("data-kind") != "error" or not page.locator("#demoDetectBtn").is_disabled():
+                raise RuntimeError("unknown selector did not enter safe disabled failure state")
+            page.locator("[data-sample-id='airfield']").click()
+            page.wait_for_function("sampleState.textContent === 'Original · ready'")
         finally:
             browser.close()
 
@@ -1930,6 +1954,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=(
             "sample-gallery",
             "held-decode",
+            "invalid-selector",
             "real-demo-success",
             "stubbed-cache",
             "manifest-failure",
@@ -1953,6 +1978,8 @@ def main(argv: list[str] | None = None) -> int:
             run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
         elif args.scenario == "held-decode":
             run_held_decode(args.executable_path, args.base_url)
+        elif args.scenario == "invalid-selector":
+            run_invalid_selector(args.executable_path, args.base_url)
         elif args.scenario == "real-demo-success":
             run_real_demo_success(
                 args.executable_path,
@@ -1991,6 +2018,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
             run_held_decode(args.executable_path, args.base_url)
+            run_invalid_selector(args.executable_path, args.base_url)
             run_real_demo_success(
                 args.executable_path,
                 args.base_url,
@@ -2018,6 +2046,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[OK] Real sample gallery initial state")
     elif args.scenario == "held-decode":
         print("[OK] Held real sample decode clears stale result state")
+    elif args.scenario == "invalid-selector":
+        print("[OK] Invalid sample selector fails closed and recovers")
     elif args.scenario == "real-demo-success":
         print("[OK] Real demo browser smoke: genuine local derivative inference")
     elif args.scenario == "stubbed-cache":

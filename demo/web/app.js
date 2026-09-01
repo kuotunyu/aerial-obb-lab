@@ -231,7 +231,19 @@ function selectedDemoSample() {
 
 async function selectDemoSample(sampleId) {
   const sample = SAMPLE_CATALOG.find((candidate) => candidate.id === sampleId);
-  if (!sample) return;
+  if (!sample) {
+    nextGeneration();
+    state.source = "demo";
+    state.image = null;
+    state.imageSource = null;
+    clearResultState({keepImage: true});
+    state.phase = "error";
+    sampleState.textContent = "Retry · available";
+    demoDetectBtn.textContent = "開始 Detect";
+    demoDetectBtn.disabled = true;
+    setStatus(ERROR_COPY.DEMO_MANIFEST, "error");
+    return null;
+  }
   const generation = nextGeneration();
   state.source = "demo";
   state.selectedSampleId = sampleId;
@@ -250,6 +262,7 @@ async function selectDemoSample(sampleId) {
   demoOriginalImage.height = sample.height;
   state.phase = "loading";
   demoDetectBtn.disabled = true;
+  demoDetectBtn.textContent = "開始 Detect";
   sampleState.textContent = "Loading · original";
   setInitialSummary();
   setStatus("正在載入真實航拍原圖…");
