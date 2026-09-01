@@ -633,6 +633,63 @@ def test_release_artifact_contract_rejects_license_digest_mutation(
     )
 
 
+@pytest.mark.parametrize(
+    ("artifact_path", "digest_mode"),
+    [
+        (
+            "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+            "canonical-lf",
+        ),
+        (
+            "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+            "unexpected-text-mode",
+        ),
+        (
+            "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+            None,
+        ),
+        ("demo/web/samples/boats.jpg", "canonical-lf"),
+    ],
+)
+def test_release_artifact_contract_rejects_binary_digest_mode_misuse(
+    tmp_path: Path, artifact_path: str, digest_mode: str | None
+) -> None:
+    release_check = load_release_check()
+    root = _copy_release_candidate(tmp_path)
+    manifest_path = root / "release" / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = next(
+        item
+        for item in manifest["bundled_third_party_artifacts"]
+        if item["path"] == artifact_path
+    )
+    entry["digest_mode"] = digest_mode
+    _write_json(manifest_path, manifest)
+
+    assert (
+        f"{artifact_path}: binary artifact digest_mode must be absent or raw-binary"
+        in release_check.verify_artifacts(root)
+    )
+
+
+def test_release_artifact_contract_accepts_explicit_raw_binary_model_mode(
+    tmp_path: Path,
+) -> None:
+    release_check = load_release_check()
+    root = _copy_release_candidate(tmp_path)
+    manifest_path = root / "release" / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = next(
+        item
+        for item in manifest["bundled_third_party_artifacts"]
+        if item["path"] == release_check.APPROVED_DEMO_MODEL
+    )
+    entry["digest_mode"] = "raw-binary"
+    _write_json(manifest_path, manifest)
+
+    assert release_check.verify_artifacts(root) == []
+
+
 def test_private_runtime_and_absolute_user_paths_fail_closed(tmp_path: Path) -> None:
     release_check = load_release_check()
 

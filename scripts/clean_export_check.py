@@ -100,6 +100,14 @@ APPROVED_SANITIZATION_RECORD = (
 APPROVED_MODIFICATION_STATUS = "metadata-only"
 APPROVED_MODIFICATION_DATE = "2026-08-31"
 APPROVED_MODIFIED_FIELD = "ModelProto.metadata_props[0].value"
+CANONICAL_LF_ARTIFACTS = {
+    "demo/web/app.js",
+    "demo/web/index.html",
+    "demo/web/style.css",
+    APPROVED_MODEL_LICENSE_FILE,
+    APPROVED_SANITIZATION_RECORD,
+}
+RAW_BINARY_DIGEST_MODE = "raw-binary"
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
@@ -133,9 +141,28 @@ def _approved_model_is_manifest_bound(manifest: dict | None) -> bool:
         "license": APPROVED_MODEL_LICENSE,
         "license_file": APPROVED_MODEL_LICENSE_FILE,
     }
-    return len(matches) == 1 and all(
-        matches[0].get(field) == value for field, value in expected.items()
+    return (
+        len(matches) == 1
+        and all(matches[0].get(field) == value for field, value in expected.items())
+        and (
+            "digest_mode" not in matches[0]
+            or matches[0].get("digest_mode") == RAW_BINARY_DIGEST_MODE
+        )
     )
+
+
+def _artifact_digest_mode_error(entry: dict) -> str | None:
+    relative = str(entry.get("path", ""))
+    mode = entry.get("digest_mode")
+    if relative in CANONICAL_LF_ARTIFACTS:
+        if mode != "canonical-lf":
+            return f"{relative}: canonical text artifact digest_mode must be canonical-lf"
+        return None
+    if "digest_mode" in entry and mode != RAW_BINARY_DIGEST_MODE:
+        return (
+            f"{relative}: binary artifact digest_mode must be absent or raw-binary"
+        )
+    return None
 
 
 def _approved_license_is_manifest_bound(manifest: dict | None) -> bool:
@@ -295,6 +322,10 @@ def inspect_archive(archive: Path) -> list[str]:
             maximum = int(manifest.get("policy", {}).get("maximum_unlisted_tracked_file_bytes", 0))
             for entry in artifacts + manifest.get("reviewed_public_artifacts", []):
                 name = entry.get("path", "")
+                digest_mode_error = _artifact_digest_mode_error(entry)
+                if digest_mode_error:
+                    errors.append(digest_mode_error)
+                    continue
                 if name not in names:
                     errors.append(f"reviewed artifact missing from archive: {name}")
                     continue

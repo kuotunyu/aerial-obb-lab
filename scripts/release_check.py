@@ -123,6 +123,14 @@ APPROVED_SANITIZATION_RECORD = (
 APPROVED_MODIFICATION_STATUS = "metadata-only"
 APPROVED_MODIFICATION_DATE = "2026-08-31"
 APPROVED_MODIFIED_FIELD = "ModelProto.metadata_props[0].value"
+CANONICAL_LF_ARTIFACTS = {
+    "demo/web/app.js",
+    "demo/web/index.html",
+    "demo/web/style.css",
+    APPROVED_MODEL_LICENSE_FILE,
+    APPROVED_SANITIZATION_RECORD,
+}
+RAW_BINARY_DIGEST_MODE = "raw-binary"
 REQUIRED_BUNDLED_THIRD_PARTY_ARTIFACTS = {
     "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
     APPROVED_DEMO_MODEL,
@@ -145,6 +153,20 @@ DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$",
 
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _artifact_digest_mode_error(entry: dict) -> str | None:
+    relative = str(entry.get("path", ""))
+    mode = entry.get("digest_mode")
+    if relative in CANONICAL_LF_ARTIFACTS:
+        if mode != "canonical-lf":
+            return f"{relative}: canonical text artifact digest_mode must be canonical-lf"
+        return None
+    if "digest_mode" in entry and mode != RAW_BINARY_DIGEST_MODE:
+        return (
+            f"{relative}: binary artifact digest_mode must be absent or raw-binary"
+        )
+    return None
 
 
 def _close(left: float, right: float, tolerance: float = 1e-12) -> bool:
@@ -289,6 +311,10 @@ def verify_artifacts(root: Path = ROOT) -> list[str]:
             for field in ("kind", "provenance", "source_url", "license", "restrictions"):
                 if not entry.get(field):
                     errors.append(f"{relative}: missing artifact field {field}")
+        digest_mode_error = _artifact_digest_mode_error(entry)
+        if digest_mode_error:
+            errors.append(digest_mode_error)
+            continue
         if not path.is_file():
             errors.append(f"{relative}: artifact is missing")
             continue
@@ -336,7 +362,13 @@ def _approved_model_entry(manifest: dict) -> dict | None:
         "license": APPROVED_MODEL_LICENSE,
         "license_file": APPROVED_MODEL_LICENSE_FILE,
     }
-    if any(entry.get(field) != value for field, value in expected.items()):
+    if (
+        any(entry.get(field) != value for field, value in expected.items())
+        or (
+            "digest_mode" in entry
+            and entry.get("digest_mode") != RAW_BINARY_DIGEST_MODE
+        )
+    ):
         return None
     return entry
 

@@ -137,6 +137,27 @@ def _mutated_license_archive(
     return target
 
 
+def _mutated_binary_digest_mode_archive(
+    tmp_path: Path, artifact_path: str, digest_mode: str | None
+) -> Path:
+    source = _committed_candidate_archive(tmp_path)
+    target = tmp_path / "mutated-binary-mode.zip"
+    with zipfile.ZipFile(source) as incoming, zipfile.ZipFile(target, "w") as outgoing:
+        for info in incoming.infolist():
+            payload = incoming.read(info.filename)
+            if info.filename == "release/artifact-manifest.json":
+                manifest = json.loads(payload.decode("utf-8"))
+                artifact = next(
+                    item
+                    for item in manifest["bundled_third_party_artifacts"]
+                    if item["path"] == artifact_path
+                )
+                artifact["digest_mode"] = digest_mode
+                payload = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+            outgoing.writestr(info, payload)
+    return target
+
+
 def test_archive_policy_rejects_private_and_runtime_paths() -> None:
     assert archive_policy_errors(
         ["README.md", "notes.private.md", "runs/x/best.pt", "datasets/DOTAv1/a.png"]
@@ -295,6 +316,58 @@ def test_inspect_only_rejects_license_digest_contract_mutation(
     )
     assert main(["--inspect-only", "--output", str(archive)]) == 1
     assert "ULTRALYTICS-AGPL-3.0.txt" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("artifact_path", "digest_mode"),
+    [
+        (
+            "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+            "canonical-lf",
+        ),
+        (
+            "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+            "unexpected-text-mode",
+        ),
+        (
+            "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+            None,
+        ),
+        ("demo/web/samples/boats.jpg", "canonical-lf"),
+    ],
+)
+def test_inspect_only_rejects_binary_digest_mode_misuse(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    artifact_path: str,
+    digest_mode: str | None,
+) -> None:
+    archive = _mutated_binary_digest_mode_archive(
+        tmp_path, artifact_path, digest_mode
+    )
+    expected = (
+        f"{artifact_path}: binary artifact digest_mode must be absent or raw-binary"
+    )
+
+    errors = inspect_archive(archive)
+    assert expected in errors
+    assert not any(error.startswith("invalid release archive:") for error in errors)
+    assert main(["--inspect-only", "--output", str(archive)]) == 1
+    assert expected in capsys.readouterr().err
+
+
+def test_inspect_only_accepts_explicit_raw_binary_model_mode(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    archive = _mutated_binary_digest_mode_archive(
+        tmp_path,
+        "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+        "raw-binary",
+    )
+
+    assert inspect_archive(archive) == []
+    assert main(["--inspect-only", "--output", str(archive)]) == 0
+    assert "[OK] committed clean export" in capsys.readouterr().out
 
 
 def test_clean_export_keeps_its_own_gate_and_real_demo_assets() -> None:
