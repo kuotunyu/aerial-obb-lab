@@ -797,6 +797,18 @@ def test_gallery_receipt_rejects_each_nested_missing_or_extra_key(tmp_path: Path
         demo_assets.validate_gallery_publication(pages.parent, receipt)
 
 
+def test_publish_assets_requires_gallery_receipt_without_creating_legacy_outputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The direct publisher has no boats/schema-1 fallback when receipt is absent."""
+    repo = tmp_path / "repo"; repo.mkdir()
+    review = tmp_path / "external"; review.mkdir()
+    pages = repo / "demo" / "web"
+    monkeypatch.setattr(demo_assets, "REPO_ROOT", repo)
+    monkeypatch.setattr(demo_assets, "__file__", str(repo / "scripts" / "prepare_demo_assets.py"))
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.publish_assets(review, pages)
+    assert not pages.exists()
+
+
 def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.CaptureFixture[str]) -> None:
     secret_argument = "C:/" + "Users/alice/private?token=secret"
     assert main(["invalid-command", "--review-root", secret_argument]) == 1

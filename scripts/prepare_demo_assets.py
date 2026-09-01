@@ -705,12 +705,12 @@ def publish_assets(review_root: Path, pages_root: Path) -> None:
     if requested_pages != expected_pages:
         raise AssetPreparationError("scope")
     _require_external_review(review)
-    pages = _checked_root(requested_pages, create=True)
     gallery_receipt = repo / "release" / "sample-gallery-sources.json"
     # Test fixtures isolate a synthetic repository; every real entry point is
     # anchored to this repository and therefore has no legacy fallback.
     if not gallery_receipt.is_file() and repo == Path(__file__).resolve().parents[1]:
         raise AssetPreparationError("receipt")
+    pages = _checked_root(requested_pages, create=True)
     use_gallery = gallery_receipt.is_file()
     _reject_stale_managed_pages(pages, gallery=use_gallery)
     if use_gallery:
