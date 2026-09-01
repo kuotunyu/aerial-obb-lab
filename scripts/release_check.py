@@ -104,6 +104,9 @@ LOCAL_PATH_RE = re.compile(
 LOCAL_PATH_BYTES_RE = re.compile(
     rb'''(?i)(?:[A-Z]:[\\/](?:Users|Documents and Settings)[\\/]|/(?:Users|home)/[^/\x00\s"']+/)'''
 )
+TOKEN_SHAPED_SECRET_RE = re.compile(
+    r"(?i)\b(?:gh[pousr]_[A-Za-z0-9]{24,}|hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,})\b"
+)
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlpackage"}
 APPROVED_DEMO_MODEL = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
@@ -389,19 +392,40 @@ def _verify_gallery_contract(root: Path, manifest: dict) -> list[str]:
     entries = {entry.get("path"): entry for entry in manifest.get("bundled_third_party_artifacts", [])}
     for receipt_sample, demo_sample, path in zip(samples, demo["samples"], GALLERY_SAMPLE_PATHS):
         entry = entries.get(path)
+        source = receipt_sample.get("source", {})
+        derivation = receipt_sample.get("derivation", {})
         expected_entry = {
             "path": path,
+            "sample_id": receipt_sample.get("id"),
+            "sample_title": receipt_sample.get("title"),
+            "media_type": receipt_sample.get("mediaType"),
+            "width": receipt_sample.get("width"),
+            "height": receipt_sample.get("height"),
             "bytes": receipt_sample.get("bytes"),
             "sha256": receipt_sample.get("sha256"),
             "kind": "public-domain NAIP aerial sample derivative",
-            "source_url": receipt_sample.get("source", {}).get("service"),
-            "source_product_id": receipt_sample.get("source", {}).get("productId"),
-            "source_year": receipt_sample.get("source", {}).get("year"),
-            "source_agency": receipt_sample.get("source", {}).get("agency"),
-            "public_domain_record": receipt_sample.get("source", {}).get("publicDomainRecord"),
+            "provenance": (
+                f"USGS/USDA NAIP product {source.get('productId')}, {source.get('year')}; "
+                "crop/resample/metadata removal, bbox "
+                f"{derivation.get('bboxWgs84')}, {derivation.get('outputSize', [None, None])[0]}x"
+                f"{derivation.get('outputSize', [None, None])[1]} {derivation.get('color')} JPEG "
+                f"quality {derivation.get('jpegQuality')}."
+            ),
+            "source_url": source.get("service"),
+            "source_product_id": source.get("productId"),
+            "source_year": source.get("year"),
+            "source_acquisition_date": source.get("acquisitionDate"),
+            "source_agency": source.get("agency"),
+            "public_domain_record": source.get("publicDomainRecord"),
             "modification_status": "crop/resample/metadata removal",
-            "derivation": receipt_sample.get("derivation"),
+            "derivation": derivation,
+            "alt": receipt_sample.get("alt"),
+            "guardrails": receipt_sample.get("guardrails"),
             "license": "Public Domain",
+            "restrictions": [
+                "Curated integration example only; not accuracy, evaluation, or model-quality evidence.",
+                "No USGS or USDA endorsement is implied.",
+            ],
         }
         if entry is None or any(entry.get(key) != value for key, value in expected_entry.items()):
             errors.append(f"{path}: manifest NAIP record differs from receipt")
@@ -611,6 +635,8 @@ def verify_text_privacy(root: Path, paths: list[Path]) -> list[str]:
             errors.append(
                 f"{path.relative_to(root).as_posix()}: private Hugging Face repository identifier"
             )
+        if TOKEN_SHAPED_SECRET_RE.search(text):
+            errors.append(f"{path.relative_to(root).as_posix()}: token-shaped secret")
     return errors
 
 
@@ -636,10 +662,7 @@ def committed_paths(root: Path = ROOT) -> list[str]:
 
 
 def verify_committed_privacy(root: Path = ROOT) -> list[str]:
-    relative_paths = [
-        path for path in committed_paths(root)
-        if not path.replace("\\", "/").startswith("docs/superpowers/")
-    ]
+    relative_paths = committed_paths(root)
     files = [root / relative for relative in relative_paths if (root / relative).is_file()]
     manifest = load_json(root / "release" / "artifact-manifest.json")
     binary_paths = [

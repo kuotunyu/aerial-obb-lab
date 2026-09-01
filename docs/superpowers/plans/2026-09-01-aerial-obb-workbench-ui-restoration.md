@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Product behavior starts from exact accepted commit `b6a4cd6193a9c34bd08e437805248dbc9658e3d5`; approved design commit is `af2bf9b78f02155b44d16b101b2a6e2cdbabc667` on `feat/pages-live-real-image-demo`.
-- Execute in the existing isolated worktree `D:\AI-Portfolio\.worktrees\aerial-obb-live-real-image-demo`; do not create, reuse, reset, delete, or clean another worktree.
+- Execute in the existing isolated worktree `<repository-root>\.worktrees\aerial-obb-live-real-image-demo`; do not create, reuse, reset, delete, or clean another worktree.
 - Preserve untracked `.superpowers/` visual-companion state. Commit only the exact task paths named below.
 - The visible sample remains exact `demo/web/samples/boats.jpg`; the browser model remains exact `demo/web/models/yolo26n-obb-privacy-sanitized.onnx`. Do not regenerate, move, rename, replace, or upload either asset.
 - Initial navigation may request same-origin static assets and `samples/boats.jpg`; it must not request `demo-model.json`, ONNX Runtime, WASM, or ONNX bytes before **開始 Detect**.
@@ -37,7 +37,7 @@
 Before Task 1, read `superpowers:using-git-worktrees`, `superpowers:test-driven-development`, `superpowers:subagent-driven-development`, and `frontend-design`. Verify the retained worktree rather than creating another one:
 
 ```powershell
-$worktree = 'D:\AI-Portfolio\.worktrees\aerial-obb-live-real-image-demo'
+$worktree = '<repository-root>\.worktrees\aerial-obb-live-real-image-demo'
 $branch = (git -C $worktree branch --show-current).Trim()
 $design = (git -C $worktree rev-parse af2bf9b78f02155b44d16b101b2a6e2cdbabc667).Trim()
 $product = (git -C $worktree rev-parse b6a4cd6193a9c34bd08e437805248dbc9658e3d5).Trim()

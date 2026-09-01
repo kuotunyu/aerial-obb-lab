@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Implementation branch is `feat/pages-live-real-image-demo` in `D:\AI-Portfolio\.worktrees\aerial-obb-live-real-image-demo`; prerequisite HEAD is the plan commit whose parent is spec commit `582a88960b9a699d3adedfd3a918b09f8e5b128b`.
+- Implementation branch is `feat/pages-live-real-image-demo` in `<repository-root>\.worktrees\aerial-obb-live-real-image-demo`; prerequisite HEAD is the plan commit whose parent is spec commit `582a88960b9a699d3adedfd3a918b09f8e5b128b`.
 - Completed Task 1 commits `64aad4f`, `601d91a`, `214bf90`, and `8116e79` are authoritative; do not restart or rewrite their reviewed acquisition boundary.
 - The immutable upstream model is `https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx`, 10,207,250 bytes, SHA-256 `02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38`.
 - The immutable image is `https://ultralytics.com/images/boats.jpg`, 194,872 bytes, 1920×1080 JPEG, SHA-256 `8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f`.

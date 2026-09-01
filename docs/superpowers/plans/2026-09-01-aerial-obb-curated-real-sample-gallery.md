@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Start from accepted product commit `40a6eb130b6e2cf46b89469750eb10f9133d8a83`; the approved design commit `a7b6fb14fd97c72c92c97709e8f3ba23fde299b2` must remain an ancestor of implementation HEAD.
-- Execute in the retained isolated worktree `D:\AI-Portfolio\.worktrees\aerial-obb-live-real-image-demo` on `feat/pages-live-real-image-demo`. Preserve untracked `.superpowers/` and stage only the exact task paths.
+- Execute in the retained isolated worktree `<repository-root>\.worktrees\aerial-obb-live-real-image-demo` on `feat/pages-live-real-image-demo`. Preserve untracked `.superpowers/` and stage only the exact task paths.
 - The public catalog has exactly `airfield`, `sports-complex`, and `harbor`, at `samples/airfield.jpg`, `samples/sports-complex.jpg`, and `samples/harbor.jpg`; the initial ID is `airfield`.
 - Every admitted image is a `1280×800` metadata-stripped sRGB JPEG encoded at quality `90`, derived from one locked NAIP raster in the contiguous United States and recorded by official source identity, crop/export rectangle, year, acquisition date, agency, bytes, and SHA-256.
 - The authoritative imagery service is exactly `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer`; admission requires one five-point-locked source row whose `agency` identifies USDA/FSA and whose official HTTPS `download_url` path contains a distinct `NAIP` segment. `Name` and `raster_name` must be present and must not identify HRO/commercial imagery, but need not repeat the literal `NAIP` token. Query, fragment, credentials, multiple-source, HRO, commercial, and ambiguous records fail closed.
@@ -37,7 +37,7 @@
 Before Task 1, read `superpowers:using-git-worktrees`, `superpowers:test-driven-development`, `superpowers:subagent-driven-development`, and `superpowers:frontend-design`. Detect the existing linked worktree; do not create a second one.
 
 ```powershell
-$worktree = 'D:\AI-Portfolio\.worktrees\aerial-obb-live-real-image-demo'
+$worktree = '<repository-root>\.worktrees\aerial-obb-live-real-image-demo'
 $branch = (git -C $worktree branch --show-current).Trim()
 $spec = (git -C $worktree rev-parse a7b6fb14fd97c72c92c97709e8f3ba23fde299b2).Trim()
 $product = (git -C $worktree rev-parse 40a6eb130b6e2cf46b89469750eb10f9133d8a83).Trim()
@@ -55,7 +55,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Index is dirty' }
 If `node` is not already available in the local Codex terminal, prepend the bundled runtime for commands that execute browser-parity tests; never commit this host-specific path:
 
 ```powershell
-$workspaceNodeBin = 'C:\Users\3Hml\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin'
+$workspaceNodeBin = '<bundled-node-bin>'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { $env:Path = "$workspaceNodeBin;$env:Path" }
 node --version
 ```

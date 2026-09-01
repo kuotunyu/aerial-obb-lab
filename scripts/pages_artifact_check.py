@@ -182,7 +182,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed sanitization record bytes differ",
     ),
     "THIRD_PARTY_NOTICES.md": (
-        "6513205963c1912f81de50edfc4e9a86b45f3f886054500f7b4adf25b4b9dd15",
+        "67a00352ee5f9accafe5e6dacc5b68d733309bfefd6a5f1ae2318607f9939e22",
         "reviewed third-party notice bytes differ",
     ),
 }

@@ -148,6 +148,14 @@ def _repo_external_snapshot(tmp_path: Path) -> Path:
             if not raw:
                 continue
             relative = raw.decode("utf-8")
+            attribute = subprocess.check_output(
+                ["git", "check-attr", "export-ignore", "--", relative],
+                cwd=ROOT,
+                text=True,
+                encoding="utf-8",
+            )
+            if attribute.rstrip().endswith("export-ignore: set"):
+                continue
             current = ROOT / relative
             exported = snapshot / relative
             if current.is_file():

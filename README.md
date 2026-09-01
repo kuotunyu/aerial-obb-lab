@@ -17,7 +17,7 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 **發布範圍：**程式碼、證據、三張 public-domain NAIP 航拍衍生圖，以及一個 privacy-sanitized AGPL demo model。
 
 <!-- claim:browser-scope -->
-> 瀏覽器 demo 首先顯示官方航拍原圖；使用者按「開始 Detect」後，才會載入 same-origin
+> 瀏覽器 demo 首先讓使用者選擇三張 public-domain NAIP 原圖之一；按「開始 Detect」後，才會載入 same-origin
 > privacy-sanitized AGPL derivative 與 pinned runtime，在目前的 browser session 執行真正 inference。
 > BYOM 仍可使用使用者自行提供的相容 ONNX 與圖片；所有 model／image bytes 都不會上傳。
 > 這個 integration demo 與 screenshot **不代表** fine-tuned `yolo26m-obb` 的 accuracy、evaluation
@@ -207,7 +207,7 @@ uv sync --frozen --no-install-project
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-- Demo：開啟 `http://localhost:8765`；先看官方航拍原圖，再按「開始 Detect」。影像與模型不會上傳；
+- Demo：開啟 `http://localhost:8765`；選擇三張 public-domain NAIP 原圖之一，再按「開始 Detect」查看真正本機結果。影像與模型不會上傳；
   第一次 Detect 才會讀取 same-origin privacy-sanitized derivative，並由固定版本 CDN + SRI 載入 runtime。
 - Default env：不含 Torch、CUDA、Ultralytics 或 Python ONNX Runtime。
 - 壞掉的 `.venv`：執行 `uv venv --clear --python 3.11`；Linux/macOS 改用 `.venv/bin/python`。

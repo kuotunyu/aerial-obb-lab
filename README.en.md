@@ -17,7 +17,7 @@ The result is reported as-is: matched fine-tuning was a near-tie/slight regressi
 **Release scope:** code, evidence, three public-domain NAIP aerial derivatives, and one privacy-sanitized AGPL demo model.
 
 <!-- claim:browser-scope -->
-> The browser demo first displays the official aerial original. Only after **Start Detect** does it
+> The browser demo first lets you choose one of the three public-domain NAIP originals. Only after **Start Detect** does it
 > load the same-origin privacy-sanitized AGPL derivative and pinned runtime, then perform genuine
 > inference in the current browser session. BYOM still accepts a user-supplied compatible ONNX model
 > and image; no model/image bytes are uploaded. This integration demo **does not represent** the
@@ -215,7 +215,7 @@ uv sync --frozen --no-install-project
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-- Demo: open `http://localhost:8765`, inspect the official aerial original, then press **Start Detect**.
+- Demo: open `http://localhost:8765`, choose one of the three public-domain NAIP originals, then press **Start Detect** and inspect the genuine local result.
   The image and model are not uploaded; first Detect reads the same-origin privacy-sanitized derivative
   and loads the pinned runtime through CDN + SRI.
 - Default env: no Torch, CUDA, Ultralytics, or Python ONNX Runtime.

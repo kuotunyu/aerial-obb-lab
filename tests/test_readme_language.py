@@ -31,7 +31,7 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
         "demo/web/",
         "ONNX Runtime Web",
         "Browser-native",
-        "官方航拍原圖",
+        "三張 public-domain NAIP 原圖之一",
         "真正 inference",
         "privacy-sanitized AGPL derivative",
         "BYOM 是預設收合的進階入口",
@@ -44,7 +44,7 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
     for token in (
         "demo/web/",
         "browser-native",
-        "official aerial original",
+        "one of the three public-domain NAIP originals",
         "genuine inference",
         "privacy-sanitized AGPL derivative",
         "BYOM remains a collapsed advanced path",

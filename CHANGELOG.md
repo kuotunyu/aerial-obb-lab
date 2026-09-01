@@ -1,14 +1,12 @@
 # Changelog
 
-## Unreleased
+All notable changes to this project are documented here.
+
+## [Unreleased]
 
 - Freeze the three-image public-domain NAIP gallery evidence, notices, exact artifact digests, and
   default-airfield local-inference screenshot. The curated samples are integration/drift-check examples,
   not accuracy, evaluation, model-quality, or T4 latency evidence.
-
-All notable changes to this project are documented here.
-
-## [Unreleased]
 
 ### Real-image browser workbench
 

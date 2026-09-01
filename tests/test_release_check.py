@@ -465,6 +465,73 @@ def test_real_demo_manifest_records_exact_public_gallery_artifacts() -> None:
     assert release_check.verify_artifacts(ROOT) == []
 
 
+@pytest.mark.parametrize(
+    ("field", "mutation"),
+    [
+        ("source_acquisition_date", 0),
+        ("alt", "unreviewed alternative text"),
+        ("guardrails", {}),
+        (
+            "restrictions",
+            ["Accuracy evidence; USDA endorsement is implied."],
+        ),
+        ("provenance", "unreviewed provenance"),
+    ],
+)
+def test_gallery_manifest_rejects_unreviewed_receipt_or_claim_field(
+    tmp_path: Path, field: str, mutation: object
+) -> None:
+    release_check = load_release_check()
+    root = _copy_release_candidate(tmp_path)
+    manifest_path = root / "release" / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = next(
+        item
+        for item in manifest["bundled_third_party_artifacts"]
+        if item["path"] == "demo/web/samples/airfield.jpg"
+    )
+    entry[field] = mutation
+    _write_json(manifest_path, manifest)
+
+    assert release_check.verify_artifacts(root) == [
+        "demo/web/samples/airfield.jpg: manifest NAIP record differs from receipt"
+    ]
+
+
+def test_notices_record_public_domain_naip_derivations() -> None:
+    root_notice = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    demo_notice = (ROOT / "demo" / "web" / "THIRD_PARTY_NOTICES.md").read_text(
+        encoding="utf-8"
+    )
+
+    for title, path, product_id in (
+        ("小型機場航拍範例", "airfield.jpg", "m_3411861_sw_11_060_20220511"),
+        ("運動場館航拍範例", "sports-complex.jpg", "m_3712114_se_10_060_20220614"),
+        ("低密度港區航拍範例", "harbor.jpg", "m_3411955_sw_11_060_20220514"),
+    ):
+        for notice in (root_notice, demo_notice):
+            assert title in notice
+            assert path in notice
+            assert product_id in notice
+            assert "Public Domain" in notice
+            assert "crop/resample/metadata removal" in notice
+    assert "No USGS or USDA endorsement is implied" in demo_notice
+    assert "AGPL-3.0-only" in demo_notice
+
+
+def test_current_readmes_describe_three_sample_detect_journey() -> None:
+    chinese = (ROOT / "README.md").read_text(encoding="utf-8")
+    english = (ROOT / "README.en.md").read_text(encoding="utf-8")
+
+    assert "官方航拍原圖" not in chinese
+    assert "三張 public-domain NAIP 原圖之一" in chinese
+    assert "不代表" in chinese
+    assert "official aerial original" not in english
+    assert "one of the three public-domain NAIP originals" in english
+    assert "genuine local inference" in english
+    assert "does not represent" in english
+
+
 def test_release_checklist_records_completed_clean_history_publication() -> None:
     checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
 
@@ -790,6 +857,25 @@ def test_committed_privacy_ignores_paths_deleted_in_the_worktree(
     )
 
     assert release_check.verify_committed_privacy(tmp_path) == []
+
+
+def test_committed_privacy_rejects_token_in_tracked_superpowers_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release_check = load_release_check()
+    relative = "docs/superpowers/plan.md"
+    monkeypatch.setattr(release_check, "committed_paths", lambda _root: [relative])
+    document = tmp_path / relative
+    document.parent.mkdir(parents=True)
+    document.write_text("token=ghp_" + "x" * 24, encoding="utf-8")
+    (tmp_path / "release").mkdir()
+    (tmp_path / "release" / "artifact-manifest.json").write_text(
+        '{"bundled_third_party_artifacts": []}', encoding="utf-8"
+    )
+
+    assert release_check.verify_committed_privacy(tmp_path) == [
+        "docs/superpowers/plan.md: token-shaped secret"
+    ]
 
 
 def test_redistributed_binaries_contain_no_absolute_user_paths(tmp_path: Path) -> None:

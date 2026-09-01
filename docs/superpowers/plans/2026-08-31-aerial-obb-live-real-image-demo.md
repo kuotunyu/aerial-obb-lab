@@ -39,7 +39,7 @@ Use `superpowers:using-git-worktrees` before Task 1. The existing design worktre
 Resolve the plan commit rather than inventing its SHA:
 
 ```powershell
-$sourceWorktree = 'D:\AI-Portfolio\.worktrees\aerial-obb-real-sample-design'
+$sourceWorktree = '<repository-root>\.worktrees\aerial-obb-real-sample-design'
 $planPath = 'docs/superpowers/plans/2026-08-31-aerial-obb-live-real-image-demo.md'
 $planCommit = (git -C $sourceWorktree log -1 --format=%H -- $planPath).Trim()
 $expectedPlanCommitPaths = @(
@@ -54,7 +54,7 @@ if ((git -C $sourceWorktree rev-parse 24039db9e07e327b55433086241ac574430c4531).
 Create a new worktree/branch only when neither already exists:
 
 ```powershell
-$executionWorktree = 'D:\AI-Portfolio\.worktrees\aerial-obb-live-real-image-demo'
+$executionWorktree = '<repository-root>\.worktrees\aerial-obb-live-real-image-demo'
 git worktree add -b feat/pages-live-real-image-demo $executionWorktree 24039db9e07e327b55433086241ac574430c4531
 git -C $executionWorktree cherry-pick 271716534c9e350a845dbbe226af97805562dbc6 $planCommit
 ```
