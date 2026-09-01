@@ -394,6 +394,40 @@ def run_sample_gallery(
             browser.close()
 
 
+def run_held_decode(
+    executable_path: Path | None = None, base_url: str | None = None,
+) -> None:
+    """A pending replacement decode must expose no stale result surface."""
+    from playwright.sync_api import Route, sync_playwright
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.add_init_script(SRI_STUB_SHIM)
+            page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=ORT_STUB))
+            held_images: list[Route] = []
+            page.route("**/samples/sports-complex.jpg", lambda route: held_images.append(route))
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
+            page.wait_for_function("demoOriginalImage.complete && demoOriginalImage.naturalWidth > 0")
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            page.locator('[data-sample-id="sports-complex"]').click()
+            page.wait_for_function("() => document.querySelector('#sampleState').textContent.includes('Loading')")
+            held_state = page.evaluate("[summaryCount.textContent, runtimeValue.textContent, demoDetectBtn.disabled, demoDetectBtn.textContent, sampleState.textContent, canvasFrame.hidden, viewToggleBtn.hidden]")
+            if held_state[0] != "0" or held_state[2] is not True or held_state[5:] != [True, True]:
+                raise RuntimeError(f"held decode leaves stale result or active Detect: {held_state!r}")
+            if page.locator("#resultsBody tr[data-empty='true']").count() != 1 or not page.locator("#confSlider").is_disabled():
+                raise RuntimeError("held decode did not clear result controls")
+            if not held_images:
+                raise RuntimeError("held-decode scenario did not intercept the selected sample response")
+            for route in held_images:
+                route.continue_()
+            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
+        finally:
+            browser.close()
+
+
 def assert_workbench_initial_layout(page: object) -> None:
     """Assert the initial desktop controls and viewport form a compact workbench."""
     if page.locator("#demoDetectBtn").evaluate(
@@ -1895,6 +1929,7 @@ def main(argv: list[str] | None = None) -> int:
         "--scenario",
         choices=(
             "sample-gallery",
+            "held-decode",
             "real-demo-success",
             "stubbed-cache",
             "manifest-failure",
@@ -1916,6 +1951,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.scenario == "sample-gallery":
             run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
+        elif args.scenario == "held-decode":
+            run_held_decode(args.executable_path, args.base_url)
         elif args.scenario == "real-demo-success":
             run_real_demo_success(
                 args.executable_path,
@@ -1953,6 +1990,7 @@ def main(argv: list[str] | None = None) -> int:
             run_mobile(args.executable_path, args.base_url)
         else:
             run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
+            run_held_decode(args.executable_path, args.base_url)
             run_real_demo_success(
                 args.executable_path,
                 args.base_url,
@@ -1978,6 +2016,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.scenario == "sample-gallery":
         print("[OK] Real sample gallery initial state")
+    elif args.scenario == "held-decode":
+        print("[OK] Held real sample decode clears stale result state")
     elif args.scenario == "real-demo-success":
         print("[OK] Real demo browser smoke: genuine local derivative inference")
     elif args.scenario == "stubbed-cache":

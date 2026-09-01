@@ -748,6 +748,33 @@ def test_gallery_receipt_rejects_mutated_canonical_sample_contract(tmp_path: Pat
             demo_assets.validate_gallery_publication(pages.parent, receipt)
 
 
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("samples", 0, "id"), "unknown"), (("samples", 1, "id"), "airfield"),
+        (("samples", 0, "path"), "https://example.invalid/a.jpg"), (("samples", 0, "title"), "changed"),
+        (("samples", 0, "source", "year"), 2021), (("samples", 0, "source", "acquisitionDate"), 1),
+        (("samples", 0, "source", "bboxWgs84"), [0, 0, 1, 1]), (("samples", 0, "bytes"), 1),
+        (("samples", 0, "sha256"), "0" * 64), (("samples", 0, "width"), 1),
+        (("samples", 0, "derivation", "color"), "AdobeRGB"), (("samples", 0, "derivation", "metadata"), "kept"),
+        (("samples", 0, "guardrails", "precomputedOutputs"), True), (("samples", 0, "guardrails", "threshold"), 0.3),
+    ],
+)
+def test_gallery_receipt_rejects_each_closed_contract_mutation(tmp_path: Path, path: tuple[object, ...], value: object) -> None:
+    """Every admitted public field is bound to the canonical reviewed receipt."""
+    root = Path(__file__).resolve().parents[1]
+    payload = json.loads((root / "release/sample-gallery-sources.json").read_text("utf-8"))
+    pages = tmp_path / "web" / "samples"; pages.mkdir(parents=True)
+    for item in payload["samples"]:
+        (pages.parent / item["path"]).write_bytes((root / "demo/web" / item["path"]).read_bytes())
+    mutated = deepcopy(payload); target: object = mutated
+    for key in path[:-1]: target = target[key]  # type: ignore[index]
+    target[path[-1]] = value  # type: ignore[index]
+    receipt = tmp_path / "receipt.json"; receipt.write_text(json.dumps(mutated), encoding="utf-8")
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.validate_gallery_publication(pages.parent, receipt)
+
+
 def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.CaptureFixture[str]) -> None:
     secret_argument = "C:/" + "Users/alice/private?token=secret"
     assert main(["invalid-command", "--review-root", secret_argument]) == 1

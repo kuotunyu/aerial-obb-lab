@@ -955,10 +955,38 @@ def publish_gallery_bundle(
     report: dict[str, object], review_root: Path, pages_root: Path, receipt_path: Path,
     manifest_path: Path, loader_path: Path,
 ) -> None:
-    receipt = publish_approved_gallery(report, review_root, pages_root, receipt_path)
-    manifest = _demo_manifest(receipt)
-    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    loader_path.write_text(_demo_assets_source(manifest), encoding="utf-8")
+    pages = _checked_root(pages_root)
+    targets = [
+        *(pages / "samples" / f"{sample_id}.jpg" for sample_id in _PUBLIC_SAMPLE_IDS),
+        pages / "samples" / "boats.jpg", Path(receipt_path), Path(manifest_path), Path(loader_path),
+    ]
+    backup_root = Path(tempfile.mkdtemp(prefix=".gallery-bundle-", dir=str(pages.parent)))
+    existing: set[Path] = set()
+    try:
+        for index, target in enumerate(targets):
+            if target.exists():
+                backup = backup_root / str(index)
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(target, backup)
+                existing.add(target)
+        receipt = publish_approved_gallery(report, review_root, pages_root, receipt_path)
+        manifest = _demo_manifest(receipt)
+        manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        loader_path.write_text(_demo_assets_source(manifest), encoding="utf-8")
+    except (OSError, GalleryError):
+        for index, target in enumerate(targets):
+            backup = backup_root / str(index)
+            try:
+                if target in existing:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(backup, target)
+                elif target.exists():
+                    target.unlink()
+            except OSError:
+                pass
+        raise GalleryError("GALLERY_SCOPE") from None
+    finally:
+        shutil.rmtree(backup_root, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:

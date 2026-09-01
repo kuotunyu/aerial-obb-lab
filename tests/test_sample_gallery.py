@@ -681,6 +681,30 @@ def test_publish_rejects_mutated_boats_predecessor_without_deleting_it(
     assert boats.read_bytes() == b"not-the-reviewed-predecessor"
 
 
+def test_first_publication_bundle_rollback_removes_new_gallery_files_and_keeps_predecessor(
+    tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late generated-loader failure must leave a first publication untouched."""
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
+    samples = tmp_path / "demo" / "web" / "samples"; samples.mkdir(parents=True)
+    boats = samples / "boats.jpg"
+    boats.write_bytes(subprocess.check_output(["git", "show", "6c14973:demo/web/samples/boats.jpg"], cwd=Path(__file__).resolve().parents[1]))
+    receipt = tmp_path / "release" / "sample-gallery-sources.json"
+    manifest = tmp_path / "demo" / "web" / "demo-model.json"
+    loader = tmp_path / "demo" / "web" / "demo-assets.js"
+    real_write = Path.write_text
+    def fail_loader(path: Path, data: str, *args: object, **kwargs: object) -> int:
+        if path == loader: raise OSError("late loader failure")
+        return real_write(path, data, *args, **kwargs)
+    monkeypatch.setattr(Path, "write_text", fail_loader)
+    with pytest.raises(gallery.GalleryError, match="GALLERY_SCOPE"):
+        gallery.publish_gallery_bundle(approved_gallery_report, tmp_path, samples.parent, receipt, manifest, loader)
+    assert {path.name for path in samples.iterdir()} == {"boats.jpg"}
+    assert boats.read_bytes() == subprocess.check_output(["git", "show", "6c14973:demo/web/samples/boats.jpg"], cwd=Path(__file__).resolve().parents[1])
+    assert not receipt.exists() and not manifest.exists() and not loader.exists()
+
+
 def test_approval_verification_rejects_a_candidate_outside_the_acquired_pool(tmp_path: Path) -> None:
     review = tmp_path / "external-review"
     records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
