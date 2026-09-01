@@ -201,57 +201,62 @@ td,
 
 .workbench {
   display: grid;
-  grid-template-columns: minmax(340px, 34fr) minmax(0, 66fr);
-  align-items: stretch;
-  gap: 14px;
+  grid-template-columns: minmax(320px, 31fr) minmax(0, 69fr);
+  gap: 16px;
+  align-items: start;
   margin-top: 12px;
 }
 
-.demo-intro {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
-  align-items: end;
-  gap: 32px;
-  padding: 22px 0 12px;
-  border-top: 1px solid var(--line-strong);
+.control-rail {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
-.demo-intro h2,
-.demo-intro p {
+.sample-card {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px 12px;
+  margin-top: 12px;
+}
+
+.sample-card button,
+.sample-card .secondary-action {
+  grid-column: 1 / -1;
+}
+
+#sampleThumbnail {
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--canvas);
+}
+
+.sample-card h3,
+.sample-card p {
   margin: 0;
 }
 
-.demo-intro h2 {
-  max-width: 24ch;
-  font-family: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
-  font-size: clamp(30px, 4vw, 56px);
-  font-weight: 600;
-  line-height: 0.98;
-  letter-spacing: -0.025em;
-}
-
-.demo-intro > p {
-  padding-bottom: 4px;
-  color: var(--muted);
-}
-
-.eyebrow {
-  margin-bottom: 8px !important;
-  color: var(--accent-ink);
-  font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.13em;
-}
-
-.demo-figure {
+.result-viewport {
   position: relative;
-  margin: 12px 0 0;
+  display: grid;
+  min-height: 410px;
   overflow: hidden;
   border: 1px solid var(--canvas-line);
   background: var(--canvas);
 }
 
-.demo-figure figcaption {
+.viewport-original,
+.canvas-frame {
+  grid-area: 1 / 1;
+  width: 100%;
+  min-height: 410px;
+  margin: 0;
+}
+
+.viewport-original figcaption {
   position: absolute;
   top: 0;
   left: 0;
@@ -264,32 +269,13 @@ td,
   letter-spacing: 0.025em;
 }
 
-.demo-figure img {
+.viewport-original img,
+.canvas-frame canvas {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   max-height: 68vh;
-  object-fit: cover;
-}
-
-.demo-action-zone {
-  display: grid;
-  grid-template-columns: minmax(210px, 0.8fr) minmax(170px, 0.55fr) minmax(320px, 2fr);
-  gap: 10px;
-  align-items: stretch;
-  margin: 10px 0 22px;
-}
-
-.demo-action-zone .status {
-  margin: 0;
-}
-
-.control-rail {
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  object-fit: contain;
 }
 
 .rail-heading,
@@ -659,8 +645,8 @@ input[type="range"]:focus-visible {
 
 .result-controls {
   display: grid;
-  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   margin-top: 12px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -673,7 +659,7 @@ input[type="range"]:focus-visible {
 }
 
 .byom-panel {
-  margin-top: 18px;
+  margin-top: 12px;
   border: 1px solid var(--line-strong);
   background: var(--surface);
 }
@@ -691,17 +677,15 @@ input[type="range"]:focus-visible {
   outline-offset: 3px;
 }
 
-.byom-panel .control-rail {
+#byomControls {
   display: grid;
-  grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr) minmax(180px, 0.45fr);
-  gap: 14px;
-  align-items: end;
-  border: 0;
+  gap: 12px;
+  padding: 12px;
   border-top: 1px solid var(--line);
 }
 
-.byom-panel .file-stack {
-  grid-template-columns: 1fr 1fr;
+#byomControls .file-stack {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .result-heading {
@@ -747,12 +731,7 @@ input[type="range"]:focus-visible {
 .canvas-frame {
   position: relative;
   display: grid;
-  flex: 1 1 auto;
-  min-height: 410px;
   overflow: hidden;
-  border: 1px solid var(--canvas-line);
-  border-radius: var(--radius);
-  background: var(--canvas);
   place-items: center;
 }
 
@@ -773,10 +752,6 @@ input[type="range"]:focus-visible {
 canvas {
   position: relative;
   z-index: 1;
-  display: block;
-  width: 100%;
-  height: auto;
-  min-height: 410px;
   background: transparent;
 }
 
@@ -949,21 +924,6 @@ footer code {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     margin-top: 12px;
-  }
-
-  .demo-intro,
-  .demo-action-zone,
-  .result-controls,
-  .byom-panel .control-rail {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .demo-figure img {
-    max-height: none;
-  }
-
-  .byom-panel .file-stack {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .result-workspace {

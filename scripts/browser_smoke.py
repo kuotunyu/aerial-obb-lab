@@ -303,6 +303,25 @@ def assert_real_demo_initial(page: object, requests: list[str], messages: list[s
         raise RuntimeError("initial page emitted console or page errors")
 
 
+def assert_workbench_initial_layout(page: object) -> None:
+    """Assert the initial desktop controls and viewport form a compact workbench."""
+    if page.locator("#demoDetectBtn").evaluate(
+        "node => node.closest('#controlRail')?.id || ''"
+    ) != "controlRail":
+        raise RuntimeError("demo action is not inside the compact control rail")
+    if page.locator("#sampleCard").count() != 1:
+        raise RuntimeError("official sample card is missing")
+    rail = page.locator("#controlRail").bounding_box()
+    viewport = page.locator("#resultViewport").bounding_box()
+    if rail is None or viewport is None or viewport["x"] <= rail["x"] + rail["width"]:
+        raise RuntimeError("desktop viewport is not to the right of the control rail")
+    ratio = rail["width"] / (rail["width"] + viewport["width"])
+    if not 0.27 <= ratio <= 0.35:
+        raise RuntimeError(f"desktop workbench is not approximately 31/69: {ratio!r}")
+    if page.locator(".demo-intro, .demo-action-zone").count() != 0:
+        raise RuntimeError("retired full-width demo layout is still present")
+
+
 def exercise_real_demo_success(page: object, requests: list[str], messages: list[str]) -> int:
     """Run the committed derivative and assert the visible result contract."""
     page.locator("#demoDetectBtn").click()
@@ -1221,15 +1240,8 @@ def run_accessibility(
             byom = page.locator("#byomPanel")
             if byom.get_attribute("open") is not None or "進階" not in byom.locator("summary").inner_text():
                 raise RuntimeError("advanced BYOM is no longer secondary")
-            if not page.evaluate(
-                """
-                () => Boolean(
-                  resultWorkspace.compareDocumentPosition(byomPanel) &
-                  Node.DOCUMENT_POSITION_FOLLOWING
-                )
-                """
-            ):
-                raise RuntimeError("advanced BYOM precedes the primary result workspace")
+            if byom.evaluate("panel => panel.closest('#controlRail')?.id || ''") != "controlRail":
+                raise RuntimeError("advanced BYOM is not inside the compact control rail")
         finally:
             browser.close()
 
@@ -1307,6 +1319,30 @@ def run_desktop(
     run_responsive(
         1280, 720, "desktop", executable_path=executable_path, base_url=base_url
     )
+
+
+def run_workbench_layout(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            _record_errors(page, requests, messages)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            assert_real_demo_initial(page, requests, messages)
+            assert_workbench_initial_layout(page)
+        finally:
+            browser.close()
 
 
 def run_mobile(
@@ -1430,6 +1466,7 @@ def main(argv: list[str] | None = None) -> int:
             "byom-transition",
             "accessibility",
             "desktop",
+            "workbench-layout",
             "mobile",
         ),
     )
@@ -1466,6 +1503,8 @@ def main(argv: list[str] | None = None) -> int:
             run_accessibility(args.executable_path, args.base_url)
         elif args.scenario == "desktop":
             run_desktop(args.executable_path, args.base_url)
+        elif args.scenario == "workbench-layout":
+            run_workbench_layout(args.executable_path, args.base_url)
         elif args.scenario == "mobile":
             run_mobile(args.executable_path, args.base_url)
         else:
@@ -1487,6 +1526,7 @@ def main(argv: list[str] | None = None) -> int:
             run_byom_transition(args.executable_path, args.base_url)
             run_accessibility(args.executable_path, args.base_url)
             run_desktop(args.executable_path, args.base_url)
+            run_workbench_layout(args.executable_path, args.base_url)
             run_mobile(args.executable_path, args.base_url)
     except Exception as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
@@ -1517,6 +1557,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[OK] Real demo accessibility contract")
     elif args.scenario == "desktop":
         print("[OK] Real demo desktop and 200% zoom layout")
+    elif args.scenario == "workbench-layout":
+        print("[OK] Real demo compact semantic workbench layout")
     elif args.scenario == "mobile":
         print("[OK] Real demo mobile layout")
     else:

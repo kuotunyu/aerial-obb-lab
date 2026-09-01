@@ -29,113 +29,101 @@
   </section>
 
   <main id="mainContent" tabindex="-1">
-    <section class="demo-intro" aria-labelledby="demoTitle">
-      <div>
-        <p class="eyebrow">REAL IMAGE / LOCAL INFERENCE</p>
-        <h2 id="demoTitle">先看原圖，再執行 oriented detection</h2>
-      </div>
-      <p>第一次 Detect 才會取得固定版本的 runtime 與經過 digest 驗證的模型。</p>
-    </section>
-
-    <figure id="demoFigure" class="demo-figure">
-      <figcaption id="demoFigureLabel">原圖 · 尚未 Detect</figcaption>
-      <img
-        id="demoOriginalImage"
-        src="samples/boats.jpg"
-        width="1920"
-        height="1080"
-        alt="海面與碼頭附近的多艘船隻航拍影像"
-      />
-    </figure>
-
-    <div class="demo-action-zone">
-      <button id="demoDetectBtn" type="button" aria-describedby="claimTitle">開始 Detect</button>
-      <button id="viewToggleBtn" class="secondary-action" type="button" hidden>查看原圖</button>
-      <p id="status" class="status" role="status" aria-live="polite">原圖已載入 · 尚未 Detect。</p>
-      <button id="runtimeRetryBtn" class="runtime-retry" type="button" hidden>
-        重試載入 Browser runtime
-      </button>
-    </div>
-
-    <section id="resultWorkspace" class="result-workspace" aria-labelledby="resultTitle">
-      <div class="result-heading">
-        <div>
-          <h2 id="resultTitle" tabindex="-1">Detection result</h2>
-          <p>Rotated polygons 保留在影像上，完整數值列於下方。</p>
-        </div>
-        <dl class="result-summary" aria-label="Detection summary">
-          <div><dt>Detections</dt><dd id="summaryCount">0</dd></div>
-          <div><dt>Top confidence</dt><dd id="summaryTop">—</dd></div>
-          <div><dt>本次 browser 執行</dt><dd id="runtimeValue">—</dd></div>
-          <div class="mode-entry"><dt>Mode</dt><dd id="modeBadge">尚未 Detect</dd></div>
-          <div class="mode-entry"><dt>Provenance</dt><dd id="provenanceValue">官方範例 · 尚未執行</dd></div>
-        </dl>
-      </div>
-
-      <div class="canvas-frame" id="canvasFrame" hidden>
-        <canvas id="canvas" aria-label="Oriented detection result" aria-describedby="canvasDescription"></canvas>
-        <p id="canvasDescription" class="visually-hidden">尚無 detection result。</p>
-      </div>
-
-      <div id="resultControls" class="result-controls" hidden>
-        <div class="control-block threshold-control">
-          <div class="control-label-row">
-            <label for="confSlider">Confidence threshold</label>
-            <output id="confVal" for="confSlider">0.25</output>
-          </div>
-          <input id="confSlider" name="confidence" type="range" min="0.05" max="0.9" step="0.05" value="0.25" />
-          <div class="range-scale" aria-hidden="true"><span>0.05</span><span>0.90</span></div>
-        </div>
-        <fieldset id="classFilter" class="class-filter">
-          <legend>Class filter</legend>
-          <p>未選擇時顯示全部 classes</p>
-          <div id="classList" class="class-list"></div>
-        </fieldset>
-      </div>
-
-      <section class="detections" aria-labelledby="tableTitle">
-        <div class="table-heading">
-          <h3 id="tableTitle">Detection list</h3>
-          <span>依 confidence 排序</span>
-        </div>
-        <div class="table-scroll" tabindex="0" aria-label="Detection results table">
-          <table id="resultsTable">
-            <thead>
-              <tr>
-                <th scope="col">class</th><th scope="col">conf</th><th scope="col">w(px)</th>
-                <th scope="col">h(px)</th><th scope="col">angle(°)</th>
-              </tr>
-            </thead>
-            <tbody id="resultsBody"></tbody>
-          </table>
-        </div>
-      </section>
-    </section>
-
-    <details id="byomPanel" class="byom-panel">
-      <summary>使用自己的模型與圖片（進階）</summary>
-      <div id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
+    <div id="workbench" class="workbench">
+      <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
         <div class="rail-heading">
-          <h2 id="controlsTitle">BYOM 本機輸入</h2>
-          <p>使用相同 preprocess、decode、filter 與 oriented rendering pipeline。</p>
+          <h2 id="controlsTitle">範例與設定</h2>
+          <p>先查看原圖，再由目前的 browser 執行 Detect。</p>
         </div>
-        <div class="file-stack">
-          <label class="file-control model-picker" id="modelDrop" for="modelInput">
-            <input type="file" id="modelInput" name="model" accept=".onnx,application/octet-stream" />
-            <span class="file-kind">ONNX model</span>
-            <strong id="modelLabel">選擇相容的 <code>.onnx</code> model</strong>
-            <small>檔案只會由目前的 browser session 讀取</small>
-          </label>
-          <label class="file-control image-picker" id="fileDrop" for="fileInput">
-            <input type="file" id="fileInput" name="image" accept="image/*" />
-            <span class="file-kind">Aerial image</span>
-            <strong id="fileLabel">選擇或拖放一張影像</strong>
-            <small>支援 browser 可解碼的常見 image formats</small>
-          </label>
+        <article id="sampleCard" class="sample-card" aria-labelledby="sampleTitle">
+          <img id="sampleThumbnail" src="samples/boats.jpg" alt="" aria-hidden="true" />
+          <div><h3 id="sampleTitle">官方港區航拍範例</h3><p id="sampleState">Original · ready</p></div>
+          <button id="demoDetectBtn" type="button" aria-describedby="claimTitle">開始 Detect</button>
+          <button id="viewToggleBtn" class="secondary-action" type="button" hidden>查看原圖</button>
+        </article>
+        <p id="status" class="status" role="status" aria-live="polite">原圖已載入 · 尚未 Detect。</p>
+        <button id="runtimeRetryBtn" class="runtime-retry" type="button" hidden>重試載入 Browser runtime</button>
+        <div id="resultControls" class="result-controls" hidden>
+          <div class="control-block threshold-control">
+            <div class="control-label-row">
+              <label for="confSlider">Confidence threshold</label>
+              <output id="confVal" for="confSlider">0.25</output>
+            </div>
+            <input id="confSlider" name="confidence" type="range" min="0.05" max="0.9" step="0.05" value="0.25" />
+            <div class="range-scale" aria-hidden="true"><span>0.05</span><span>0.90</span></div>
+          </div>
+          <fieldset id="classFilter" class="class-filter">
+            <legend>Class filter</legend>
+            <p>未選擇時顯示全部 classes</p>
+            <div id="classList" class="class-list"></div>
+          </fieldset>
         </div>
-        <button id="detectBtn" type="button" disabled>執行 BYOM Detect</button>
-      </div>
-    </details>
+        <details id="byomPanel" class="byom-panel">
+          <summary>使用自己的模型與圖片（進階）</summary>
+          <div id="byomControls">
+            <div class="file-stack">
+              <label class="file-control model-picker" id="modelDrop" for="modelInput">
+                <input type="file" id="modelInput" name="model" accept=".onnx,application/octet-stream" />
+                <span class="file-kind">ONNX model</span>
+                <strong id="modelLabel">選擇相容的 <code>.onnx</code> model</strong>
+                <small>檔案只會由目前的 browser session 讀取</small>
+              </label>
+              <label class="file-control image-picker" id="fileDrop" for="fileInput">
+                <input type="file" id="fileInput" name="image" accept="image/*" />
+                <span class="file-kind">Aerial image</span>
+                <strong id="fileLabel">選擇或拖放一張影像</strong>
+                <small>支援 browser 可解碼的常見 image formats</small>
+              </label>
+            </div>
+            <button id="detectBtn" type="button" disabled>執行 BYOM Detect</button>
+          </div>
+        </details>
+      </aside>
+      <section id="resultWorkspace" class="result-workspace" aria-labelledby="resultTitle">
+        <div class="result-heading">
+          <div class="result-heading-copy">
+            <h2 id="resultTitle" tabindex="-1">Detection result</h2>
+            <p>Rotated polygons 保留在影像上，完整數值列於下方。</p>
+          </div>
+          <dl class="result-summary" aria-label="Detection summary">
+            <div><dt>Detections</dt><dd id="summaryCount">0</dd></div>
+            <div><dt>Top confidence</dt><dd id="summaryTop">—</dd></div>
+            <div><dt>本次 browser 執行</dt><dd id="runtimeValue">—</dd></div>
+            <div class="mode-entry"><dt>Mode</dt><dd id="modeBadge">尚未 Detect</dd></div>
+            <div class="mode-entry"><dt>Provenance</dt><dd id="provenanceValue">官方範例 · 尚未執行</dd></div>
+          </dl>
+        </div>
+        <div id="resultViewport" class="result-viewport">
+          <figure id="demoFigure" class="viewport-original">
+            <figcaption id="demoFigureLabel">原圖 · 尚未 Detect</figcaption>
+            <img id="demoOriginalImage" src="samples/boats.jpg" width="1920" height="1080"
+                 alt="海面與碼頭附近的多艘船隻航拍影像" />
+            <img id="viewportByomImage" hidden alt="使用者選擇的航拍影像" />
+          </figure>
+          <div class="canvas-frame" id="canvasFrame" hidden>
+            <canvas id="canvas" aria-label="Oriented detection result" aria-describedby="canvasDescription"></canvas>
+            <p id="canvasDescription" class="visually-hidden">尚無 detection result。</p>
+          </div>
+        </div>
+        <section class="detections" aria-labelledby="tableTitle">
+          <div class="table-heading">
+            <h3 id="tableTitle">Detection list</h3>
+            <span>依 confidence 排序</span>
+          </div>
+          <div class="table-scroll" tabindex="0" aria-label="Detection results table">
+            <table id="resultsTable">
+              <thead>
+                <tr>
+                  <th scope="col">class</th><th scope="col">conf</th><th scope="col">w(px)</th>
+                  <th scope="col">h(px)</th><th scope="col">angle(°)</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </div>
   </main>
 
   <nav class="source-links" aria-label="Project links">
