@@ -751,13 +751,34 @@ def test_gallery_receipt_rejects_mutated_canonical_sample_contract(tmp_path: Pat
 @pytest.mark.parametrize(
     "path,value",
     [
-        (("samples", 0, "id"), "unknown"), (("samples", 1, "id"), "airfield"),
-        (("samples", 0, "path"), "https://example.invalid/a.jpg"), (("samples", 0, "title"), "changed"),
-        (("samples", 0, "source", "year"), 2021), (("samples", 0, "source", "acquisitionDate"), 1),
-        (("samples", 0, "source", "bboxWgs84"), [0, 0, 1, 1]), (("samples", 0, "bytes"), 1),
-        (("samples", 0, "sha256"), "0" * 64), (("samples", 0, "width"), 1),
-        (("samples", 0, "derivation", "color"), "AdobeRGB"), (("samples", 0, "derivation", "metadata"), "kept"),
-        (("samples", 0, "guardrails", "precomputedOutputs"), True), (("samples", 0, "guardrails", "threshold"), 0.3),
+        pytest.param(("schemaVersion",), 2, id="root.schemaVersion"),
+        pytest.param(("samples",), [], id="root.samples-order"),
+        pytest.param(("samples", 0, "id"), "unknown", id="sample.id-unknown"),
+        pytest.param(("samples", 1, "id"), "airfield", id="sample.id-duplicate"),
+        pytest.param(("samples", 0, "title"), "changed", id="sample.title"),
+        pytest.param(("samples", 0, "path"), "https://example.invalid/a.jpg", id="sample.path-external"),
+        pytest.param(("samples", 0, "bytes"), 1, id="sample.bytes"),
+        pytest.param(("samples", 0, "sha256"), "0" * 64, id="sample.sha256"),
+        pytest.param(("samples", 0, "mediaType"), "image/png", id="sample.mediaType"),
+        pytest.param(("samples", 0, "width"), 1, id="sample.width"),
+        pytest.param(("samples", 0, "height"), 1, id="sample.height"),
+        pytest.param(("samples", 0, "source", "provider"), "unreviewed", id="source.provider"),
+        pytest.param(("samples", 0, "source", "publicDomainRecord"), "https://example.invalid/source", id="source.publicDomainRecord-url"),
+        pytest.param(("samples", 0, "source", "year"), 2021, id="source.year"),
+        pytest.param(("samples", 0, "source", "acquisitionDate"), 1, id="source.acquisitionDate"),
+        pytest.param(("samples", 0, "source", "bboxWgs84"), [0, 0, 1, 1], id="source.bboxWgs84"),
+        pytest.param(("samples", 0, "source", "service"), "unreviewed", id="source.service-extra"),
+        pytest.param(("samples", 0, "source", "agency"), "unreviewed", id="source.agency-extra"),
+        pytest.param(("samples", 0, "source", "product"), "unreviewed", id="source.product-extra"),
+        pytest.param(("samples", 0, "source", "downloadUrl"), "https://example.invalid/download", id="source.downloadUrl-extra"),
+        pytest.param(("samples", 0, "derivation", "outputSize"), [1, 1], id="derivation.outputSize"),
+        pytest.param(("samples", 0, "derivation", "color"), "AdobeRGB", id="derivation.color"),
+        pytest.param(("samples", 0, "derivation", "jpegQuality"), 1, id="derivation.jpegQuality"),
+        pytest.param(("samples", 0, "derivation", "metadata"), "kept", id="derivation.metadata"),
+        pytest.param(("samples", 0, "guardrails", "threshold"), 0.3, id="guardrails.threshold"),
+        pytest.param(("samples", 0, "guardrails", "classFilter"), ["plane"], id="guardrails.classFilter"),
+        pytest.param(("samples", 0, "guardrails", "precomputedOutputs"), True, id="guardrails.precomputedOutputs"),
+        pytest.param(("samples", 0, "guardrails", "inference"), "server", id="guardrails.inference"),
     ],
 )
 def test_gallery_receipt_rejects_each_closed_contract_mutation(tmp_path: Path, path: tuple[object, ...], value: object) -> None:
@@ -775,23 +796,24 @@ def test_gallery_receipt_rejects_each_closed_contract_mutation(tmp_path: Path, p
         demo_assets.validate_gallery_publication(pages.parent, receipt)
 
 
-@pytest.mark.parametrize("path,operation", [
-    ((), "extra"), ((), "missing"), (("samples", 0), "extra"), (("samples", 0), "missing"),
-    (("samples", 0, "source"), "extra"), (("samples", 0, "source"), "missing"),
-    (("samples", 0, "derivation"), "extra"), (("samples", 0, "derivation"), "missing"),
-    (("samples", 0, "guardrails"), "extra"), (("samples", 0, "guardrails"), "missing"),
+@pytest.mark.parametrize("path,key,operation", [
+    *[pytest.param((), key, operation, id=f"root.{key}-{operation}") for key in ("schemaVersion", "samples") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0), key, operation, id=f"sample.{key}-{operation}") for key in ("bytes", "derivation", "guardrails", "height", "id", "mediaType", "path", "sha256", "source", "title", "width") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0, "source"), key, operation, id=f"source.{key}-{operation}") for key in ("provider", "publicDomainRecord", "year", "acquisitionDate", "bboxWgs84") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0, "derivation"), key, operation, id=f"derivation.{key}-{operation}") for key in ("outputSize", "color", "jpegQuality", "metadata") for operation in ("missing", "extra")],
+    *[pytest.param(("samples", 0, "guardrails"), key, operation, id=f"guardrails.{key}-{operation}") for key in ("threshold", "classFilter", "precomputedOutputs", "inference") for operation in ("missing", "extra")],
 ])
-def test_gallery_receipt_rejects_each_nested_missing_or_extra_key(tmp_path: Path, path: tuple[object, ...], operation: str) -> None:
-    """Every canonical object layer rejects both omission and unreviewed extension."""
+def test_gallery_receipt_rejects_each_nested_missing_or_extra_key(tmp_path: Path, path: tuple[object, ...], key: str, operation: str) -> None:
+    """Every canonical key independently rejects omission and extension."""
     root = Path(__file__).resolve().parents[1]
     payload = json.loads((root / "release/sample-gallery-sources.json").read_text("utf-8"))
     pages = tmp_path / "web" / "samples"; pages.mkdir(parents=True)
     for item in payload["samples"]:
         (pages.parent / item["path"]).write_bytes((root / "demo/web" / item["path"]).read_bytes())
     mutated = deepcopy(payload); target: object = mutated
-    for key in path: target = target[key]  # type: ignore[index]
-    if operation == "extra": target["unreviewed"] = True  # type: ignore[index]
-    else: target.pop(next(iter(target)))  # type: ignore[union-attr]
+    for part in path: target = target[part]  # type: ignore[index]
+    if operation == "extra": target[f"{key}Unreviewed"] = True  # type: ignore[index]
+    else: target.pop(key)  # type: ignore[union-attr]
     receipt = tmp_path / "receipt.json"; receipt.write_text(json.dumps(mutated), encoding="utf-8")
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
         demo_assets.validate_gallery_publication(pages.parent, receipt)

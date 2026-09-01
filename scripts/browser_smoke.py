@@ -489,35 +489,212 @@ def run_superseded_reload(executable_path: Path | None = None, base_url: str | N
             browser.close()
 
 
-def run_manifest_matrix(executable_path: Path | None = None, base_url: str | None = None) -> None:
-    """Exercise every closed catalog layer through the real browser validator."""
-    from playwright.sync_api import sync_playwright
-    mutations = [
-        ("root-extra", [], "extra"), ("root-missing", [], "missing"),
-        ("sample-extra", ["samples", 0], "extra"), ("sample-missing", ["samples", 0], "missing"),
-        ("source-extra", ["samples", 0, "source"], "extra"), ("source-missing", ["samples", 0, "source"], "missing"),
-        ("derivation-extra", ["samples", 0, "derivation"], "extra"), ("derivation-missing", ["samples", 0, "derivation"], "missing"),
-        ("guardrails-extra", ["samples", 0, "guardrails"], "extra"), ("guardrails-missing", ["samples", 0, "guardrails"], "missing"),
-        ("unknown-id", ["samples", 0, "id"], "unknown"), ("duplicate-id", ["samples", 1, "id"], "airfield"),
-        ("external-path", ["samples", 0, "path"], "https://example.invalid/x.jpg"),
-        ("changed-title", ["samples", 0, "title"], "changed"), ("source-year", ["samples", 0, "source", "year"], 1),
-        ("source-bbox", ["samples", 0, "source", "bboxWgs84"], [0,0,1,1]), ("digest", ["samples", 0, "sha256"], "0" * 64),
-        ("dimension", ["samples", 0, "height"], 1), ("derivation-color", ["samples", 0, "derivation", "color"], "other"),
-        ("guardrail-threshold", ["samples", 0, "guardrails", "threshold"], .3), ("precomputed", ["samples", 0, "guardrails", "precomputedOutputs"], True),
-    ]
+def run_byom_superseded_reload(
+    executable_path: Path | None = None, base_url: str | None = None,
+) -> None:
+    """A held BYOM-to-demo reload cannot infer after a later selector wins."""
+    from playwright.sync_api import Route, sync_playwright
+
     server = nullcontext(base_url) if base_url else static_server()
     with server as served_url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
-            for label, path, value in mutations:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            _record_errors(page, requests, messages)
+            page.add_init_script(SRI_STUB_SHIM)
+            page.route(
+                ORT_CDN_URL,
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="application/javascript",
+                    headers={"Access-Control-Allow-Origin": "*"},
+                    body=_scenario_ort_stub(lifecycle=True),
+                ),
+            )
+            held: list[Route] = []
+            hold_reload = False
+
+            def route_airfield(route: Route) -> None:
+                if hold_reload:
+                    held.append(route)
+                    return
+                response = route.fetch()
+                headers = {**response.headers, "cache-control": "no-store"}
+                route.fulfill(response=response, headers=headers)
+
+            page.route("**/samples/airfield.jpg", route_airfield)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+
+            _set_model_file(page, "candidate-valid.onnx")
+            page.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
+            )
+            page.locator("#fileInput").set_input_files(
+                {
+                    "name": "private-selected-image.jpg",
+                    "mimeType": "image/jpeg",
+                    "buffer": (DEMO / "samples/harbor.jpg").read_bytes(),
+                }
+            )
+            page.wait_for_function("document.querySelector('#detectBtn').disabled === false")
+            page.locator("#detectBtn").click()
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            if page.evaluate("globalThis.__ortCreateCount") != 1:
+                raise RuntimeError("BYOM harness did not create exactly one session")
+            before_runs = page.evaluate("globalThis.__demoRunCount")
+            before_inference_requests = [
+                request
+                for request in requests
+                if request == ORT_CDN_URL
+                or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
+            ]
+
+            # The BYOM layer owns the visible original at this point.  Clear
+            # only the dormant demo element so the production selector must
+            # make a fresh request for its closed, canonical airfield path.
+            page.context.new_cdp_session(page).send("Network.clearBrowserCache")
+            page.evaluate("demoOriginalImage.removeAttribute('src')")
+            hold_reload = True
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#sampleState').textContent.includes('Loading')"
+            )
+            if not held:
+                raise RuntimeError("BYOM reload did not hold the selected demo image response")
+            page.locator('[data-sample-id="harbor"]').click()
+            for route in held:
+                route.continue_()
+            page.wait_for_function(
+                "document.querySelector('#sampleState').textContent === 'Original · ready'"
+            )
+            # Give the released stale decode a turn to attempt its old runDemo
+            # continuation; merely observing the newer selector's ready state
+            # would race that vulnerable completion.
+            page.wait_for_timeout(250)
+            if page.locator("#demoOriginalImage").get_attribute("src") != "samples/harbor.jpg":
+                raise RuntimeError("superseded BYOM demo reload restored the held sample")
+            if page.evaluate("globalThis.__demoRunCount") != before_runs:
+                raise RuntimeError("superseded BYOM demo reload started inference")
+            if page.evaluate("globalThis.__ortCreateCount") != 1:
+                raise RuntimeError("superseded BYOM demo reload created another session")
+            after_inference_requests = [
+                request
+                for request in requests
+                if request == ORT_CDN_URL
+                or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
+            ]
+            if after_inference_requests != before_inference_requests:
+                raise RuntimeError("superseded BYOM demo reload requested inference resources")
+            if page.locator("#demoDetectBtn").is_disabled() or page.locator("#demoDetectBtn").inner_text() != "開始 Detect":
+                raise RuntimeError("final superseding sample was not neutral and ready for Detect")
+            if messages:
+                raise RuntimeError("BYOM superseded reload emitted console or page errors")
+        finally:
+            browser.close()
+
+
+def run_manifest_matrix(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+    start: int = 0,
+    count: int | None = None,
+) -> None:
+    """Exercise every closed catalog layer through the real browser validator."""
+    from playwright.sync_api import sync_playwright
+    manifest = json.loads((DEMO / "demo-model.json").read_text(encoding="utf-8"))
+    mutations: list[dict[str, object]] = []
+
+    def add_key_cases(label: str, path: list[object], keys: tuple[str, ...]) -> None:
+        for key in keys:
+            mutations.extend(
+                (
+                    {"label": f"missing:{label}.{key}", "kind": "missing", "path": [*path, key]},
+                    {"label": f"extra:{label}.{key}", "kind": "extra", "path": [*path, key]},
+                )
+            )
+
+    def add_value_case(label: str, path: list[object], value: object) -> None:
+        mutations.append({"label": label, "kind": "replace", "path": path, "value": value})
+
+    # Each object key is independently omitted and extended, then the public
+    # identity/guardrail values themselves are mutated through the shipped JS.
+    add_key_cases("root", [], tuple(manifest))
+    sample = manifest["samples"][0]
+    add_key_cases("sample", ["samples", 0], tuple(sample))
+    add_key_cases("source", ["samples", 0, "source"], tuple(sample["source"]))
+    add_key_cases("derivation", ["samples", 0, "derivation"], tuple(sample["derivation"]))
+    add_key_cases("guardrails", ["samples", 0, "guardrails"], tuple(sample["guardrails"]))
+    for layer in ("model", "input", "output", "provenance", "sanitization", "license"):
+        add_key_cases(layer, [layer], tuple(manifest[layer]))
+
+    add_value_case("schemaVersion", ["schemaVersion"], 99)
+    add_value_case("defaultConfidence", ["defaultConfidence"], 0.3)
+    add_value_case("defaultSampleId", ["defaultSampleId"], "harbor")
+    add_value_case("sample-order", ["samples"], list(reversed(manifest["samples"])))
+    add_value_case("unknown-id", ["samples", 0, "id"], "unknown")
+    add_value_case("duplicate-id", ["samples", 1, "id"], "airfield")
+    for key, value in {
+        "title": "changed",
+        "path": "https://example.invalid/sample.jpg",
+        "bytes": 1,
+        "sha256": "0" * 64,
+        "mediaType": "image/png",
+        "width": 1,
+        "height": 1,
+    }.items():
+        add_value_case(f"sample.{key}", ["samples", 0, key], value)
+    for key, value in {
+        "provider": "unreviewed provider",
+        "publicDomainRecord": "https://example.invalid/source",
+        "year": 1,
+        "acquisitionDate": 1,
+        "bboxWgs84": [0, 0, 1, 1],
+    }.items():
+        add_value_case(f"source.{key}", ["samples", 0, "source", key], value)
+    for key, value in {
+        "outputSize": [1, 1],
+        "color": "AdobeRGB",
+        "jpegQuality": 1,
+        "metadata": "kept",
+    }.items():
+        add_value_case(f"derivation.{key}", ["samples", 0, "derivation", key], value)
+    for key, value in {
+        "threshold": 0.3,
+        "classFilter": ["plane"],
+        "precomputedOutputs": True,
+        "inference": "server",
+    }.items():
+        add_value_case(f"guardrails.{key}", ["samples", 0, "guardrails", key], value)
+    for key, value in {
+        "path": "https://example.invalid/model.onnx",
+        "bytes": 1,
+        "sha256": "0" * 64,
+        "mediaType": "application/octet-stream",
+        "release": "other",
+        "source": "https://example.invalid/upstream.onnx",
+        "sourceSha256": "0" * 64,
+        "license": "unreviewed",
+        "modificationStatus": "modified",
+    }.items():
+        add_value_case(f"model.{key}", ["model", key], value)
+    mutations = mutations[start:] if count is None else mutations[start : start + count]
+    if not mutations:
+        raise RuntimeError("manifest matrix selected no cases")
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            for mutation in mutations:
                 page = browser.new_page()
                 requests: list[str] = []; messages: list[str] = []; _record_errors(page, requests, messages)
-                page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
-                outcome = page.evaluate("""async ({path, value}) => { const manifest = await (await fetch('demo-model.json')).json(); let target = manifest; if (value === 'extra' || value === 'missing') { for (const key of path) target = target[key]; if (value === 'extra') target.unreviewed = true; else delete target[Object.keys(target)[0]]; } else { for (const key of path.slice(0, -1)) target = target[key]; target[path[path.length - 1]] = value; } try { DemoAssets.validateManifest(manifest); return 'accepted'; } catch (error) { return error.message; } }""", {"path": path, "value": value})
+                page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
+                outcome = page.evaluate("""async (mutation) => { const manifest = await (await fetch('demo-model.json')).json(); let target = manifest; for (const key of mutation.path.slice(0, -1)) target = target[key]; const key = mutation.path[mutation.path.length - 1]; if (mutation.kind === 'missing') delete target[key]; else if (mutation.kind === 'extra') target[`${key}Unreviewed`] = true; else target[key] = mutation.value; try { DemoAssets.validateManifest(manifest); return 'accepted'; } catch (error) { return error.message; } }""", mutation)
                 if outcome != "DEMO_MANIFEST":
-                    raise RuntimeError(f"manifest matrix {label} did not fail closed: {outcome!r}")
+                    raise RuntimeError(f"manifest matrix {mutation['label']} did not fail closed: {outcome!r}")
                 if DEMO_MODEL_PATH in _request_paths(requests) or ORT_CDN_URL in requests:
-                    raise RuntimeError(f"manifest matrix {label} started inference resources")
+                    raise RuntimeError(f"manifest matrix {mutation['label']} started inference resources")
                 page.close()
         finally:
             browser.close()
@@ -2020,6 +2197,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--screenshot", type=Path)
     parser.add_argument("--mobile-screenshot", type=Path)
     parser.add_argument("--base-url", help="use an already-running static server")
+    parser.add_argument("--matrix-start", type=int, default=0)
+    parser.add_argument("--matrix-count", type=int)
     parser.add_argument(
         "--scenario",
         choices=(
@@ -2027,6 +2206,7 @@ def main(argv: list[str] | None = None) -> int:
             "held-decode",
             "invalid-selector",
             "superseded-reload",
+            "byom-superseded-reload",
             "manifest-matrix",
             "real-demo-success",
             "stubbed-cache",
@@ -2055,8 +2235,15 @@ def main(argv: list[str] | None = None) -> int:
             run_invalid_selector(args.executable_path, args.base_url)
         elif args.scenario == "superseded-reload":
             run_superseded_reload(args.executable_path, args.base_url)
+        elif args.scenario == "byom-superseded-reload":
+            run_byom_superseded_reload(args.executable_path, args.base_url)
         elif args.scenario == "manifest-matrix":
-            run_manifest_matrix(args.executable_path, args.base_url)
+            run_manifest_matrix(
+                args.executable_path,
+                args.base_url,
+                args.matrix_start,
+                args.matrix_count,
+            )
         elif args.scenario == "real-demo-success":
             run_real_demo_success(
                 args.executable_path,
@@ -2097,6 +2284,7 @@ def main(argv: list[str] | None = None) -> int:
             run_held_decode(args.executable_path, args.base_url)
             run_invalid_selector(args.executable_path, args.base_url)
             run_superseded_reload(args.executable_path, args.base_url)
+            run_byom_superseded_reload(args.executable_path, args.base_url)
             run_manifest_matrix(args.executable_path, args.base_url)
             run_real_demo_success(
                 args.executable_path,
@@ -2129,6 +2317,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[OK] Invalid sample selector fails closed and recovers")
     elif args.scenario == "superseded-reload":
         print("[OK] Superseded sample reload remains neutral")
+    elif args.scenario == "byom-superseded-reload":
+        print("[OK] BYOM-to-demo superseded reload remains neutral")
     elif args.scenario == "manifest-matrix":
         print("[OK] Browser manifest catalog matrix fails closed")
     elif args.scenario == "real-demo-success":
