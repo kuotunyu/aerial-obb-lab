@@ -266,8 +266,10 @@ async function selectDemoSample(sampleId) {
     sampleState.textContent = "Original · ready";
     setInitialSummary();
     setStatus("原圖已載入 · 尚未 Detect。");
+    return generation;
   } catch (_error) {
     if (isCurrentGeneration(generation)) reportFailure("IMAGE_DECODE");
+    return null;
   }
 }
 
@@ -615,8 +617,8 @@ async function runDemo() {
     return;
   }
   if (!state.image || state.image !== demoOriginalImage || demoOriginalImage.getAttribute("src") !== sample.path) {
-    await selectDemoSample(sample.id);
-    if (!state.image || state.image !== demoOriginalImage || !isCurrentGeneration(state.generation)) return;
+    const reloadGeneration = await selectDemoSample(sample.id);
+    if (!reloadGeneration || !isCurrentGeneration(reloadGeneration)) return;
     return runDemo();
   }
   state.source = "demo";

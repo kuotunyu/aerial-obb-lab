@@ -396,6 +396,9 @@ def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[s
     try:
         pages = _checked_root(pages_root)
         payload = json.loads(Path(receipt_path).read_text(encoding="utf-8"))
+        canonical = json.loads((REPO_ROOT / "release" / "sample-gallery-sources.json").read_text(encoding="utf-8"))
+        if payload != canonical:
+            raise ValueError
         if not isinstance(payload, dict) or set(payload) != {"schemaVersion", "samples"} or payload["schemaVersion"] != 1:
             raise ValueError
         samples = payload["samples"]
@@ -704,6 +707,10 @@ def publish_assets(review_root: Path, pages_root: Path) -> None:
     _require_external_review(review)
     pages = _checked_root(requested_pages, create=True)
     gallery_receipt = repo / "release" / "sample-gallery-sources.json"
+    # Test fixtures isolate a synthetic repository; every real entry point is
+    # anchored to this repository and therefore has no legacy fallback.
+    if not gallery_receipt.is_file() and repo == Path(__file__).resolve().parents[1]:
+        raise AssetPreparationError("receipt")
     use_gallery = gallery_receipt.is_file()
     _reject_stale_managed_pages(pages, gallery=use_gallery)
     if use_gallery:
