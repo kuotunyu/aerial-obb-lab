@@ -1,14 +1,58 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import re
+import shutil
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _copy_release_candidate(tmp_path: Path) -> Path:
+    target = tmp_path / "candidate"
+    manifest = json.loads(
+        (ROOT / "release" / "artifact-manifest.json").read_text(encoding="utf-8")
+    )
+    relative_paths = {
+        "release/artifact-manifest.json",
+        "demo/web/demo-model.json",
+        "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+        *(entry["path"] for entry in manifest["bundled_third_party_artifacts"]),
+        *(entry["path"] for entry in manifest["reviewed_public_artifacts"]),
+    }
+    for relative in relative_paths:
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, destination)
+    return target
+
+
+def _write_json(path: Path, value: dict) -> None:
+    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def _refresh_reviewed_digest(root: Path, relative: str) -> None:
+    manifest_path = root / "release" / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = next(
+        item for item in manifest["reviewed_public_artifacts"] if item["path"] == relative
+    )
+    payload = (root / relative).read_bytes()
+    if entry.get("digest_mode") == "canonical-lf":
+        payload = (
+            payload.decode("utf-8")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .encode("utf-8")
+        )
+    entry["bytes"] = len(payload)
+    entry["sha256"] = hashlib.sha256(payload).hexdigest()
+    _write_json(manifest_path, manifest)
 
 
 def load_release_check():
@@ -403,6 +447,12 @@ def test_release_checklist_records_completed_clean_history_publication() -> None
         assert token in checklist
     assert "publish the reviewed code-only tree from a clean root commit" in checklist
     assert "[x] Restore branch protection" in checklist
+    for pending in (
+        "[ ] Current candidate: run the complete pytest suite",
+        "[ ] Current candidate: build and verify the strict committed clean export",
+        "[ ] Current candidate: complete the final branch audit and whole-branch review",
+    ):
+        assert pending in checklist
 
 
 def test_committed_tree_contains_only_the_approved_demo_model_and_no_dota_visual() -> None:
@@ -424,6 +474,13 @@ def test_model_release_exception_is_exact_manifest_bound_and_source_safe() -> No
                 "path": approved,
                 "bytes": 10207127,
                 "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+                "source_url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
+                "source_sha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38",
+                "modification_status": "metadata-only",
+                "modification_date": "2026-08-31",
+                "sanitization_record": "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+                "license": "AGPL-3.0-only",
+                "license_file": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
             }
         ],
         "excluded_historical_artifacts": [],
@@ -437,6 +494,111 @@ def test_model_release_exception_is_exact_manifest_bound_and_source_safe() -> No
     assert release_check.verify_code_only_paths([approved], manifest) == [
         f"public release model exception is not exact: {approved}"
     ]
+
+
+@pytest.mark.parametrize(
+    ("field", "mutation"),
+    [
+        ("license", "MIT"),
+        ("license_file", "demo/web/third_party/OTHER.txt"),
+        ("sanitization_record", "demo/web/third_party/other.json"),
+        ("modification_date", "2026-09-01"),
+        ("source_url", "https://example.invalid/model.onnx"),
+        ("source_sha256", "0" * 64),
+        ("license", None),
+        ("source_url", None),
+    ],
+)
+def test_release_artifact_contract_rejects_derivative_identity_mutation(
+    tmp_path: Path, field: str, mutation: str | None
+) -> None:
+    release_check = load_release_check()
+    root = _copy_release_candidate(tmp_path)
+    manifest_path = root / "release" / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = next(
+        item
+        for item in manifest["bundled_third_party_artifacts"]
+        if item["path"] == release_check.APPROVED_DEMO_MODEL
+    )
+    if mutation is None:
+        entry.pop(field)
+    else:
+        entry[field] = mutation
+    _write_json(manifest_path, manifest)
+
+    errors = release_check.verify_artifacts(root)
+    assert (
+        f"public release model exception is not exact: {release_check.APPROVED_DEMO_MODEL}"
+        in errors
+    )
+    assert (
+        f"{release_check.APPROVED_DEMO_MODEL}: exact manifest-bound model entry is missing"
+        in errors
+    )
+    if mutation is None:
+        assert f"{release_check.APPROVED_DEMO_MODEL}: missing artifact field {field}" in errors
+
+
+@pytest.mark.parametrize(
+    ("document", "section", "field", "mutation", "expected_error"),
+    [
+        (
+            "demo/web/demo-model.json",
+            "model",
+            "license",
+            "MIT",
+            "demo-model.json: model provenance contract differs from artifact manifest",
+        ),
+        (
+            "demo/web/demo-model.json",
+            "sanitization",
+            "path",
+            "third_party/other.json",
+            "demo-model.json: sanitization contract differs from artifact manifest",
+        ),
+        (
+            "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+            "license",
+            "spdx",
+            "MIT",
+            "sanitization receipt: license contract differs from artifact manifest",
+        ),
+        (
+            "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+            "source",
+            "url",
+            "https://example.invalid/model.onnx",
+            "sanitization receipt: source identity differs from artifact manifest",
+        ),
+        (
+            "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+            "transformation",
+            "modifiedField",
+            "ModelProto.graph.name",
+            "sanitization receipt: modification record is incomplete",
+        ),
+    ],
+)
+def test_release_artifact_contract_rejects_cross_record_identity_mutation(
+    tmp_path: Path,
+    document: str,
+    section: str,
+    field: str,
+    mutation: str,
+    expected_error: str,
+) -> None:
+    release_check = load_release_check()
+    root = _copy_release_candidate(tmp_path)
+    document_path = root / document
+    payload = json.loads(document_path.read_text(encoding="utf-8"))
+    payload[section][field] = mutation
+    _write_json(document_path, payload)
+    if document.startswith("demo/web/third_party/"):
+        _refresh_reviewed_digest(root, document)
+
+    errors = release_check.verify_artifacts(root)
+    assert expected_error in errors
 
 
 def test_private_runtime_and_absolute_user_paths_fail_closed(tmp_path: Path) -> None:

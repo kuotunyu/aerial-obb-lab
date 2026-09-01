@@ -100,3 +100,6 @@ def test_release_checklist_separates_historical_publication_from_current_remote_
     assert "separately\n  authorized remote gates" in checklist
     assert "before changing the default branch" not in checklist
     assert "before changing\n  the default branch" not in checklist
+    assert "[ ] Current candidate: run the complete pytest suite" in checklist
+    assert "[ ] Current candidate: build and verify the strict committed clean export" in checklist
+    assert "[ ] Current candidate: complete the final branch audit and whole-branch review" in checklist

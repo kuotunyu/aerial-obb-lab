@@ -86,6 +86,17 @@ FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite"
 APPROVED_DEMO_MODEL = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
 APPROVED_DEMO_MODEL_BYTES = 10207127
 APPROVED_DEMO_MODEL_SHA256 = "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
+SOURCE_MODEL_SHA256 = "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"
+SOURCE_MODEL_URL = "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx"
+APPROVED_MODEL_LICENSE = "AGPL-3.0-only"
+APPROVED_MODEL_LICENSE_FILE = "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt"
+APPROVED_MODEL_LICENSE_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+APPROVED_SANITIZATION_RECORD = (
+    "demo/web/third_party/yolo26n-obb-privacy-sanitization.json"
+)
+APPROVED_MODIFICATION_STATUS = "metadata-only"
+APPROVED_MODIFICATION_DATE = "2026-08-31"
+APPROVED_MODIFIED_FIELD = "ModelProto.metadata_props[0].value"
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
@@ -107,9 +118,98 @@ def _unsafe_member(raw: str) -> bool:
 def _approved_model_is_manifest_bound(manifest: dict | None) -> bool:
     entries = (manifest or {}).get("bundled_third_party_artifacts", [])
     matches = [entry for entry in entries if entry.get("path") == APPROVED_DEMO_MODEL]
-    return len(matches) == 1 and (
-        matches[0].get("bytes"), matches[0].get("sha256")
-    ) == (APPROVED_DEMO_MODEL_BYTES, APPROVED_DEMO_MODEL_SHA256)
+    expected = {
+        "path": APPROVED_DEMO_MODEL,
+        "bytes": APPROVED_DEMO_MODEL_BYTES,
+        "sha256": APPROVED_DEMO_MODEL_SHA256,
+        "source_url": SOURCE_MODEL_URL,
+        "source_sha256": SOURCE_MODEL_SHA256,
+        "modification_status": APPROVED_MODIFICATION_STATUS,
+        "modification_date": APPROVED_MODIFICATION_DATE,
+        "sanitization_record": APPROVED_SANITIZATION_RECORD,
+        "license": APPROVED_MODEL_LICENSE,
+        "license_file": APPROVED_MODEL_LICENSE_FILE,
+    }
+    return len(matches) == 1 and all(
+        matches[0].get(field) == value for field, value in expected.items()
+    )
+
+
+def _archive_demo_contract_errors(bundle: zipfile.ZipFile) -> list[str]:
+    """Bind the approved exception to its same-archive manifest and receipt."""
+    demo = json.loads(bundle.read("demo/web/demo-model.json").decode("utf-8"))
+    receipt = json.loads(bundle.read(APPROVED_SANITIZATION_RECORD).decode("utf-8"))
+    errors: list[str] = []
+    expected_relative = APPROVED_DEMO_MODEL.removeprefix("demo/web/")
+    if (
+        demo.get("model", {}).get("path"),
+        demo.get("model", {}).get("bytes"),
+        demo.get("model", {}).get("sha256"),
+        demo.get("model", {}).get("source"),
+        demo.get("model", {}).get("sourceSha256"),
+        demo.get("model", {}).get("modificationStatus"),
+        demo.get("model", {}).get("license"),
+        demo.get("model", {}).get("release"),
+    ) != (
+        expected_relative,
+        APPROVED_DEMO_MODEL_BYTES,
+        APPROVED_DEMO_MODEL_SHA256,
+        SOURCE_MODEL_URL,
+        SOURCE_MODEL_SHA256,
+        APPROVED_MODIFICATION_STATUS,
+        APPROVED_MODEL_LICENSE,
+        "v8.4.0",
+    ):
+        errors.append("demo-model.json: approved derivative contract differs")
+    if (
+        demo.get("license", {}).get("path"),
+        demo.get("license", {}).get("sha256"),
+        demo.get("sanitization", {}).get("path"),
+        demo.get("sanitization", {}).get("modificationDate"),
+        demo.get("sanitization", {}).get("modifiedField"),
+        demo.get("sanitization", {}).get("removedMetadataEntries"),
+    ) != (
+        APPROVED_MODEL_LICENSE_FILE.removeprefix("demo/web/"),
+        APPROVED_MODEL_LICENSE_SHA256,
+        APPROVED_SANITIZATION_RECORD.removeprefix("demo/web/"),
+        APPROVED_MODIFICATION_DATE,
+        APPROVED_MODIFIED_FIELD,
+        1,
+    ):
+        errors.append("demo-model.json: license/sanitization contract differs")
+    if (
+        receipt.get("derivative", {}).get("path"),
+        receipt.get("derivative", {}).get("bytes"),
+        receipt.get("derivative", {}).get("sha256"),
+        receipt.get("source", {}).get("url"),
+        receipt.get("source", {}).get("sha256"),
+        receipt.get("license", {}).get("path"),
+        receipt.get("license", {}).get("sha256"),
+        receipt.get("license", {}).get("spdx"),
+    ) != (
+        expected_relative,
+        APPROVED_DEMO_MODEL_BYTES,
+        APPROVED_DEMO_MODEL_SHA256,
+        SOURCE_MODEL_URL,
+        SOURCE_MODEL_SHA256,
+        APPROVED_MODEL_LICENSE_FILE.removeprefix("demo/web/"),
+        APPROVED_MODEL_LICENSE_SHA256,
+        APPROVED_MODEL_LICENSE,
+    ):
+        errors.append("sanitization receipt: approved identity differs")
+    if (
+        receipt.get("transformation", {}).get("modificationStatus"),
+        receipt.get("transformation", {}).get("modificationDate"),
+        receipt.get("transformation", {}).get("modifiedField"),
+        receipt.get("transformation", {}).get("removedMetadataEntries"),
+    ) != (
+        APPROVED_MODIFICATION_STATUS,
+        APPROVED_MODIFICATION_DATE,
+        APPROVED_MODIFIED_FIELD,
+        1,
+    ):
+        errors.append("sanitization receipt: modification record differs")
+    return errors
 
 
 def archive_policy_errors(
@@ -162,6 +262,7 @@ def inspect_archive(archive: Path) -> list[str]:
 
             manifest = json.loads(bundle.read("release/artifact-manifest.json").decode("utf-8"))
             errors.extend(archive_policy_errors(names, manifest))
+            errors.extend(_archive_demo_contract_errors(bundle))
             artifacts = manifest.get("bundled_third_party_artifacts", [])
             listed = {entry.get("path") for entry in artifacts}
             maximum = int(manifest.get("policy", {}).get("maximum_unlisted_tracked_file_bytes", 0))

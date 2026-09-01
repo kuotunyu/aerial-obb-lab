@@ -6,11 +6,19 @@ model and one official sample image; it remains pending separate remote review g
 Hugging Face artifacts remain Private. No tag, GitHub Release, replacement Space, DOTA data, or
 fine-tuned checkpoint was published.
 
-## Automated gates
+## Historical v1.0.0 completed gates
 
-- [x] Locked Python 3.11 CPU environment and wheel install pass in a clean Windows export; the
+- [x] Historical v1.0.0: locked Python 3.11 CPU environment and wheel install passed in a clean
+  Windows export; the
   same commands are defined in the Ubuntu/Windows CI matrix.
-- [x] Full pytest suite passes without Torch, CUDA, DOTA, tokens, or downloaded weights.
+- [x] Historical v1.0.0: the full pytest suite passed without Torch, CUDA, DOTA, tokens, or
+  downloaded weights.
+- [x] Historical v1.0.0: wheel and source distribution built and contained only intended package files.
+- [x] Historical v1.0.0: clean committed export repeated tests, package, link, privacy, artifact,
+  and browser gates.
+
+## Current Pages candidate local gates
+
 - [x] Claim/evidence arithmetic and bounded Markdown claim blocks pass.
 - [x] Browser preprocess, output schema, decode, angle, and rotated corners match Python parity fixtures.
 - [x] Headless Chromium shows the official original first, runs genuine local inference only after
@@ -30,10 +38,13 @@ fine-tuned checkpoint was published.
 - [x] Notebooks have zero outputs/execution counts and remain synchronized with Jupytext sources.
 - [x] Tracked files and Git history pass token-pattern/privacy checks.
 - [x] Local Markdown links, static assets, loopback HTTP, and JavaScript syntax pass.
-- [x] Wheel and source distribution build and contain only intended package files.
-- [x] Clean committed export repeats tests, package, link, privacy, artifact, and browser gates.
-- [x] Local CPU, full browser, artifact, license, privacy, and clean-export gates pass; official
-  JavaScript actions use their current Node 24-compatible majors.
+- [ ] Current candidate: run the complete pytest suite without Torch, CUDA, DOTA, tokens, or
+  downloaded weights.
+- [ ] Current candidate: build and verify the strict committed clean export, including wheel and
+  source-distribution rebuild, install, import, link, privacy, artifact, and browser gates.
+- [ ] Current candidate: repeat the complete local CPU, browser, artifact, license, privacy, and
+  clean-export gates from the final committed bytes; official JavaScript actions must retain their
+  current Node 24-compatible majors.
 - [ ] Hosted Ubuntu CPU, Windows CPU, and live-demo browser checks remain a separate authorized remote gate.
 
 ## Manual release audit
@@ -47,8 +58,10 @@ fine-tuned checkpoint was published.
   latency, production SLA, or certification claim.
 - [x] DOTA academic-only, underlying image-source, AGPL/Enterprise, and external-artifact boundaries are
   visible in `THIRD_PARTY_NOTICES.md`.
-- [x] Branch, HEAD, status, refs, author, committer, trailers, ignored/private paths, and remotes are
-  audited after the final commit.
+- [x] Historical v1.0.0: branch, HEAD, status, refs, author, committer, trailers, ignored/private
+  paths, and remotes were audited after its final commit.
+- [ ] Current candidate: complete the final branch audit and whole-branch review after the Task 5
+  verification commit.
 - [x] The historical public branch began at a clean code-only root with no DOTA-derived image,
   private document, owner handle, or private Hugging Face repo identifier.
 - [x] The current candidate adds only the reviewed derivative/sample/license/sanitization inventory;

@@ -1,20 +1,69 @@
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 import subprocess
 import zipfile
+
+import pytest
 
 from scripts.clean_export_check import (
     DEFAULT_OUTPUT,
     REQUIRED_MEMBERS,
     archive_policy_errors,
     distribution_paths,
+    inspect_archive,
+    main,
     verify_snapshot,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _approved_manifest() -> dict:
+    return {
+        "bundled_third_party_artifacts": [
+            {
+                "path": "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+                "bytes": 10207127,
+                "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+                "source_url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
+                "source_sha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38",
+                "modification_status": "metadata-only",
+                "modification_date": "2026-08-31",
+                "sanitization_record": "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+                "license": "AGPL-3.0-only",
+                "license_file": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+            }
+        ]
+    }
+
+
+def _mutated_git_archive(tmp_path: Path, field: str, value: str) -> Path:
+    source = tmp_path / "source.zip"
+    target = tmp_path / "mutated.zip"
+    subprocess.run(
+        ["git", "archive", "--format=zip", f"--output={source}", "HEAD"],
+        cwd=ROOT,
+        check=True,
+    )
+    with zipfile.ZipFile(source) as incoming, zipfile.ZipFile(target, "w") as outgoing:
+        for info in incoming.infolist():
+            payload = incoming.read(info.filename)
+            if info.filename == "release/artifact-manifest.json":
+                manifest = json.loads(payload.decode("utf-8"))
+                model = next(
+                    item
+                    for item in manifest["bundled_third_party_artifacts"]
+                    if item["path"]
+                    == "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+                )
+                model[field] = value
+                payload = (json.dumps(manifest, indent=2) + "\n").encode("utf-8")
+            outgoing.writestr(info, payload)
+    return target
 
 
 def test_archive_policy_rejects_private_and_runtime_paths() -> None:
@@ -87,15 +136,7 @@ def test_archive_policy_rejects_unapproved_model_and_dota_visuals() -> None:
 
 def test_clean_export_admits_only_the_reviewed_derivative_demo_model() -> None:
     approved_demo_model = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
-    manifest = {
-        "bundled_third_party_artifacts": [
-            {
-                "path": approved_demo_model,
-                "bytes": 10207127,
-                "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
-            }
-        ]
-    }
+    manifest = _approved_manifest()
 
     assert archive_policy_errors(["README.md", approved_demo_model], manifest) == []
     assert archive_policy_errors(
@@ -105,6 +146,47 @@ def test_clean_export_admits_only_the_reviewed_derivative_demo_model() -> None:
     assert archive_policy_errors(["README.md", approved_demo_model], {}) == [
         f"model binary path: {approved_demo_model}"
     ]
+
+
+@pytest.mark.parametrize(
+    ("field", "mutation"),
+    [
+        ("license", "MIT"),
+        ("license_file", "demo/web/third_party/OTHER.txt"),
+        ("sanitization_record", "demo/web/third_party/other.json"),
+        ("modification_date", "2026-09-01"),
+        ("source_url", "https://example.invalid/model.onnx"),
+        ("source_sha256", "0" * 64),
+        ("license", None),
+        ("source_url", None),
+    ],
+)
+def test_clean_export_rejects_derivative_identity_mutation(
+    field: str, mutation: str | None
+) -> None:
+    approved_demo_model = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+    manifest = _approved_manifest()
+    if mutation is None:
+        manifest["bundled_third_party_artifacts"][0].pop(field)
+    else:
+        manifest["bundled_third_party_artifacts"][0][field] = mutation
+
+    assert archive_policy_errors([approved_demo_model], manifest) == [
+        f"model binary path: {approved_demo_model}"
+    ]
+
+
+def test_inspect_only_rejects_mutated_derivative_identity(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    archive = _mutated_git_archive(tmp_path, "license", "MIT")
+
+    assert (
+        "model binary path: demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+        in inspect_archive(archive)
+    )
+    assert main(["--inspect-only", "--output", str(archive)]) == 1
+    assert "model binary path" in capsys.readouterr().err
 
 
 def test_clean_export_keeps_its_own_gate_and_real_demo_assets() -> None:
