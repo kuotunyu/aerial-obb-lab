@@ -482,6 +482,8 @@ def acquire_assets(review_root: Path, transport: Callable[[AssetSpec], tuple[byt
 
 def _git_worktree_roots(repo_root: Path) -> set[Path]:
     roots = {repo_root.resolve()}
+    if not (repo_root / ".git").exists():
+        return roots
     try:
         command = ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"]
         completed = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=False)

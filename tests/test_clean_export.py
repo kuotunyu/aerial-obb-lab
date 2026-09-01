@@ -42,26 +42,60 @@ def _approved_manifest() -> dict:
     }
 
 
-def _committed_candidate_archive(tmp_path: Path) -> Path:
+def _committed_candidate_archive(
+    tmp_path: Path, source_root: Path = ROOT
+) -> Path:
+    if not (source_root / ".git").exists():
+        archive = tmp_path / "candidate.zip"
+        ignored_parts = {
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            ".superpowers",
+            "__pycache__",
+            "build",
+            "dist",
+        }
+        with zipfile.ZipFile(
+            archive, "w", compression=zipfile.ZIP_DEFLATED
+        ) as bundle:
+            for source in sorted(source_root.rglob("*")):
+                relative = source.relative_to(source_root)
+                if (
+                    not source.is_file()
+                    or source.is_symlink()
+                    or ignored_parts.intersection(relative.parts)
+                ):
+                    continue
+                info = zipfile.ZipInfo(
+                    relative.as_posix(), date_time=(1980, 1, 1, 0, 0, 0)
+                )
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = (0o100644 & 0xFFFF) << 16
+                bundle.writestr(info, source.read_bytes())
+        return archive
+
     repository = tmp_path / "candidate"
     repository.mkdir()
     base_archive = tmp_path / "base.zip"
     subprocess.run(
         ["git", "archive", "--format=zip", f"--output={base_archive}", "HEAD"],
-        cwd=ROOT,
+        cwd=source_root,
         check=True,
     )
     with zipfile.ZipFile(base_archive) as bundle:
         bundle.extractall(repository)
 
     modified = subprocess.check_output(
-        ["git", "diff", "HEAD", "--name-only", "-z"], cwd=ROOT, text=False
+        ["git", "diff", "HEAD", "--name-only", "-z"],
+        cwd=source_root,
+        text=False,
     ).split(b"\0")
     for raw in modified:
         if not raw:
             continue
         relative = raw.decode("utf-8")
-        source = ROOT / relative
+        source = source_root / relative
         destination = repository / relative
         if source.is_file():
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -90,6 +124,35 @@ def _committed_candidate_archive(tmp_path: Path) -> Path:
         check=True,
     )
     return archive
+
+
+def _repo_external_snapshot(tmp_path: Path) -> Path:
+    snapshot = tmp_path / "snapshot"
+    if (ROOT / ".git").exists():
+        source = tmp_path / "source.zip"
+        subprocess.run(
+            ["git", "archive", "--format=zip", f"--output={source}", "HEAD"],
+            cwd=ROOT,
+            check=True,
+        )
+        with zipfile.ZipFile(source) as bundle:
+            bundle.extractall(snapshot)
+    else:
+        shutil.copytree(
+            ROOT,
+            snapshot,
+            ignore=shutil.ignore_patterns(
+                ".git",
+                ".venv",
+                ".pytest_cache",
+                ".superpowers",
+                "__pycache__",
+                "build",
+                "dist",
+            ),
+        )
+    assert not (snapshot / ".git").exists()
+    return snapshot
 
 
 def _mutated_git_archive(tmp_path: Path, field: str, value: str) -> Path:
@@ -285,6 +348,20 @@ def test_pristine_committed_archive_passes_inspect_only(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     archive = _committed_candidate_archive(tmp_path)
+
+    assert inspect_archive(archive) == []
+    assert main(["--inspect-only", "--output", str(archive)]) == 0
+    assert "[OK] committed clean export" in capsys.readouterr().out
+
+
+def test_pristine_exported_snapshot_passes_inspect_only_without_git_metadata(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    snapshot = _repo_external_snapshot(tmp_path)
+    archive_root = tmp_path / "archive-build"
+    archive_root.mkdir()
+
+    archive = _committed_candidate_archive(archive_root, source_root=snapshot)
 
     assert inspect_archive(archive) == []
     assert main(["--inspect-only", "--output", str(archive)]) == 0

@@ -544,6 +544,71 @@ def test_publish_rejects_review_root_inside_git_and_wrong_pages_root(tmp_path: P
         publish_assets(external_review, repo_root / "wrong-pages")
 
 
+def test_external_review_scope_works_without_git_and_contains_snapshot_root(
+    tmp_path: Path,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot_root = tmp_path / "snapshot"
+    snapshot_root.mkdir()
+    monkeypatch.setattr(demo_assets, "REPO_ROOT", snapshot_root)
+    external_review = tmp_path / "external-review"
+
+    receipts = acquire_assets(external_review, fake_transport)
+
+    assert set(receipts) == {"boats-image", "obb-model", "ultralytics-license"}
+    calls: list[str] = []
+
+    def recording_transport(spec: AssetSpec) -> tuple[bytes, tuple[str, ...], str]:
+        calls.append(spec.asset_id)
+        return fake_transport(spec)
+
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_SCOPE"):
+        acquire_assets(snapshot_root / "review", recording_transport)
+    assert calls == []
+
+
+def test_external_review_scope_rejects_every_real_git_worktree(
+    tmp_path: Path,
+    fake_transport: FakeTransport,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    linked_root = tmp_path / "linked"
+    repo_root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo_root, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Release Test",
+            "-c",
+            "user.email=release-test@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+        ],
+        cwd=repo_root,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "worktree", "add", "-qb", "linked-review", str(linked_root)],
+        cwd=repo_root,
+        check=True,
+    )
+    monkeypatch.setattr(demo_assets, "REPO_ROOT", repo_root)
+    calls: list[str] = []
+
+    def recording_transport(spec: AssetSpec) -> tuple[bytes, tuple[str, ...], str]:
+        calls.append(spec.asset_id)
+        return fake_transport(spec)
+
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_SCOPE"):
+        acquire_assets(linked_root / "review", recording_transport)
+    assert calls == []
+
+
 def test_publish_rejects_stale_managed_page_leaf(tmp_path: Path, fake_transport: FakeTransport, monkeypatch: pytest.MonkeyPatch) -> None:
     repo_root = tmp_path / "repo"; repo_root.mkdir()
     subprocess.run(
@@ -643,6 +708,14 @@ def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.Capt
 
 def test_git_worktree_roots_decodes_utf8_bytes_independent_of_host_locale(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     unicode_root = tmp_path / "工作區"
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=tmp_path,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=False,
+    )
 
     def fake_run(*_args: object, **kwargs: object) -> SimpleNamespace:
         assert kwargs == {
