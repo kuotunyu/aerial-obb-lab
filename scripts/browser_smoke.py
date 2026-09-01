@@ -326,6 +326,8 @@ def assert_real_demo_initial(page: object, requests: list[str], messages: list[s
         raise RuntimeError(f"real demo initial summary is wrong: {summary!r}")
     if page.locator("#demoDetectBtn").inner_text() != "開始 Detect":
         raise RuntimeError("real demo primary action is not exact")
+    if page.locator("#sampleState").inner_text() != "Original · ready":
+        raise RuntimeError("official sample initial state is not exact")
     if not page.locator("#viewToggleBtn").is_hidden():
         raise RuntimeError("original/result toggle is visible before a completed result")
     _assert_empty_disabled_result_state(page)
@@ -367,6 +369,8 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
         "document.querySelector('#status').dataset.kind === 'success'",
         timeout=120_000,
     )
+    if page.locator("#status").inner_text() != "完成 · 可調整 filters。":
+        raise RuntimeError("completed demo live status is not count-neutral")
     if page.locator("#provenanceValue").inner_text() != DEMO_PROVENANCE:
         raise RuntimeError("real demo provenance is not exact")
     runtime = page.locator("#runtimeValue").inner_text()
@@ -393,6 +397,8 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
         raise RuntimeError("visible table and canvas description are not synchronized")
     if page.locator("#demoDetectBtn").inner_text() != "再次 Detect":
         raise RuntimeError("completed demo primary action is not exact")
+    if page.locator("#sampleState").inner_text() != "Result · ready":
+        raise RuntimeError("official sample result state is not exact")
     if page.locator("#viewToggleBtn").inner_text() != "查看原圖":
         raise RuntimeError("completed demo toggle is not exact")
     if page.locator("#resultControls").is_hidden():
@@ -459,10 +465,15 @@ def assert_demo_cached_filters(
     """Re-filter the completed output without another session.run."""
     runtime = page.locator("#runtimeValue").inner_text()
     request_count = len(requests)
+    completion_status = page.locator("#status").inner_text()
+    initial_count = int(page.locator("#summaryCount").inner_text())
+    if completion_status != "完成 · 可調整 filters。" or initial_count <= 0:
+        raise RuntimeError("cached-filter baseline lacks count-neutral completed state")
     page.locator("#confSlider").evaluate(
         "slider => { slider.value = '0.90'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
     )
     plane = page.locator('.class-cb[value="0"]')
+    page.evaluate("globalThis.__obbStrokedPolygons = []")
     plane.check()
     if page.locator("#resultsBody tr[data-empty='true']").count() != 1:
         raise RuntimeError("empty cached filter lacks one explicit empty state")
@@ -470,6 +481,12 @@ def assert_demo_cached_filters(
         "目前篩選條件下沒有 detections；canvas 沒有 oriented polygons。"
     ):
         raise RuntimeError("empty cached table and canvas description are not synchronized")
+    if page.locator("#summaryCount").inner_text() != "0":
+        raise RuntimeError("empty cached filter did not synchronize the summary count")
+    if page.evaluate("globalThis.__obbStrokedPolygons") != []:
+        raise RuntimeError("empty cached filter retained rendered polygons")
+    if page.locator("#status").inner_text() != completion_status:
+        raise RuntimeError("cached empty filter changed the count-neutral live status")
     plane.uncheck()
     page.locator("#confSlider").evaluate(
         "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
@@ -483,6 +500,8 @@ def assert_demo_cached_filters(
     row_values = [row.locator("td").all_text_contents() for row in rows.all()]
     if any(not row or row[0] != "ship" for row in row_values):
         raise RuntimeError("cached class filter retained a non-ship table row")
+    if int(page.locator("#summaryCount").inner_text()) != len(row_values):
+        raise RuntimeError("cached class filter did not synchronize the summary count")
     description = page.locator("#canvasDescription").inner_text()
     if any(
         f"class={row[0]}" not in description or f"confidence={row[1]}" not in description
@@ -531,6 +550,8 @@ def assert_demo_cached_filters(
         raise RuntimeError("cached filters requested another asset")
     if page.locator("#runtimeValue").inner_text() != runtime:
         raise RuntimeError("cached filters changed the completed runtime")
+    if page.locator("#status").inner_text() != completion_status:
+        raise RuntimeError("cached filters changed the count-neutral live status")
     if page.locator("#viewToggleBtn").inner_text() != "查看原圖":
         raise RuntimeError("cached filters changed the current result view")
     if page.locator("#canvasFrame").is_hidden():
@@ -602,7 +623,9 @@ def _record_evidence(
     page.on("pageerror", lambda error: page_errors.append(str(error)))
 
 
-def _assert_failure_cleanup(page: object) -> None:
+def _assert_failure_cleanup(
+    page: object, expected_sample_state: str = "Retry · available"
+) -> None:
     if not page.locator("#demoOriginalImage").is_visible():
         raise RuntimeError("failure did not restore the official original image")
     if page.locator("#demoFigureLabel").inner_text() != "原圖 · 尚未 Detect":
@@ -621,6 +644,11 @@ def _assert_failure_cleanup(page: object) -> None:
         raise RuntimeError("failure retained the completed canvas description")
     if "LOCAL BROWSER INFERENCE" in page.locator("#modeBadge").inner_text():
         raise RuntimeError("failure retained the completed mode badge")
+    if page.locator("#sampleState").inner_text() != expected_sample_state:
+        raise RuntimeError(
+            "failure exposed the wrong official sample state: "
+            f"{page.locator('#sampleState').inner_text()!r}"
+        )
     status = page.locator("#status").inner_text()
     if not any(
         action in status
@@ -877,6 +905,8 @@ def run_runtime_failure(
             page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
             _install_privacy_probe(page, sentinels)
             page.locator("#demoDetectBtn").click()
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("runtime attempt did not mark the official sample loading")
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'error'",
                 timeout=30_000,
@@ -887,6 +917,8 @@ def run_runtime_failure(
             if requests.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("runtime failure made an unexpected pinned request count")
             page.locator("#runtimeRetryBtn").click()
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("runtime retry did not restore the official sample loading state")
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'success'",
                 timeout=30_000,
@@ -895,6 +927,8 @@ def run_runtime_failure(
                 raise RuntimeError("runtime retry did not make one new pinned request")
             if page.evaluate("globalThis.__demoRunCount") != 1:
                 raise RuntimeError("runtime retry did not complete one genuine pipeline run")
+            if page.locator("#sampleState").inner_text() != "Result · ready":
+                raise RuntimeError("runtime retry did not restore the official sample result state")
             _assert_privacy_surfaces(
                 page, requests, console_messages, page_errors, sentinels
             )
@@ -1187,7 +1221,7 @@ def run_byom_transition(
             lifecycle = page.evaluate("globalThis.__sessionLifecycle")
             if "release:1" in lifecycle or "release:2" not in lifecycle:
                 raise RuntimeError("invalid candidate did not preserve the active demo session")
-            _assert_failure_cleanup(page)
+            _assert_failure_cleanup(page, "Original · ready")
 
             _set_model_file(page, "candidate-valid.onnx")
             page.wait_for_function(
@@ -1210,7 +1244,7 @@ def run_byom_transition(
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'error'"
             )
-            _assert_failure_cleanup(page)
+            _assert_failure_cleanup(page, "Original · ready")
 
             valid_image_name = sentinels[-1]
             page.locator("#fileInput").set_input_files(
@@ -1405,8 +1439,9 @@ def run_accessibility(
                 raise RuntimeError("successful Detect left confidence outside keyboard workflow")
             if page.locator(".class-cb:not(:disabled)").count() == 0:
                 raise RuntimeError("successful Detect left class filters outside keyboard workflow")
-            page.locator("main#mainContent").focus()
-            success_focus_order = []
+            if page.evaluate("document.activeElement?.id") != "demoDetectBtn":
+                raise RuntimeError("successful Detect moved focus away from the demo action")
+            success_focus_order = ["#demoDetectBtn"]
             for _ in range(64):
                 page.keyboard.press("Tab")
                 focused = page.evaluate(
@@ -1748,7 +1783,7 @@ def run_stubbed_cache(
                     status=200,
                     content_type="application/javascript",
                     headers={"Access-Control-Allow-Origin": "*"},
-                    body=ORT_STUB,
+                    body=_scenario_ort_stub(run_mode="delayed"),
                 )
 
             page.route(ORT_CDN_URL, stub_ort)
@@ -1756,14 +1791,28 @@ def run_stubbed_cache(
             assert_real_demo_initial(page, requests, messages)
             assert_malformed_frozen_manifest_is_closed(page)
             page.locator("#demoDetectBtn").click()
+            page.wait_for_function("typeof globalThis.__resolveDemoRun === 'function'")
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("held demo work did not keep the official sample loading")
+            page.evaluate("globalThis.__resolveDemoRun()")
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'success'",
                 timeout=30_000,
             )
             if page.evaluate("[globalThis.__ortCreateCount, globalThis.__demoRunCount]") != [1, 1]:
                 raise RuntimeError("first stubbed demo run did not create and run one session")
+            if page.locator("#sampleState").inner_text() != "Result · ready":
+                raise RuntimeError("held demo work did not finish in the official sample result state")
+            page.evaluate("globalThis.__resolveDemoRun = null")
             page.locator("#demoDetectBtn").click()
-            page.wait_for_function("globalThis.__demoRunCount === 2", timeout=30_000)
+            page.wait_for_function(
+                "globalThis.__demoRunCount === 2 && "
+                "typeof globalThis.__resolveDemoRun === 'function'",
+                timeout=30_000,
+            )
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("repeated held demo work did not restore the loading state")
+            page.evaluate("globalThis.__resolveDemoRun()")
             page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
             if page.evaluate("globalThis.__ortCreateCount") != 1:
                 raise RuntimeError("repeated Detect did not reuse the valid demo session")

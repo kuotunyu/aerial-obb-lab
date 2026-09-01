@@ -35,6 +35,7 @@ const demoOriginalImage = document.getElementById("demoOriginalImage");
 const viewportByomImage = document.getElementById("viewportByomImage");
 const demoFigure = document.getElementById("demoFigure");
 const demoFigureLabel = document.getElementById("demoFigureLabel");
+const sampleState = document.getElementById("sampleState");
 const demoDetectBtn = document.getElementById("demoDetectBtn");
 const viewToggleBtn = document.getElementById("viewToggleBtn");
 const resultControls = document.getElementById("resultControls");
@@ -60,7 +61,6 @@ const summaryTop = document.getElementById("summaryTop");
 const runtimeValue = document.getElementById("runtimeValue");
 const modeBadge = document.getElementById("modeBadge");
 const provenanceValue = document.getElementById("provenanceValue");
-const resultTitle = document.getElementById("resultTitle");
 const MODEL_PROMPT_HTML = '選擇相容的 <code>.onnx</code> model';
 const IMAGE_PROMPT = "選擇或拖放一張影像";
 
@@ -103,6 +103,9 @@ function reportFailure(code) {
   if (state.generationAbort) state.generationAbort.abort();
   clearResultState({keepImage: true});
   state.phase = "error";
+  sampleState.textContent = state.source === "demo"
+    ? "Retry · available"
+    : "Original · ready";
   console.warn(`[AERIAL_OBB:${safe}]`);
   setStatus(ERROR_COPY[safe], "error");
   runtimeRetryBtn.hidden = safe !== "RUNTIME_LOAD";
@@ -209,6 +212,7 @@ function resetToDemoOriginal() {
   showOriginalSource("demo");
   demoFigureLabel.textContent = "原圖 · 尚未 Detect";
   demoDetectBtn.textContent = "開始 Detect";
+  sampleState.textContent = "Original · ready";
   demoDetectBtn.disabled = state.image === null;
   setInitialSummary();
   setStatus(state.image ? "原圖已載入 · 尚未 Detect。" : "正在載入官方範例原圖…");
@@ -536,17 +540,13 @@ async function runActiveInference(source, generation) {
   const detections = setResultView("result");
   if (detections === null) return null;
   if (source === "demo") demoDetectBtn.textContent = "再次 Detect";
-  setStatus(
-    detections.length
-      ? `完成 · ${detections.length} 個 detections`
-      : "完成 · 沒有符合條件的 detections",
-    "success",
-  );
+  if (source === "demo") sampleState.textContent = "Result · ready";
+  setStatus("完成 · 可調整 filters。", "success");
   demoDetectBtn.disabled = false;
   detectBtn.disabled = !(
     source === "byom" && state.imageSource === "byom" && state.sessionSource === "byom"
   );
-  resultTitle.focus();
+  if (source === "demo") demoDetectBtn.focus();
   return detections;
 }
 
@@ -559,6 +559,7 @@ async function runDemo() {
   setInitialSummary();
   showOriginalSource("demo");
   demoFigureLabel.textContent = "原圖";
+  sampleState.textContent = "Loading · local browser";
   demoDetectBtn.disabled = true;
   setStatus("正在驗證範例模型與 Browser runtime…", "running");
   try {
@@ -578,6 +579,7 @@ async function handleModelSelection(file) {
   const keepByomImage = state.source === "byom" && state.imageSource === "byom";
   const generation = nextGeneration();
   state.source = "byom";
+  sampleState.textContent = "Original · ready";
   if (!keepByomImage) {
     state.image = null;
     state.imageSource = null;
@@ -619,6 +621,7 @@ function loadImageUrl(image, url) {
 async function loadImageFile(file) {
   const generation = nextGeneration();
   state.source = "byom";
+  sampleState.textContent = "Original · ready";
   state.image = null;
   state.imageSource = null;
   clearResultState({keepImage: true});
