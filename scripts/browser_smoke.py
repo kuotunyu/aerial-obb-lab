@@ -1400,6 +1400,66 @@ def run_accessibility(
                 raise RuntimeError("accessible description diverged from the sorted visible table")
             if "confidence=" in status.inner_text() or "center-x=" in status.inner_text():
                 raise RuntimeError("live status duplicates the full detection announcement")
+
+            if page.locator("#confSlider").is_disabled():
+                raise RuntimeError("successful Detect left confidence outside keyboard workflow")
+            if page.locator(".class-cb:not(:disabled)").count() == 0:
+                raise RuntimeError("successful Detect left class filters outside keyboard workflow")
+            page.locator("main#mainContent").focus()
+            success_focus_order = []
+            for _ in range(64):
+                page.keyboard.press("Tab")
+                focused = page.evaluate(
+                    """
+                    () => {
+                      const active = document.activeElement;
+                      if (!active) return '';
+                      if (active.matches('.class-cb')) return '.class-cb';
+                      if (active.matches('#byomPanel summary')) return '#byomPanel summary';
+                      if (active.matches('.table-scroll')) return '.table-scroll';
+                      if (active.matches('.source-links a')) return '.source-links a';
+                      if (active.id) return `#${active.id}`;
+                      return active.tagName.toLowerCase();
+                    }
+                    """
+                )
+                success_focus_order.append(focused)
+                if focused == ".source-links a":
+                    break
+            required_success_stops = [
+                "#demoDetectBtn",
+                "#confSlider",
+                ".class-cb",
+                "#byomPanel summary",
+                ".table-scroll",
+                ".source-links a",
+            ]
+            try:
+                success_indices = [
+                    success_focus_order.index(stop) for stop in required_success_stops
+                ]
+            except ValueError as exc:
+                raise RuntimeError(
+                    "successful keyboard order misses an enabled workbench stop: "
+                    f"{success_focus_order!r}"
+                ) from exc
+            if success_indices != sorted(success_indices):
+                raise RuntimeError(
+                    "successful keyboard order leaves the workbench sequence: "
+                    f"{success_focus_order!r}"
+                )
+            if not page.locator("#viewToggleBtn").is_hidden():
+                try:
+                    view_index = success_focus_order.index("#viewToggleBtn")
+                except ValueError as exc:
+                    raise RuntimeError(
+                        "successful keyboard order misses the visible original/result action"
+                    ) from exc
+                if not success_indices[0] < view_index < success_indices[1]:
+                    raise RuntimeError(
+                        "original/result action is outside the successful keyboard sequence"
+                    )
+
             for selector in (
                 "#demoDetectBtn",
                 "#byomPanel summary",
