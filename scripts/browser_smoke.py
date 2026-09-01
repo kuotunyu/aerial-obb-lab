@@ -605,80 +605,66 @@ def run_manifest_matrix(
     from playwright.sync_api import sync_playwright
     manifest = json.loads((DEMO / "demo-model.json").read_text(encoding="utf-8"))
     mutations: list[dict[str, object]] = []
+    labels: set[str] = set()
 
-    def add_key_cases(label: str, path: list[object], keys: tuple[str, ...]) -> None:
-        for key in keys:
-            mutations.extend(
-                (
-                    {"label": f"missing:{label}.{key}", "kind": "missing", "path": [*path, key]},
-                    {"label": f"extra:{label}.{key}", "kind": "extra", "path": [*path, key]},
-                )
-            )
+    def json_path(path: list[object]) -> str:
+        return "$" + "".join(
+            f"[{part}]" if isinstance(part, int) else f"[{part!r}]" for part in path
+        )
 
-    def add_value_case(label: str, path: list[object], value: object) -> None:
-        mutations.append({"label": label, "kind": "replace", "path": path, "value": value})
+    def add_case(
+        kind: str,
+        path: list[object],
+        value: object | None = None,
+        label_suffix: str = "",
+    ) -> None:
+        label = f"{kind}:{json_path(path)}{label_suffix}"
+        if label in labels:
+            return
+        labels.add(label)
+        mutation: dict[str, object] = {"label": label, "kind": kind, "path": path}
+        if kind == "replace":
+            mutation["value"] = value
+        mutations.append(mutation)
 
-    # Each object key is independently omitted and extended, then the public
-    # identity/guardrail values themselves are mutated through the shipped JS.
-    add_key_cases("root", [], tuple(manifest))
-    sample = manifest["samples"][0]
-    add_key_cases("sample", ["samples", 0], tuple(sample))
-    add_key_cases("source", ["samples", 0, "source"], tuple(sample["source"]))
-    add_key_cases("derivation", ["samples", 0, "derivation"], tuple(sample["derivation"]))
-    add_key_cases("guardrails", ["samples", 0, "guardrails"], tuple(sample["guardrails"]))
-    for layer in ("model", "input", "output", "provenance", "sanitization", "license"):
-        add_key_cases(layer, [layer], tuple(manifest[layer]))
+    def replacement(path: list[object], value: object) -> object:
+        key = str(path[-1])
+        if isinstance(value, bool):
+            return not value
+        if isinstance(value, int):
+            return value + 1
+        if isinstance(value, float):
+            return value + 0.01
+        if isinstance(value, str):
+            if key in {"path", "notice", "publicDomainRecord", "source"}:
+                return "https://example.invalid/unreviewed"
+            return "unreviewed"
+        raise TypeError(f"unsupported manifest scalar at {json_path(path)}")
 
-    add_value_case("schemaVersion", ["schemaVersion"], 99)
-    add_value_case("defaultConfidence", ["defaultConfidence"], 0.3)
-    add_value_case("defaultSampleId", ["defaultSampleId"], "harbor")
-    add_value_case("sample-order", ["samples"], list(reversed(manifest["samples"])))
-    add_value_case("unknown-id", ["samples", 0, "id"], "unknown")
-    add_value_case("duplicate-id", ["samples", 1, "id"], "airfield")
-    for key, value in {
-        "title": "changed",
-        "path": "https://example.invalid/sample.jpg",
-        "bytes": 1,
-        "sha256": "0" * 64,
-        "mediaType": "image/png",
-        "width": 1,
-        "height": 1,
-    }.items():
-        add_value_case(f"sample.{key}", ["samples", 0, key], value)
-    for key, value in {
-        "provider": "unreviewed provider",
-        "publicDomainRecord": "https://example.invalid/source",
-        "year": 1,
-        "acquisitionDate": 1,
-        "bboxWgs84": [0, 0, 1, 1],
-    }.items():
-        add_value_case(f"source.{key}", ["samples", 0, "source", key], value)
-    for key, value in {
-        "outputSize": [1, 1],
-        "color": "AdobeRGB",
-        "jpegQuality": 1,
-        "metadata": "kept",
-    }.items():
-        add_value_case(f"derivation.{key}", ["samples", 0, "derivation", key], value)
-    for key, value in {
-        "threshold": 0.3,
-        "classFilter": ["plane"],
-        "precomputedOutputs": True,
-        "inference": "server",
-    }.items():
-        add_value_case(f"guardrails.{key}", ["samples", 0, "guardrails", key], value)
-    for key, value in {
-        "path": "https://example.invalid/model.onnx",
-        "bytes": 1,
-        "sha256": "0" * 64,
-        "mediaType": "application/octet-stream",
-        "release": "other",
-        "source": "https://example.invalid/upstream.onnx",
-        "sourceSha256": "0" * 64,
-        "license": "unreviewed",
-        "modificationStatus": "modified",
-    }.items():
-        add_value_case(f"model.{key}", ["model", key], value)
+    def audit(value: object, path: list[object]) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                child_path = [*path, key]
+                add_case("missing", child_path)
+                add_case("extra", child_path)
+                audit(child, child_path)
+            return
+        if isinstance(value, list):
+            if not value:
+                add_case("replace", path, ["unreviewed"])
+                return
+            if len(value) > 1:
+                add_case("replace", path, list(reversed(value)))
+            for index, child in enumerate(value):
+                audit(child, [*path, index])
+            return
+        add_case("replace", path, replacement(path, value))
+
+    # The JS validator is a closed exact-value contract.  Audit the checked-in
+    # manifest recursively so every scalar, array order/member, and object key
+    # has its own fresh-browser failing mutation.
+    audit(manifest, [])
+    add_case("replace", ["samples", 1, "id"], "airfield", ":duplicate-id")
     mutations = mutations[start:] if count is None else mutations[start : start + count]
     if not mutations:
         raise RuntimeError("manifest matrix selected no cases")
