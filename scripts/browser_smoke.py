@@ -479,6 +479,40 @@ def run_superseded_reload(executable_path: Path | None = None, base_url: str | N
             browser.close()
 
 
+def run_manifest_matrix(executable_path: Path | None = None, base_url: str | None = None) -> None:
+    """Exercise every closed catalog layer through the real browser validator."""
+    from playwright.sync_api import sync_playwright
+    mutations = [
+        ("root-extra", [], "extra"), ("root-missing", [], "missing"),
+        ("sample-extra", ["samples", 0], "extra"), ("sample-missing", ["samples", 0], "missing"),
+        ("source-extra", ["samples", 0, "source"], "extra"), ("source-missing", ["samples", 0, "source"], "missing"),
+        ("derivation-extra", ["samples", 0, "derivation"], "extra"), ("derivation-missing", ["samples", 0, "derivation"], "missing"),
+        ("guardrails-extra", ["samples", 0, "guardrails"], "extra"), ("guardrails-missing", ["samples", 0, "guardrails"], "missing"),
+        ("unknown-id", ["samples", 0, "id"], "unknown"), ("duplicate-id", ["samples", 1, "id"], "airfield"),
+        ("external-path", ["samples", 0, "path"], "https://example.invalid/x.jpg"),
+        ("changed-title", ["samples", 0, "title"], "changed"), ("source-year", ["samples", 0, "source", "year"], 1),
+        ("source-bbox", ["samples", 0, "source", "bboxWgs84"], [0,0,1,1]), ("digest", ["samples", 0, "sha256"], "0" * 64),
+        ("dimension", ["samples", 0, "height"], 1), ("derivation-color", ["samples", 0, "derivation", "color"], "other"),
+        ("guardrail-threshold", ["samples", 0, "guardrails", "threshold"], .3), ("precomputed", ["samples", 0, "guardrails", "precomputedOutputs"], True),
+    ]
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            for label, path, value in mutations:
+                page = browser.new_page()
+                requests: list[str] = []; messages: list[str] = []; _record_errors(page, requests, messages)
+                page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+                outcome = page.evaluate("""async ({path, value}) => { const manifest = await (await fetch('demo-model.json')).json(); let target = manifest; if (value === 'extra' || value === 'missing') { for (const key of path) target = target[key]; if (value === 'extra') target.unreviewed = true; else delete target[Object.keys(target)[0]]; } else { for (const key of path.slice(0, -1)) target = target[key]; target[path[path.length - 1]] = value; } try { DemoAssets.validateManifest(manifest); return 'accepted'; } catch (error) { return error.message; } }""", {"path": path, "value": value})
+                if outcome != "DEMO_MANIFEST":
+                    raise RuntimeError(f"manifest matrix {label} did not fail closed: {outcome!r}")
+                if DEMO_MODEL_PATH in _request_paths(requests) or ORT_CDN_URL in requests:
+                    raise RuntimeError(f"manifest matrix {label} started inference resources")
+                page.close()
+        finally:
+            browser.close()
+
+
 def assert_workbench_initial_layout(page: object) -> None:
     """Assert the initial desktop controls and viewport form a compact workbench."""
     if page.locator("#demoDetectBtn").evaluate(
@@ -1983,6 +2017,7 @@ def main(argv: list[str] | None = None) -> int:
             "held-decode",
             "invalid-selector",
             "superseded-reload",
+            "manifest-matrix",
             "real-demo-success",
             "stubbed-cache",
             "manifest-failure",
@@ -2010,6 +2045,8 @@ def main(argv: list[str] | None = None) -> int:
             run_invalid_selector(args.executable_path, args.base_url)
         elif args.scenario == "superseded-reload":
             run_superseded_reload(args.executable_path, args.base_url)
+        elif args.scenario == "manifest-matrix":
+            run_manifest_matrix(args.executable_path, args.base_url)
         elif args.scenario == "real-demo-success":
             run_real_demo_success(
                 args.executable_path,
@@ -2050,6 +2087,7 @@ def main(argv: list[str] | None = None) -> int:
             run_held_decode(args.executable_path, args.base_url)
             run_invalid_selector(args.executable_path, args.base_url)
             run_superseded_reload(args.executable_path, args.base_url)
+            run_manifest_matrix(args.executable_path, args.base_url)
             run_real_demo_success(
                 args.executable_path,
                 args.base_url,
@@ -2081,6 +2119,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[OK] Invalid sample selector fails closed and recovers")
     elif args.scenario == "superseded-reload":
         print("[OK] Superseded sample reload remains neutral")
+    elif args.scenario == "manifest-matrix":
+        print("[OK] Browser manifest catalog matrix fails closed")
     elif args.scenario == "real-demo-success":
         print("[OK] Real demo browser smoke: genuine local derivative inference")
     elif args.scenario == "stubbed-cache":
