@@ -1081,6 +1081,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "acquire" and args.observations is None and args.pointer is None:
             acquire_all(args.review_root)
         elif args.command == "approve" and args.observations is not None and args.pointer is not None:
+            if not sys.stdin.isatty():
+                raise GalleryError("GALLERY_INTERNAL")
             approve(args.review_root, args.observations, args.pointer)
         elif args.command == "verify-approved" and args.observations is None and args.pointer is None:
             verify_approved(args.review_root)
@@ -1098,8 +1100,8 @@ def main(argv: list[str] | None = None) -> int:
     except GalleryError as error:
         print(f"[FAIL] {error.code}")
         return 1
-    except (OSError, ValueError, TypeError, KeyError):
-        print("[FAIL] GALLERY_RECORD")
+    except Exception:
+        print("[FAIL] GALLERY_INTERNAL")
         return 1
     print("[OK] GALLERY_ADMISSION")
     return 0

@@ -844,4 +844,54 @@ def test_gallery_cli_maps_unexpected_publication_error_without_private_path(
     """CLI failures stay public-safe even if an unexpected filesystem error escapes."""
     monkeypatch.setattr(gallery, "acquire_all", lambda _root: (_ for _ in ()).throw(OSError(r"C:\private-review\raw.json")))
     assert gallery.main(["acquire", "--review-root", str(tmp_path / "external-review")]) == 1
-    assert capsys.readouterr().out == "[FAIL] GALLERY_RECORD\n"
+    assert capsys.readouterr().out == "[FAIL] GALLERY_INTERNAL\n"
+
+
+def test_gallery_cli_hides_eof_from_noninteractive_valid_approve(
+    tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A real approve prompt EOF must not disclose the review root or prompt text."""
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    assert gallery.main([
+        "approve", "--review-root", str(tmp_path), "--observations",
+        str(tmp_path / "observations.json"), "--pointer", str(tmp_path / "pointer.txt"),
+    ]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "[FAIL] GALLERY_INTERNAL\n"
+    assert captured.err == ""
+    assert "private-review" not in captured.out
+    assert "請選擇" not in captured.out
+
+
+def test_gallery_cli_hides_unexpected_runtime_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Unexpected ordinary exceptions get one fixed public code at the CLI boundary."""
+    def explode(_root: Path) -> None:
+        raise RuntimeError(r"C:\private-review\raw-observation.json")
+
+    monkeypatch.setattr(gallery, "acquire_all", explode)
+    assert gallery.main(["acquire", "--review-root", str(tmp_path / "external-review")]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "[FAIL] GALLERY_INTERNAL\n"
+    assert captured.err == ""
+    assert "private-review" not in captured.out
+
+
+def test_gallery_cli_preserves_typed_codes_success_and_base_exceptions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The outer sanitizer preserves typed public outcomes and never catches BaseException."""
+    monkeypatch.setattr(gallery, "acquire_all", lambda _root: None)
+    assert gallery.main(["acquire", "--review-root", str(tmp_path / "external-review")]) == 0
+    assert capsys.readouterr().out == "[OK] GALLERY_ADMISSION\n"
+    monkeypatch.setattr(gallery, "acquire_all", lambda _root: (_ for _ in ()).throw(GalleryError("GALLERY_SCOPE")))
+    assert gallery.main(["acquire", "--review-root", str(tmp_path / "external-review")]) == 1
+    assert capsys.readouterr().out == "[FAIL] GALLERY_SCOPE\n"
+    monkeypatch.setattr(gallery, "acquire_all", lambda _root: (_ for _ in ()).throw(KeyboardInterrupt()))
+    with pytest.raises(KeyboardInterrupt):
+        gallery.main(["acquire", "--review-root", str(tmp_path / "external-review")])
+    monkeypatch.setattr(gallery, "acquire_all", lambda _root: (_ for _ in ()).throw(SystemExit(7)))
+    with pytest.raises(SystemExit, match="7"):
+        gallery.main(["acquire", "--review-root", str(tmp_path / "external-review")])
