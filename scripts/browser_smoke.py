@@ -452,6 +452,33 @@ def run_invalid_selector(executable_path: Path | None = None, base_url: str | No
             browser.close()
 
 
+def run_superseded_reload(executable_path: Path | None = None, base_url: str | None = None) -> None:
+    """A held demo reload cannot start inference after a later selector wins."""
+    from playwright.sync_api import Route, sync_playwright
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.add_init_script(SRI_STUB_SHIM)
+            page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=_scenario_ort_stub(lifecycle=True)))
+            held: list[Route] = []
+            page.route("**/samples/sports-complex.jpg", lambda route: held.append(route))
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
+            page.wait_for_function("demoOriginalImage.complete && demoOriginalImage.naturalWidth > 0")
+            page.locator("#demoDetectBtn").click(); page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            run_count = page.evaluate("globalThis.__demoRunCount")
+            page.locator('[data-sample-id="sports-complex"]').click()
+            page.wait_for_function("document.querySelector('#sampleState').textContent.includes('Loading')")
+            page.locator('[data-sample-id="harbor"]').click()
+            for route in held: route.continue_()
+            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
+            if page.locator('#demoOriginalImage').get_attribute('src') != 'samples/harbor.jpg' or page.evaluate("globalThis.__demoRunCount") != run_count:
+                raise RuntimeError("superseded reload started inference or restored the old sample")
+        finally:
+            browser.close()
+
+
 def assert_workbench_initial_layout(page: object) -> None:
     """Assert the initial desktop controls and viewport form a compact workbench."""
     if page.locator("#demoDetectBtn").evaluate(
@@ -1955,6 +1982,7 @@ def main(argv: list[str] | None = None) -> int:
             "sample-gallery",
             "held-decode",
             "invalid-selector",
+            "superseded-reload",
             "real-demo-success",
             "stubbed-cache",
             "manifest-failure",
@@ -1980,6 +2008,8 @@ def main(argv: list[str] | None = None) -> int:
             run_held_decode(args.executable_path, args.base_url)
         elif args.scenario == "invalid-selector":
             run_invalid_selector(args.executable_path, args.base_url)
+        elif args.scenario == "superseded-reload":
+            run_superseded_reload(args.executable_path, args.base_url)
         elif args.scenario == "real-demo-success":
             run_real_demo_success(
                 args.executable_path,
@@ -2019,6 +2049,7 @@ def main(argv: list[str] | None = None) -> int:
             run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
             run_held_decode(args.executable_path, args.base_url)
             run_invalid_selector(args.executable_path, args.base_url)
+            run_superseded_reload(args.executable_path, args.base_url)
             run_real_demo_success(
                 args.executable_path,
                 args.base_url,
@@ -2048,6 +2079,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[OK] Held real sample decode clears stale result state")
     elif args.scenario == "invalid-selector":
         print("[OK] Invalid sample selector fails closed and recovers")
+    elif args.scenario == "superseded-reload":
+        print("[OK] Superseded sample reload remains neutral")
     elif args.scenario == "real-demo-success":
         print("[OK] Real demo browser smoke: genuine local derivative inference")
     elif args.scenario == "stubbed-cache":
