@@ -748,6 +748,8 @@ def verify_approved(review_root: Path) -> None:
 
 
 _PUBLIC_SAMPLE_IDS = ("airfield", "sports-complex", "harbor")
+_REVIEWED_BOATS_SHA256 = "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f"
+_REVIEWED_BOATS_BYTES = 194_872
 _PUBLIC_SAMPLE_TITLES = {
     "airfield": "小型機場航拍範例",
     "sports-complex": "運動場館航拍範例",
@@ -818,31 +820,36 @@ def _atomic_replace_gallery(pages_root: Path, receipt_path: Path, staged: Path) 
     existing = list(samples.iterdir())
     if any(path.name not in permitted or not path.is_file() or is_reparse_point(path) or path.stat().st_nlink > 1 for path in existing):
         raise GalleryError("GALLERY_SCOPE")
-    previous = staged / "previous"
-    previous.mkdir()
+    boats = samples / "boats.jpg"
+    if boats.exists() and (
+        boats.stat().st_size != _REVIEWED_BOATS_BYTES
+        or hashlib.sha256(boats.read_bytes()).hexdigest() != _REVIEWED_BOATS_SHA256
+    ):
+        raise GalleryError("GALLERY_RECORD")
+    previous = staged / "previous"; previous.mkdir()
     changes = [(staged / "samples" / f"{sample_id}.jpg", samples / f"{sample_id}.jpg") for sample_id in _PUBLIC_SAMPLE_IDS]
     changes.append((staged / "receipt.json", receipt_path))
-    boats = samples / "boats.jpg"
     if boats.exists():
         changes.append((None, boats))
-    for _new, target in changes:
-        if target.exists():
-            backup = previous / ("receipt.json" if target == receipt_path else target.name)
-            os.replace(target, backup)
-    applied: list[tuple[Path | None, Path]] = []
+    backups: list[tuple[Path, Path]] = []
     try:
+        for _new, target in changes:
+            if target.exists():
+                backup = previous / ("receipt.json" if target == receipt_path else target.name)
+                shutil.copyfile(target, backup)
+                backups.append((backup, target))
         for new, target in changes:
             if new is not None:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(new, target)
-            applied.append((new, target))
+        if boats.exists():
+            boats.unlink()
     except OSError:
-        for _new, target in reversed(applied):
-            if target.exists():
-                target.unlink()
-        for backup in previous.iterdir():
-            destination = receipt_path if backup.name == "receipt.json" else samples / backup.name
-            os.replace(backup, destination)
+        for backup, target in backups:
+            try:
+                shutil.copyfile(backup, target)
+            except OSError:
+                pass
         raise GalleryError("GALLERY_SCOPE") from None
 
 

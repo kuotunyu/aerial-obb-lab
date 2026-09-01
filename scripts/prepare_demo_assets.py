@@ -404,6 +404,24 @@ def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[s
         expected_paths = ["samples/airfield.jpg", "samples/sports-complex.jpg", "samples/harbor.jpg"]
         if [item.get("path") if isinstance(item, dict) else None for item in samples] != expected_paths:
             raise ValueError
+        sample_keys = {"id", "title", "path", "bytes", "sha256", "mediaType", "width", "height", "source", "derivation", "guardrails"}
+        source_keys = {"provider", "publicDomainRecord", "year", "acquisitionDate", "bboxWgs84"}
+        derivation = {"outputSize": [1280, 800], "color": "sRGB", "jpegQuality": 90, "metadata": "stripped"}
+        guardrails = {"threshold": 0.25, "classFilter": [], "precomputedOutputs": False, "inference": "browser-only"}
+        for item in samples:
+            if not isinstance(item, dict) or set(item) != sample_keys:
+                raise ValueError
+            source = item["source"]
+            if (
+                not isinstance(source, dict) or set(source) != source_keys
+                or source["provider"] != "USGS／USDA NAIP"
+                or source["publicDomainRecord"] != "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39"
+                or not isinstance(source["year"], int) or not isinstance(source["acquisitionDate"], int)
+                or not isinstance(source["bboxWgs84"], list) or len(source["bboxWgs84"]) != 4
+                or item["derivation"] != derivation or item["guardrails"] != guardrails
+                or item["mediaType"] != "image/jpeg" or item["width"] != 1280 or item["height"] != 800
+            ):
+                raise ValueError
         public = _walk_files(pages)
         actual_samples = {path for path in public if path.startswith("samples/")}
         if actual_samples != set(expected_paths):
@@ -728,8 +746,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if len(arguments) == 3 and arguments[0] in {"acquire", "sanitize", "verify"} and arguments[1] == "--review-root":
             if arguments[0] == "acquire":
-                acquire_assets(Path(arguments[2]))
-                print("[OK] DEMO_ASSETS_ACQUIRED")
+                # The boats source is retired; sample publication is owned by the
+                # closed gallery receipt and is never reacquired here.
+                raise AssetPreparationError("receipt")
             elif arguments[0] == "sanitize":
                 _require_external_review(Path(arguments[2]))
                 review = _checked_root(Path(arguments[2]))

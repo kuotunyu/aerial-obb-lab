@@ -643,6 +643,44 @@ def test_demo_manifest_declares_exact_sample_catalog_and_default() -> None:
     ]
 
 
+def test_publish_preserves_the_entire_prior_batch_when_backup_replace_fails(
+    tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A backup failure must not remove the first old public image or receipt."""
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
+    pages = tmp_path / "demo" / "web" / "samples"; pages.mkdir(parents=True)
+    receipt = tmp_path / "release" / "sample-gallery-sources.json"; receipt.parent.mkdir()
+    before = {"airfield.jpg": b"old-air", "sports-complex.jpg": b"old-sports", "harbor.jpg": b"old-harbor"}
+    for name, body in before.items(): (pages / name).write_bytes(body)
+    receipt.write_bytes(b"old-receipt")
+    real_replace, calls = gallery.os.replace, 0
+    def fail_second_replace(source: object, destination: object) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2: raise OSError("backup failure")
+        real_replace(source, destination)  # type: ignore[arg-type]
+    monkeypatch.setattr(gallery.os, "replace", fail_second_replace)
+    with pytest.raises(GalleryError, match="GALLERY_SCOPE"):
+        gallery.publish_approved_gallery(approved_gallery_report, tmp_path, pages.parent, receipt)
+    assert {path.name: path.read_bytes() for path in pages.iterdir()} == before
+    assert receipt.read_bytes() == b"old-receipt"
+
+
+def test_publish_rejects_mutated_boats_predecessor_without_deleting_it(
+    tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unrelated boats leaf must not be treated as the reviewed predecessor."""
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
+    samples = tmp_path / "demo" / "web" / "samples"; samples.mkdir(parents=True)
+    boats = samples / "boats.jpg"; boats.write_bytes(b"not-the-reviewed-predecessor")
+    receipt = tmp_path / "release" / "sample-gallery-sources.json"
+    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
+        gallery.publish_approved_gallery(approved_gallery_report, tmp_path, samples.parent, receipt)
+    assert boats.read_bytes() == b"not-the-reviewed-predecessor"
+
+
 def test_approval_verification_rejects_a_candidate_outside_the_acquired_pool(tmp_path: Path) -> None:
     review = tmp_path / "external-review"
     records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))

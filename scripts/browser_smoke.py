@@ -1334,7 +1334,7 @@ def run_byom_transition(
             page.locator("#demoDetectBtn").click()
             page.wait_for_function(
                 "document.querySelector('#provenanceValue').textContent === "
-                + json.dumps(DEMO_PROVENANCE, ensure_ascii=False)
+                + json.dumps(f"{DEMO_PROVENANCE} · 小型機場航拍範例", ensure_ascii=False)
             )
             if page.locator("#status").get_attribute("data-kind") != "success":
                 raise RuntimeError("return to demo did not complete a local inference")

@@ -248,6 +248,11 @@ async function selectDemoSample(sampleId) {
   demoOriginalImage.src = sample.path;
   demoOriginalImage.width = sample.width;
   demoOriginalImage.height = sample.height;
+  state.phase = "loading";
+  demoDetectBtn.disabled = true;
+  sampleState.textContent = "Loading · original";
+  setInitialSummary();
+  setStatus("正在載入真實航拍原圖…");
   try {
     await demoOriginalImage.decode();
     if (!isCurrentGeneration(generation)) return;
@@ -610,8 +615,9 @@ async function runDemo() {
     return;
   }
   if (!state.image || state.image !== demoOriginalImage || demoOriginalImage.getAttribute("src") !== sample.path) {
-    reportFailure("IMAGE_DECODE");
-    return;
+    await selectDemoSample(sample.id);
+    if (!state.image || state.image !== demoOriginalImage || !isCurrentGeneration(state.generation)) return;
+    return runDemo();
   }
   state.source = "demo";
   state.imageSource = "demo";

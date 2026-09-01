@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import FrozenInstanceError, asdict
 import hashlib
 import inspect
@@ -703,24 +704,48 @@ def test_publish_validates_complete_batch_and_restores_prior_batch_on_failure(tm
 
 def test_gallery_receipt_admits_only_the_published_three_sample_bytes(tmp_path: Path) -> None:
     """Changing a gallery digest or adding boats must make asset publication refuse it."""
-    receipt = {
-        "schemaVersion": 1,
-        "samples": [
-            {"id": "airfield", "path": "samples/airfield.jpg", "bytes": 3, "sha256": hashlib.sha256(b"one").hexdigest()},
-            {"id": "sports-complex", "path": "samples/sports-complex.jpg", "bytes": 3, "sha256": hashlib.sha256(b"two").hexdigest()},
-            {"id": "harbor", "path": "samples/harbor.jpg", "bytes": 5, "sha256": hashlib.sha256(b"three").hexdigest()},
-        ],
-    }
+    root = Path(__file__).resolve().parents[1]
+    receipt = json.loads((root / "release/sample-gallery-sources.json").read_text(encoding="utf-8"))
     pages = tmp_path / "web"
     (pages / "samples").mkdir(parents=True)
-    for item, body in zip(receipt["samples"], (b"one", b"two", b"three"), strict=True):
-        (pages / item["path"]).write_bytes(body)
+    for item in receipt["samples"]:
+        (pages / item["path"]).write_bytes((root / "demo/web" / item["path"]).read_bytes())
     receipt_path = tmp_path / "sample-gallery-sources.json"
     receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     demo_assets.validate_gallery_publication(pages, receipt_path)
     (pages / "samples" / "boats.jpg").write_bytes(b"stale")
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
         demo_assets.validate_gallery_publication(pages, receipt_path)
+
+
+def test_cli_disables_legacy_boats_acquisition_without_a_gallery_receipt(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The public preparation CLI must fail closed instead of acquiring boats."""
+    assert main(["acquire", "--review-root", str(tmp_path / "outside-review")]) == 1
+    assert capsys.readouterr().out == "[FAIL] DEMO_ASSET_RECEIPT\n"
+
+
+def test_gallery_receipt_rejects_mutated_canonical_sample_contract(tmp_path: Path) -> None:
+    """A consumer must reject source, guardrail, and private-shape drift."""
+    source_receipt = Path(__file__).resolve().parents[1] / "release/sample-gallery-sources.json"
+    payload = json.loads(source_receipt.read_text(encoding="utf-8"))
+    pages = tmp_path / "web" / "samples"; pages.mkdir(parents=True)
+    for item in payload["samples"]:
+        (pages.parent / item["path"]).write_bytes((Path(__file__).resolve().parents[1] / "demo/web" / item["path"]).read_bytes())
+    receipt = tmp_path / "receipt.json"
+    for path, value in [
+        (("samples", 0, "source", "provider"), "private source"),
+        (("samples", 1, "derivation", "jpegQuality"), 91),
+        (("samples", 2, "guardrails", "threshold"), 0.3),
+        (("samples", 0, "source", "extra"), "x"),
+    ]:
+        mutated = deepcopy(payload); target = mutated
+        for key in path[:-1]: target = target[key]
+        target[path[-1]] = value
+        receipt.write_text(json.dumps(mutated), encoding="utf-8")
+        with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+            demo_assets.validate_gallery_publication(pages.parent, receipt)
 
 
 def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.CaptureFixture[str]) -> None:
