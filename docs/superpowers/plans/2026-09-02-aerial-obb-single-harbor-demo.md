@@ -63,7 +63,7 @@
 
 ---
 
-### Task 1: Close the Source, Receipt, and Runtime Manifest to One Harbor Sample
+### Task 1: Atomically Close the Source and Runtime UI to One Harbor Sample
 
 **Files:**
 - Modify: `tests/test_sample_gallery.py`
@@ -74,13 +74,17 @@
 - Modify: `release/sample-gallery-sources.json`
 - Modify: `demo/web/demo-model.json`
 - Modify: `demo/web/demo-assets.js`
+- Modify: `scripts/browser_smoke.py`
+- Modify: `demo/web/index.html`
+- Modify: `demo/web/app.js`
+- Modify: `demo/web/style.css`
 - Delete: `demo/web/samples/airfield.jpg`
 - Delete: `demo/web/samples/sports-complex.jpg`
 - Keep byte-identical: `demo/web/samples/harbor.jpg`
 
 **Interfaces:**
 - Consumes: the exact harbor identity/digest/source/derivation/guardrails in Global Constraints and the existing model/input/output/license/sanitization manifest fields.
-- Produces: `DemoAssets.validateManifest(payload) -> Readonly<object>`, `DemoAssets.fetchVerifiedModel(manifest, options?) -> Promise<ArrayBuffer>`, and `DemoAssets.getDemoSample() -> Readonly<HarborSample>` where `HarborSample.id === "harbor"`.
+- Produces: `DemoAssets.validateManifest(payload) -> Readonly<object>`, `DemoAssets.fetchVerifiedModel(manifest, options?) -> Promise<ArrayBuffer>`, `DemoAssets.getDemoSample() -> Readonly<HarborSample>` where `HarborSample.id === "harbor"`, a fixed `#demoSampleTitle`/`#demoSampleKind` identity, `loadDemoImage(token) -> Promise<HTMLImageElement|null>`, and browser scenarios `single-harbor` and `single-harbor-failures`.
 
 - [ ] **Step 1: Replace the category-pool tests with one-harbor RED contracts**
 
@@ -231,32 +235,15 @@ git diff --check
 
 Expected: focused tests pass; harbor bytes/digest are exact; the two superseded JPEGs are deleted; current receipt/manifest/loader/source-tool tests contain no active airfield or sports-complex contract.
 
-- [ ] **Step 6: Review and commit Task 1**
+- [ ] **Step 6: Hold the source-contract GREEN as an uncommitted checkpoint**
 
-Give fresh spec and quality reviewers the Task 1 diff, RED output, GREEN output, digest evidence, and design spec. Resolve findings through the same implementer and re-review. Stage exactly:
+Record the source-contract RED/GREEN commands and harbor digest in the Task 1 report, but do not review, stage, or commit yet. The runtime files still consume the old three-image contract at this checkpoint; continue immediately through Phase B so the one Task 1 commit is a working page rather than an intentionally broken intermediate state.
 
-```powershell
-git add -- tests/test_sample_gallery.py tests/test_demo_assets.py scripts/prepare_sample_gallery.py scripts/sample_gallery_smoke.py scripts/prepare_demo_assets.py release/sample-gallery-sources.json demo/web/demo-model.json demo/web/demo-assets.js
-git add -u -- demo/web/samples/airfield.jpg demo/web/samples/sports-complex.jpg
-git diff --cached --check
-git commit -m "feat: admit one harbor demo sample"
-```
+#### Phase B: Replace the Selector with a Fixed Harbor Original and Genuine Detect Path
 
----
+This phase is part of Task 1 and uses the just-created `DemoAssets.getDemoSample()` contract plus the existing `loadOrtRuntime`, `ensureDemoSession`, `runActiveInference`, `renderCachedOutput`, `setResultView`, `nextGeneration`, and `reportFailure` paths. It is not dispatched, reviewed, or committed separately.
 
-### Task 2: Replace the Selector with a Fixed Harbor Original and Genuine Detect Path
-
-**Files:**
-- Modify: `scripts/browser_smoke.py`
-- Modify: `demo/web/index.html`
-- Modify: `demo/web/app.js`
-- Modify: `demo/web/style.css`
-
-**Interfaces:**
-- Consumes: `DemoAssets.getDemoSample()` from Task 1 and the existing `loadOrtRuntime`, `ensureDemoSession`, `runActiveInference`, `renderCachedOutput`, `setResultView`, `nextGeneration`, and `reportFailure` paths.
-- Produces: a fixed `#demoSampleTitle`/`#demoSampleKind` identity, `loadDemoImage(token) -> Promise<HTMLImageElement|null>`, one built-in `DEMO_SAMPLE`, and browser scenarios `single-harbor` and `single-harbor-failures`.
-
-- [ ] **Step 1: Write the real-browser batch RED for fixed identity, lazy network, and real inference**
+- [ ] **Step 7: Write the real-browser batch RED for fixed identity, lazy network, and real inference**
 
 Replace `assert_sample_gallery_initial`/`run_sample_gallery` with `assert_single_harbor_initial`/`run_single_harbor`. Register `--scenario single-harbor` in the CLI and remove `sample-gallery` from the current scenario choices. The scenario must use real Chromium, exact committed harbor/model bytes, and the existing instrumentation counters:
 
@@ -295,7 +282,7 @@ Also assert the decoded class-ID set is a subset of `{1, 2, 7}`, the representat
 
 Drive the confidence/class filters to a legitimate empty result and assert count `0`, no polygons/rows, explicit empty canvas description, numeric runtime retained, success state retained, and session-run counter still `1`; this distinguishes an empty filtered result from reset/error.
 
-- [ ] **Step 2: Run the browser scenario and observe the actual earliest RED**
+- [ ] **Step 8: Run the browser scenario and observe the actual earliest RED**
 
 Run:
 
@@ -305,7 +292,7 @@ uv run --no-sync python scripts/browser_smoke.py --scenario single-harbor
 
 Expected against the current UI: FAIL first because `#sampleSelector`/`.sample-option` still exist or the initial image is `samples/airfield.jpg`. Record only the first reached browser assertion; the numeric runtime and guardrails are not claimed RED until execution reaches them.
 
-- [ ] **Step 3: Replace selector markup with fixed informational identity**
+- [ ] **Step 9: Replace selector markup with fixed informational identity**
 
 In `demo/web/index.html`:
 
@@ -326,7 +313,7 @@ In `demo/web/index.html`:
 
 In `demo/web/style.css`, delete selector/card-button/thumb/pressed-state rules that serve no other element. Style `.demo-sample-identity` as compact static content using the existing border/type/spacing tokens; do not make it hoverable or pointer-shaped and do not redesign the workbench grid.
 
-- [ ] **Step 4: Collapse `app.js` to one immutable demo sample**
+- [ ] **Step 10: Collapse `app.js` to one immutable demo sample**
 
 At module initialization:
 
@@ -354,7 +341,7 @@ Remove `sampleOptions`, `SAMPLE_CATALOG`, `selectedSampleId`, `selectedDemoSampl
 
 `resetToDemoOriginal()` and initial startup call `loadDemoImage(nextGeneration())` when the committed image is not decoded; otherwise they bind the existing decoded element. `runDemo()` compares only the current element/source against `DEMO_SAMPLE.path`, reloads the harbor when returning from BYOM, and then calls the unchanged `ensureDemoSession` + `runActiveInference("demo", generation)` path. Demo provenance uses `DEMO_SAMPLE.title`. There is no array search, selector update, or per-sample cache.
 
-- [ ] **Step 5: Reach Task 2 GREEN and run covering browser/regression checks**
+- [ ] **Step 11: Reach Task 1 GREEN and run covering browser/regression checks**
 
 Run:
 
@@ -369,19 +356,20 @@ git diff --check
 
 Expected: the harbor original is initial; no selector exists; no ORT/WASM/ONNX is requested before Detect; one real Detect yields numeric runtime and accepted harbor output; cached toggle/filters do not rerun; accessibility/desktop/mobile remain GREEN.
 
-- [ ] **Step 6: Review and commit Task 2**
+- [ ] **Step 12: Review and commit the atomic Task 1**
 
-Fresh spec and quality reviewers receive the exact diff, RED/GREEN output, session/request counters, and public-safe original/result screenshots outside the repository. Resolve findings and re-review. Stage exactly:
+Fresh spec and quality reviewers receive the complete source+runtime diff, both RED/GREEN batches, harbor digest, session/request counters, and public-safe original/result screenshots outside the repository. Resolve findings and re-review. Stage exactly:
 
 ```powershell
-git add -- scripts/browser_smoke.py demo/web/index.html demo/web/app.js demo/web/style.css
+git add -- tests/test_sample_gallery.py tests/test_demo_assets.py scripts/prepare_sample_gallery.py scripts/sample_gallery_smoke.py scripts/prepare_demo_assets.py release/sample-gallery-sources.json demo/web/demo-model.json demo/web/demo-assets.js scripts/browser_smoke.py demo/web/index.html demo/web/app.js demo/web/style.css
+git add -u -- demo/web/samples/airfield.jpg demo/web/samples/sports-complex.jpg
 git diff --cached --check
-git commit -m "feat: simplify demo to one harbor image"
+git commit -m "feat: ship single-harbor browser demo"
 ```
 
 ---
 
-### Task 3: Harden One-sample Failure Recovery, BYOM Transitions, and Accessibility
+### Task 2: Harden One-sample Failure Recovery, BYOM Transitions, and Accessibility
 
 **Files:**
 - Modify: `scripts/browser_smoke.py`
@@ -390,7 +378,7 @@ git commit -m "feat: simplify demo to one harbor image"
 - Modify only when a named browser RED proves it necessary: `demo/web/style.css`
 
 **Interfaces:**
-- Consumes: Task 2 `loadDemoImage`, fixed identity DOM, generation token, shared result/reset functions, and existing BYOM/session lifecycle.
+- Consumes: Task 1 `loadDemoImage`, fixed identity DOM, generation token, shared result/reset functions, and existing BYOM/session lifecycle.
 - Produces: deterministic `single-harbor-failures` coverage with fixed recovery copy and preserved BYOM/accessibility/network contracts.
 
 - [ ] **Step 1: Write the deterministic single-harbor failure RED**
@@ -437,7 +425,7 @@ uv run --no-sync python scripts/browser_smoke.py --scenario byom-transition
 uv run --no-sync python scripts/browser_smoke.py --scenario accessibility
 ```
 
-Expected: the new failure scenario reaches a real product mismatch if Task 2 did not use the exact recovery copy or did not clear a surface. Record that earliest mismatch only. If the existing product already satisfies a later BYOM/accessibility assertion, record it as GREEN rather than fabricating a RED.
+Expected: the new failure scenario reaches a real product mismatch if Task 1 did not use the exact recovery copy or did not clear a surface. Record that earliest mismatch only. If the existing product already satisfies a later BYOM/accessibility assertion, record it as GREEN rather than fabricating a RED.
 
 - [ ] **Step 4: Make only the minimal production correction proven by the RED**
 
@@ -449,7 +437,7 @@ DEMO_IMAGE_DECODE: "範例影像目前無法顯示。請重新整理後重試，
 
 Do not log the caught error. Keep console output to the fixed category form `[AERIAL_OBB:DEMO_IMAGE_DECODE]`. Ensure the failure path clears cached output, elapsed time, polygons, rows, summary, description, toggle, and completed status while leaving Detect disabled until a newly decoded harbor original exists. Do not duplicate reset logic inside event handlers.
 
-- [ ] **Step 5: Reach Task 3 GREEN**
+- [ ] **Step 5: Reach Task 2 GREEN**
 
 Run:
 
@@ -465,23 +453,23 @@ git diff --check
 
 Expected: all focused scenarios and the complete smoke pass; request origins are loopback/same-origin initially and pinned jsDelivr only after Detect/BYOM model selection; no stale sample/result state or private diagnostic appears.
 
-- [ ] **Step 6: Review and commit Task 3**
+- [ ] **Step 6: Review and commit Task 2**
 
 Fresh reviewers receive route rules, RED/GREEN output, request/session counters, accessibility checks, and the exact modified path set. Resolve findings and re-review. Stage `scripts/browser_smoke.py` plus only production files whose named RED required a change:
 
 ```powershell
-$task3Paths = @('scripts/browser_smoke.py')
+$task2Paths = @('scripts/browser_smoke.py')
 foreach ($path in @('demo/web/app.js','demo/web/index.html','demo/web/style.css')) {
-  if (git diff --name-only -- $path) { $task3Paths += $path }
+  if (git diff --name-only -- $path) { $task2Paths += $path }
 }
-git add -- $task3Paths
+git add -- $task2Paths
 git diff --cached --check
 git commit -m "test: harden single-harbor demo recovery"
 ```
 
 ---
 
-### Task 4: Freeze One-harbor Public Evidence, Documentation, and Release Gates
+### Task 3: Freeze One-harbor Public Evidence, Documentation, and Release Gates
 
 **Files:**
 - Modify: `tests/test_pages_artifact_check.py`
@@ -505,7 +493,7 @@ git commit -m "test: harden single-harbor demo recovery"
 - Modify: `docs/assets/browser-workbench.png`
 
 **Interfaces:**
-- Consumes: reviewed Task 1–3 bytes and behavior, the exact one-record receipt, and the existing separate model/license/sanitization identity.
+- Consumes: reviewed Task 1–2 bytes and behavior, the exact one-record receipt, and the existing separate model/license/sanitization identity.
 - Produces: exact Pages/release/archive contracts for one harbor image, canonical harbor screenshot, and truthful current documentation.
 
 - [ ] **Step 1: Write the release-contract batch RED**
@@ -623,7 +611,7 @@ uv run --no-sync python scripts/browser_smoke.py --scenario single-harbor --scre
 
 Required pixels: compact fixed harbor identity in the left rail, annotated harbor result in the shared viewport, 16–26 detections, numeric runtime, `LOCAL BROWSER INFERENCE`, harbor provenance, readable table, claim notice, Source/AGPL context, collapsed BYOM, no selector, and no visually dominant wrong polygon. Inspect PNG metadata and byte strings for path, filename, private model identity, raw error, stack, token, and browser-profile leakage; update its exact artifact-manifest digest/bytes.
 
-- [ ] **Step 6: Reach Task 4 GREEN across focused and direct gates**
+- [ ] **Step 6: Reach Task 3 GREEN across focused and direct gates**
 
 Run:
 
@@ -638,7 +626,7 @@ git diff --check
 
 Expected: all focused tests, direct artifact/repo/release gates, and full browser smoke pass with exactly one harbor JPEG, one reviewed model, no selector/current superseded filenames, no DOTA/private/precomputed output, and no unexpected origin.
 
-- [ ] **Step 7: Review and commit Task 4**
+- [ ] **Step 7: Review and commit Task 3**
 
 Fresh reviewers inspect byte equality, artifact inventory, receipt binding, public-domain/AGPL claim separation, current documentation, stale-reference scan, canonical screenshot pixels/metadata, and all gate output. Resolve findings and re-review. Stage exactly:
 
@@ -650,14 +638,14 @@ git commit -m "release: freeze single-harbor demo evidence"
 
 ---
 
-### Task 5: Complete Full Local Acceptance, Clean Export, and Owner-operable Preview
+### Task 4: Complete Full Local Acceptance, Clean Export, and Owner-operable Preview
 
 **Files:**
 - Create only repository-external clean export, screenshots, request-origin report, and review package.
-- No tracked file is planned. Any finding returns to the owning Task 1–4 implementer, starts with a focused real RED, receives one minimal fix commit, and gets fresh re-review.
+- No tracked file is planned. Any finding returns to the owning Task 1–3 implementer, starts with a focused real RED, receives one minimal fix commit, and gets fresh re-review.
 
 **Interfaces:**
-- Consumes: all committed Task 1–4 outputs.
+- Consumes: all committed Task 1–3 outputs.
 - Produces: complete local verification evidence, an exact committed-files-only export, a loopback UI the owner can operate, broad whole-branch review, and a clean retained branch.
 
 - [ ] **Step 1: Verify scope, commits, and test inventory**
@@ -730,7 +718,7 @@ Open `http://127.0.0.1:8768/` and capture repository-external original/result sc
 
 - [ ] **Step 6: Run broad whole-branch review with one bounded fix wave**
 
-Give the most capable fresh reviewer the approved spec, this plan, full `bb4ee0e66ac57a2394afd99b1324f96f7523fad4...HEAD` diff, task ledgers/reports/reviews, source receipt, Task 1 harbor digest evidence, Task 2–3 request/session/error outputs, canonical screenshot, full-suite/direct-gate output, clean-export digest/inventory, repository-external desktop/mobile screenshots, and privacy/stale scans.
+Give the most capable fresh reviewer the approved spec, this plan, full `bb4ee0e66ac57a2394afd99b1324f96f7523fad4...HEAD` diff, task ledgers/reports/reviews, source receipt, Task 1 harbor digest evidence, Task 1–2 request/session/error outputs, canonical screenshot, full-suite/direct-gate output, clean-export digest/inventory, repository-external desktop/mobile screenshots, and privacy/stale scans.
 
 Critical or Important findings permit one focused test-first fix wave through the responsible original implementer, a minimal fix commit, and fresh scoped re-review. A second product fix wave, source/license ambiguity, changed harbor bytes, artifact mismatch, privacy leak, unexpected origin, model/inference contract failure, or unresolved Important finding stops completion. Record Minor findings without unrelated polish.
 
@@ -763,7 +751,7 @@ Plan approval or local implementation authorizes none of these gates. It also do
 
 ## Plan Self-review Record
 
-- **Spec coverage:** Task 1 closes source/receipt/tooling/manifest and removes the two files; Task 2 removes selector/state and preserves explicit genuine inference; Task 3 covers deterministic image failure, stale-state clearing, BYOM, accessibility, responsive, and privacy behavior; Task 4 freezes current docs/evidence/notices/artifact gates/screenshot; Task 5 performs full local acceptance, clean export, visual operation, and broad review.
+- **Spec coverage:** Task 1 atomically closes source/receipt/tooling/manifest, removes the two files and selector state, and preserves explicit genuine inference; Task 2 covers deterministic image failure, stale-state clearing, BYOM, accessibility, responsive, and privacy behavior; Task 3 freezes current docs/evidence/notices/artifact gates/screenshot; Task 4 performs full local acceptance, clean export, visual operation, and broad review.
 - **Interface consistency:** the only runtime sample interface is `DemoAssets.getDemoSample()` returning immutable `harbor`; `app.js` owns `DEMO_SAMPLE`, `loadDemoImage`, one `state.image`, one cached output, and no selector identity. Browser scenario names are `single-harbor` and `single-harbor-failures` everywhere.
 - **TDD honesty:** each batch names the earliest expected mismatch and explicitly forbids claiming assertions blocked by an earlier failure. Successful Detect coverage uses real Chromium, exact harbor/model bytes, and actual `session.run`; failure routes are deterministic but cannot substitute for the success path.
 - **Claim/privacy/license boundary:** one public-domain harbor derivative is separate from the privacy-sanitized AGPL model and DOTAv1 provenance. No committed annotated result, source tile, candidate screenshot, private model, local path, raw diagnostic, token, or evaluation claim is admitted.
