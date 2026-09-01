@@ -1,7 +1,7 @@
 # Third-Party Notices and Use Boundaries
 
-This public candidate distributes original project code, documentation, aggregate evidence, one
-official sample image, and one privacy-sanitized AGPL model derivative. It distributes no DOTA image,
+This public candidate distributes original project code, documentation, aggregate evidence, three
+public-domain NAIP aerial sample derivatives, and one privacy-sanitized AGPL model derivative. It distributes no DOTA image,
 annotation, or DOTA-derived raster render. Project code is declared `AGPL-3.0-or-later` in
 `pyproject.toml`; that declaration does not replace independent upstream or user-supplied-artifact
 terms. This document is a release inventory, not legal advice or a warranty against liability.
@@ -9,8 +9,8 @@ terms. This document is a release inventory, not legal advice or a warranty agai
 ## Bundled artifacts
 
 The exact bundled inventory and hashes are recorded in
-[`release/artifact-manifest.json`](release/artifact-manifest.json): the official Ultralytics
-`boats.jpg` sample, the privacy-sanitized YOLO26n-OBB derivative, its complete unmodified
+[`release/artifact-manifest.json`](release/artifact-manifest.json): the three public-domain NAIP
+derivatives, the privacy-sanitized YOLO26n-OBB derivative, its complete unmodified
 AGPL-3.0-only license, and the self-hosted OFL display font. The derivative was modified on
 2026-08-31 by removing one non-inference metadata entry; the committed sanitization receipt records
 that its graph and weights remain structurally unchanged. Its training provenance is DOTAv1.
@@ -24,6 +24,22 @@ claim. Ultralytics offers separate
 [AGPL-3.0 and Enterprise routes](https://www.ultralytics.com/license); this repository grants no
 Enterprise license. DOTA images and annotations are academic-use-only and may also carry underlying
 image-source restrictions. AGPL compliance and data/image rights are separate obligations.
+
+### Public-domain NAIP aerial derivatives
+
+Each listed derivative is a curated integration example selected for visual clarity at the shared
+0.25 threshold. It is a drift check only, never accuracy, evaluation, model-quality, or latency
+evidence; it carries no USGS or USDA endorsement. Source facts are frozen in
+[`release/sample-gallery-sources.json`](release/sample-gallery-sources.json).
+
+- **小型機場航拍範例** — `demo/web/samples/airfield.jpg`; USGS/USDA NAIP product
+  `m_3411861_sw_11_060_20220511` (2022), USDA, [USGS NAIP Plus ImageServer](https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer), [USGS public-domain record](https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39). Public Domain; crop/resample/metadata removal; 306620 bytes; SHA-256 `5a60f3a6c7f8678c200f7051bfcdf378d360d08b1d3e72c62a15e7c6f7ee0c53`.
+- **運動場館航拍範例** — `demo/web/samples/sports-complex.jpg`; USGS/USDA NAIP product
+  `m_3712114_se_10_060_20220614` (2022), USDA, [USGS NAIP Plus ImageServer](https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer), [USGS public-domain record](https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39).
+  Public Domain; crop/resample/metadata removal; 232752 bytes; SHA-256 `22974d633ae13f68e78ccf9d418bae2fd17a3109d6ad92a2390eb5a6666380de`.
+- **低密度港區航拍範例** — `demo/web/samples/harbor.jpg`; USGS/USDA NAIP product
+  `m_3411955_sw_11_060_20220514` (2022), USDA, [USGS NAIP Plus ImageServer](https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer), [USGS public-domain record](https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39).
+  Public Domain; crop/resample/metadata removal; 241046 bytes; SHA-256 `916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0`.
 
 Demo and BYOM inference are not zero-network modes: first Detect or selecting a BYOM model lazy-loads pinned ONNX Runtime Web
 JavaScript and WASM assets from jsDelivr on a cache miss. SHA-384 SRI covers `ort.min.js` only, not

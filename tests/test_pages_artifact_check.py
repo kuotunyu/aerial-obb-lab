@@ -30,13 +30,25 @@ def test_current_pages_tree_passes() -> None:
     assert verify_pages_tree(PAGES_TREE) == []
 
 
+def test_pages_tree_admits_exact_curated_gallery_inventory(tmp_path: Path) -> None:
+    site = copied_pages_tree(tmp_path)
+
+    assert verify_pages_tree(site) == []
+    assert tuple(sorted(path.name for path in (site / "samples").iterdir())) == (
+        "airfield.jpg", "harbor.jpg", "sports-complex.jpg"
+    )
+    assert not (site / "samples" / ("boats" + ".jpg")).exists()
+
+
 def test_pages_tree_admits_exact_real_demo_inventory(
     tmp_path: Path,
 ) -> None:
     site = copied_pages_tree(tmp_path)
 
     assert verify_pages_tree(site) == []
-    assert (site / "samples" / "boats.jpg").is_file()
+    assert {path.name for path in (site / "samples").iterdir()} == {
+        "airfield.jpg", "sports-complex.jpg", "harbor.jpg"
+    }
     assert (site / "models" / "yolo26n-obb-privacy-sanitized.onnx").is_file()
     assert (site / "demo-model.json").is_file()
     assert (site / "demo-assets.js").is_file()
@@ -130,7 +142,9 @@ def test_pages_tree_rejects_symlinks(tmp_path: Path) -> None:
         "fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "fonts/IBM-Plex-OFL.txt",
         "README.md",
-        "samples/boats.jpg",
+        "samples/airfield.jpg",
+        "samples/sports-complex.jpg",
+        "samples/harbor.jpg",
         "models/yolo26n-obb-privacy-sanitized.onnx",
         "demo-model.json",
         "third_party/ULTRALYTICS-AGPL-3.0.txt",
@@ -241,8 +255,8 @@ def test_pages_tree_allows_reviewed_github_navigation_only_in_html(tmp_path: Pat
     (
         (
             "demo-assets.js",
-            'path: "models/yolo26n-obb-privacy-sanitized.onnx"',
-            'path: "models/alternate.onnx"',
+                '"models/yolo26n-obb-privacy-sanitized.onnx"',
+                '"models/alternate.onnx"',
             "exact derivative model path is missing",
         ),
         (
@@ -272,7 +286,9 @@ def test_pages_tree_rejects_required_reference_mismatch(
             "reviewed font bytes differ",
         ),
         ("fonts/IBM-Plex-OFL.txt", "reviewed font license bytes differ"),
-        ("samples/boats.jpg", "reviewed sample image bytes differ"),
+        ("samples/airfield.jpg", "reviewed sample image bytes differ"),
+        ("samples/sports-complex.jpg", "reviewed sample image bytes differ"),
+        ("samples/harbor.jpg", "reviewed sample image bytes differ"),
         (
             "models/yolo26n-obb-privacy-sanitized.onnx",
             "published model bytes differ",

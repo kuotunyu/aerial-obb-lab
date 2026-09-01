@@ -445,7 +445,7 @@ def test_inspect_only_rejects_license_digest_contract_mutation(
             "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
             None,
         ),
-        ("demo/web/samples/boats.jpg", "canonical-lf"),
+        ("demo/web/samples/airfield.jpg", "canonical-lf"),
     ],
 )
 def test_inspect_only_rejects_binary_digest_mode_misuse(
@@ -497,11 +497,27 @@ def test_clean_export_keeps_its_own_gate_and_real_demo_assets() -> None:
         "demo/web/demo-assets.js",
         "demo/web/demo-model.json",
         "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
-        "demo/web/samples/boats.jpg",
+        "demo/web/samples/airfield.jpg",
+        "demo/web/samples/sports-complex.jpg",
+        "demo/web/samples/harbor.jpg",
         "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
         "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
     } <= REQUIRED_MEMBERS
     assert not any("gradio" in member.casefold() for member in REQUIRED_MEMBERS)
+
+
+def test_clean_export_keeps_exact_gallery_and_omits_boats(tmp_path: Path) -> None:
+    archive = _committed_candidate_archive(tmp_path)
+    with zipfile.ZipFile(archive) as bundle:
+        names = {info.filename for info in bundle.infolist() if not info.is_dir()}
+
+    assert {
+        "demo/web/samples/airfield.jpg",
+        "demo/web/samples/sports-complex.jpg",
+        "demo/web/samples/harbor.jpg",
+    } <= names
+    assert "demo/web/samples/boats" + ".jpg" not in names
+    assert inspect_archive(archive) == []
 
 
 def test_release_archive_keeps_real_demo_assets_and_omits_internal_docs(
@@ -515,7 +531,7 @@ def test_release_archive_keeps_real_demo_assets_and_omits_internal_docs(
     members = {
         ".gitattributes": attributes.read_bytes(),
         "README.md": b"public release\n",
-        "demo/web/samples/boats.jpg": b"reviewed image placeholder\n",
+        "demo/web/samples/airfield.jpg": b"reviewed image placeholder\n",
         "docs/superpowers/plans/2026-08-31-aerial-obb-pages-showcase.md": b"internal plan\n",
         "docs/superpowers/specs/2026-08-31-aerial-obb-pages-showcase-design.md": b"internal spec\n",
     }
@@ -543,7 +559,7 @@ def test_release_archive_keeps_real_demo_assets_and_omits_internal_docs(
     with zipfile.ZipFile(archive) as bundle:
         archived = {info.filename for info in bundle.infolist() if not info.is_dir()}
 
-    assert "demo/web/samples/boats.jpg" in archived
+    assert "demo/web/samples/airfield.jpg" in archived
     assert not any(name.startswith("docs/superpowers/") for name in archived)
 
 

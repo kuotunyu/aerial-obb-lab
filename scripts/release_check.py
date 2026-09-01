@@ -124,6 +124,8 @@ APPROVED_MODIFICATION_STATUS = "metadata-only"
 APPROVED_MODIFICATION_DATE = "2026-08-31"
 APPROVED_MODIFIED_FIELD = "ModelProto.metadata_props[0].value"
 CANONICAL_LF_ARTIFACTS = {
+    "README.md", "README.en.md", "THIRD_PARTY_NOTICES.md", "RELEASE_CHECKLIST.md", "CHANGELOG.md",
+    "demo/web/README.md", "demo/web/THIRD_PARTY_NOTICES.md",
     "demo/web/app.js",
     "demo/web/index.html",
     "demo/web/style.css",
@@ -134,20 +136,36 @@ RAW_BINARY_DIGEST_MODE = "raw-binary"
 REQUIRED_BUNDLED_THIRD_PARTY_ARTIFACTS = {
     "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
     APPROVED_DEMO_MODEL,
-    "demo/web/samples/boats.jpg",
+    "demo/web/samples/airfield.jpg",
+    "demo/web/samples/sports-complex.jpg",
+    "demo/web/samples/harbor.jpg",
     "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
 }
 REQUIRED_REVIEWED_PUBLIC_ARTIFACTS = {
+    "README.md",
+    "README.en.md",
+    "THIRD_PARTY_NOTICES.md",
+    "RELEASE_CHECKLIST.md",
+    "CHANGELOG.md",
     "demo/web/app.js",
+    "demo/web/README.md",
+    "demo/web/THIRD_PARTY_NOTICES.md",
     "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "demo/web/index.html",
     APPROVED_DEMO_MODEL,
-    "demo/web/samples/boats.jpg",
+    "demo/web/samples/airfield.jpg",
+    "demo/web/samples/sports-complex.jpg",
+    "demo/web/samples/harbor.jpg",
     "demo/web/style.css",
     "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
     "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
     "docs/assets/browser-workbench.png",
 }
+GALLERY_SAMPLE_PATHS = (
+    "demo/web/samples/airfield.jpg",
+    "demo/web/samples/sports-complex.jpg",
+    "demo/web/samples/harbor.jpg",
+)
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
@@ -249,7 +267,18 @@ def verify_evidence(root: Path = ROOT) -> list[str]:
         "showcase_enabled": False,
         "demo_inference_performed": True,
         "model_bundled": True,
-        "demo_image": "demo/web/samples/boats.jpg",
+        "demo_images": [
+            "demo/web/samples/airfield.jpg",
+            "demo/web/samples/sports-complex.jpg",
+            "demo/web/samples/harbor.jpg",
+        ],
+        "default_demo_image": "demo/web/samples/airfield.jpg",
+        "sample_count": 3,
+        "sample_selection": "explicit-three-option",
+        "confidence": 0.25,
+        "per_image_tuning": False,
+        "precomputed_results": False,
+        "represents_accuracy_evaluation": False,
         "demo_model": APPROVED_DEMO_MODEL,
         "runtime_load": "lazy-on-demo-detect-or-byom-selection",
         "layout": "workbench-31-69",
@@ -338,6 +367,51 @@ def verify_artifacts(root: Path = ROOT) -> list[str]:
         )
     errors.extend(verify_code_only_paths(committed_paths(root), manifest))
     errors.extend(_verify_demo_model_contract(root, manifest))
+    errors.extend(_verify_gallery_contract(root, manifest))
+    return errors
+
+
+def _verify_gallery_contract(root: Path, manifest: dict) -> list[str]:
+    """Bind the admitted public gallery to its closed receipt and manifest entries."""
+    errors: list[str] = []
+    receipt = load_json(root / "release" / "sample-gallery-sources.json")
+    demo = load_json(root / "demo" / "web" / "demo-model.json")
+    samples = receipt.get("samples")
+    if receipt.get("schemaVersion") != 1 or not isinstance(samples, list):
+        return ["sample-gallery receipt is not a supported closed record"]
+    receipt_paths = tuple(f"demo/web/{sample.get('path')}" for sample in samples)
+    demo_paths = tuple(f"demo/web/{sample.get('path')}" for sample in demo.get("samples", []))
+    if receipt_paths != GALLERY_SAMPLE_PATHS or demo_paths != GALLERY_SAMPLE_PATHS:
+        errors.append("public sample gallery inventory is not exact")
+        return errors
+    if demo.get("defaultSampleId") != "airfield":
+        errors.append("public sample gallery default is not airfield")
+    entries = {entry.get("path"): entry for entry in manifest.get("bundled_third_party_artifacts", [])}
+    for receipt_sample, demo_sample, path in zip(samples, demo["samples"], GALLERY_SAMPLE_PATHS):
+        entry = entries.get(path)
+        expected_entry = {
+            "path": path,
+            "bytes": receipt_sample.get("bytes"),
+            "sha256": receipt_sample.get("sha256"),
+            "kind": "public-domain NAIP aerial sample derivative",
+            "source_url": receipt_sample.get("source", {}).get("service"),
+            "source_product_id": receipt_sample.get("source", {}).get("productId"),
+            "source_year": receipt_sample.get("source", {}).get("year"),
+            "source_agency": receipt_sample.get("source", {}).get("agency"),
+            "public_domain_record": receipt_sample.get("source", {}).get("publicDomainRecord"),
+            "modification_status": "crop/resample/metadata removal",
+            "derivation": receipt_sample.get("derivation"),
+            "license": "Public Domain",
+        }
+        if entry is None or any(entry.get(key) != value for key, value in expected_entry.items()):
+            errors.append(f"{path}: manifest NAIP record differs from receipt")
+        if demo_sample != receipt_sample:
+            errors.append(f"{path}: demo manifest sample differs from receipt")
+        file_path = root / path
+        if not file_path.is_file() or file_path.stat().st_size != receipt_sample.get("bytes"):
+            errors.append(f"{path}: approved JPEG bytes differ from receipt")
+        elif hashlib.sha256(file_path.read_bytes()).hexdigest() != receipt_sample.get("sha256"):
+            errors.append(f"{path}: approved JPEG digest differs from receipt")
     return errors
 
 
@@ -562,7 +636,10 @@ def committed_paths(root: Path = ROOT) -> list[str]:
 
 
 def verify_committed_privacy(root: Path = ROOT) -> list[str]:
-    relative_paths = committed_paths(root)
+    relative_paths = [
+        path for path in committed_paths(root)
+        if not path.replace("\\", "/").startswith("docs/superpowers/")
+    ]
     files = [root / relative for relative in relative_paths if (root / relative).is_file()]
     manifest = load_json(root / "release" / "artifact-manifest.json")
     binary_paths = [

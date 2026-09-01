@@ -111,7 +111,7 @@ def test_browser_demo_evidence_is_genuine_local_inference_with_privacy_sanitized
     assert browser["showcase_enabled"] is False
     assert browser["demo_inference_performed"] is True
     assert browser["model_bundled"] is True
-    assert browser["demo_image"] == "demo/web/samples/boats.jpg"
+    assert browser["default_demo_image"] == "demo/web/samples/airfield.jpg"
     assert (
         browser["demo_model"]
         == "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
@@ -119,6 +119,26 @@ def test_browser_demo_evidence_is_genuine_local_inference_with_privacy_sanitized
     assert browser["runtime_load"] == "lazy-on-demo-detect-or-byom-selection"
     assert "space_revision" not in browser
     assert browser["represents_fine_tuned_medium_accuracy"] is False
+    assert browser["represents_t4_latency"] is False
+
+
+def test_browser_demo_evidence_records_exact_curated_gallery() -> None:
+    browser = load_evidence()["browser_demo"]
+
+    assert browser["demo_images"] == [
+        "demo/web/samples/airfield.jpg",
+        "demo/web/samples/sports-complex.jpg",
+        "demo/web/samples/harbor.jpg",
+    ]
+    assert browser["default_demo_image"] == "demo/web/samples/airfield.jpg"
+    assert browser["sample_count"] == 3
+    assert browser["sample_selection"] == "explicit-three-option"
+    assert browser["confidence"] == 0.25
+    assert browser["per_image_tuning"] is False
+    assert browser["precomputed_results"] is False
+    assert browser["demo_inference_performed"] is True
+    assert browser["model_bundled"] is True
+    assert browser["represents_accuracy_evaluation"] is False
     assert browser["represents_t4_latency"] is False
 
 
@@ -134,7 +154,9 @@ def test_browser_demo_has_one_canonical_real_demo_source_path() -> None:
         "demo/web/index.html",
         "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
         "demo/web/obb.js",
-        "demo/web/samples/boats.jpg",
+        "demo/web/samples/airfield.jpg",
+        "demo/web/samples/sports-complex.jpg",
+        "demo/web/samples/harbor.jpg",
         "demo/web/style.css",
         "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
         "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
@@ -414,7 +436,9 @@ def test_real_demo_manifest_records_exact_public_artifacts() -> None:
     assert set(bundled) == {
         "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
-        "demo/web/samples/boats.jpg",
+        "demo/web/samples/airfield.jpg",
+        "demo/web/samples/sports-complex.jpg",
+        "demo/web/samples/harbor.jpg",
         "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
     }
     model = bundled["demo/web/models/yolo26n-obb-privacy-sanitized.onnx"]
@@ -432,6 +456,12 @@ def test_real_demo_manifest_records_exact_public_artifacts() -> None:
         "docs/assets/browser-workbench.png",
     } <= reviewed
     assert len(manifest["excluded_historical_artifacts"]) == 6
+
+
+def test_real_demo_manifest_records_exact_public_gallery_artifacts() -> None:
+    release_check = load_release_check()
+
+    assert release_check.verify_artifacts(ROOT) == []
 
 
 def test_release_checklist_records_completed_clean_history_publication() -> None:
@@ -675,7 +705,7 @@ def test_release_artifact_contract_rejects_license_digest_mutation(
             "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
             None,
         ),
-        ("demo/web/samples/boats.jpg", "canonical-lf"),
+        ("demo/web/samples/airfield.jpg", "canonical-lf"),
     ],
 )
 def test_release_artifact_contract_rejects_binary_digest_mode_misuse(

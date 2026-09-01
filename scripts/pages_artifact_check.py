@@ -27,7 +27,9 @@ REQUIRED_FILES = (
     "fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "fonts/IBM-Plex-OFL.txt",
     "README.md",
-    "samples/boats.jpg",
+    "samples/airfield.jpg",
+    "samples/sports-complex.jpg",
+    "samples/harbor.jpg",
     "models/yolo26n-obb-privacy-sanitized.onnx",
     "demo-model.json",
     "third_party/ULTRALYTICS-AGPL-3.0.txt",
@@ -38,8 +40,12 @@ ALLOWED_FILES = frozenset(REQUIRED_FILES)
 ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts", "models", "samples", "third_party"))
 FONT_PATH = "fonts/IBMPlexSansCondensed-SemiBold.woff2"
 MODEL_PATH = "models/yolo26n-obb-privacy-sanitized.onnx"
-IMAGE_PATH = "samples/boats.jpg"
-BINARY_PUBLIC_PATHS = frozenset((FONT_PATH, MODEL_PATH, IMAGE_PATH))
+IMAGE_PATHS = (
+    "samples/airfield.jpg",
+    "samples/sports-complex.jpg",
+    "samples/harbor.jpg",
+)
+BINARY_PUBLIC_PATHS = frozenset((FONT_PATH, MODEL_PATH, *IMAGE_PATHS))
 SOURCE_MODEL_SHA256 = "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".svg", ".txt"}
 RUNTIME_TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".svg"}
@@ -117,8 +123,16 @@ REVIEWED_ASSET_DIGESTS = {
         "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d",
         "reviewed font bytes differ",
     ),
-    IMAGE_PATH: (
-        "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f",
+    "samples/airfield.jpg": (
+        "5a60f3a6c7f8678c200f7051bfcdf378d360d08b1d3e72c62a15e7c6f7ee0c53",
+        "reviewed sample image bytes differ",
+    ),
+    "samples/sports-complex.jpg": (
+        "22974d633ae13f68e78ccf9d418bae2fd17a3109d6ad92a2390eb5a6666380de",
+        "reviewed sample image bytes differ",
+    ),
+    "samples/harbor.jpg": (
+        "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
         "reviewed sample image bytes differ",
     ),
     MODEL_PATH: (
@@ -128,11 +142,11 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "067a13f9ae5876738e84829dca3640ce3647b3cabd5aa35180fda0a4ab0c6d69",
+        "25b2b5f9cbeefecac658c9dffb3c7cd65e23cfbb2974fd419d9013be80e25007",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "e1564c2ee4ab22f5da349efcd27c0d7144adcb64f30b56cd4ea621688171dfe0",
+        "77c6672419ac75a6d58e1f88457153dfab37306da1b5ca8a5830e1289630f2d3",
         "reviewed application bytes differ",
     ),
     "obb.js": (
@@ -140,11 +154,11 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed geometry bytes differ",
     ),
     "demo-assets.js": (
-        "8d66746927b37b0e22c2c292c01e3972e17e9302cbeee3c8b8c86ed9540f3767",
+        "9e2df330bbe830f1450d24853481c8392ff2fa5b223278779e19eef968fbcc74",
         "reviewed demo asset loader bytes differ",
     ),
     "style.css": (
-        "b4a1717a49371a859b35bc2adec035dae83b9c67d20133b953fbce87511a5fe2",
+        "8972af5511b4a6d525ea96ff76b8f5f523558a0d827f131e6dee00e88bd82a9f",
         "reviewed stylesheet bytes differ",
     ),
     "fonts/IBM-Plex-OFL.txt": (
@@ -152,11 +166,11 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed font license bytes differ",
     ),
     "README.md": (
-        "3264301979dfdfacffca6da9218a703436c9d7b8b72886ccee5d81891a06a273",
+        "aecd15280e6d231dcb8908971706009a4be1987b802f5d875cce4829e7da255b",
         "reviewed README bytes differ",
     ),
     "demo-model.json": (
-        "9dab4fa0b93ae4f4fabc1467af032535485f84dd2df11aefa5f27d1ab38d5f54",
+        "fa17d85b5c796835c0b849a7f7da11e310e60366e33dbc0796b8896425c6542f",
         "reviewed demo manifest bytes differ",
     ),
     "third_party/ULTRALYTICS-AGPL-3.0.txt": (
@@ -168,14 +182,15 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed sanitization record bytes differ",
     ),
     "THIRD_PARTY_NOTICES.md": (
-        "3988f1b9b5bb47a95067210af64dd4088ffb161df747d10ff9e99779ae69de07",
+        "6513205963c1912f81de50edfc4e9a86b45f3f886054500f7b4adf25b4b9dd15",
         "reviewed third-party notice bytes differ",
     ),
 }
 
 APPROVED_PROVENANCE_URLS = frozenset(
     (
-        "https://ultralytics.com/images/boats.jpg",
+        "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
+        "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
         "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
     )
 )
@@ -238,7 +253,7 @@ def _scan_runtime_urls(relative: str, text: str, errors: list[str]) -> None:
         if url.startswith(ORT_PACKAGE_BASE):
             continue
         if relative in {
-            "demo-model.json",
+            "demo-model.json", "demo-assets.js", "README.md", "THIRD_PARTY_NOTICES.md",
             "third_party/yolo26n-obb-privacy-sanitization.json",
         } and url in APPROVED_PROVENANCE_URLS:
             continue
@@ -386,7 +401,7 @@ def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: lis
                 errors.append(f"index.html: required reference is missing: {reference}")
 
     demo_assets = texts.get("demo-assets.js")
-    model_reference = 'path: "models/yolo26n-obb-privacy-sanitized.onnx"'
+    model_reference = 'models/yolo26n-obb-privacy-sanitized.onnx'
     if demo_assets is not None and model_reference not in demo_assets:
         errors.append("demo-assets.js: exact derivative model path is missing")
 

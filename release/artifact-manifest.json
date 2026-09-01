@@ -6,7 +6,7 @@
   "policy": {
     "maximum_unlisted_tracked_file_bytes": 25000000,
     "commercial_use_cleared": false,
-    "notes": "The public release bundles one exact privacy-sanitized AGPL demo model and one official sample image. No DOTA pixels, annotations, or DOTA-derived renders are distributed; commercial-use clearance is not claimed. Historical exclusion records remain audit metadata."
+    "notes": "The public release bundles one exact privacy-sanitized AGPL demo model and three exact public-domain NAIP aerial sample derivatives. No DOTA pixels, annotations, or DOTA-derived renders are distributed; commercial-use clearance is not claimed. Historical exclusion records remain audit metadata."
   },
   "bundled_third_party_artifacts": [
     {
@@ -45,17 +45,55 @@
       ]
     },
     {
-      "path": "demo/web/samples/boats.jpg",
-      "bytes": 194872,
-      "sha256": "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f",
-      "kind": "official aerial sample image",
-      "provenance": "Unmodified Ultralytics boats.jpg public sample used solely for the browser integration demonstration.",
-      "source_url": "https://ultralytics.com/images/boats.jpg",
-      "license": "Source-provided sample; separate image rights are not asserted by this project",
+      "path": "demo/web/samples/airfield.jpg",
+      "bytes": 306620,
+      "sha256": "5a60f3a6c7f8678c200f7051bfcdf378d360d08b1d3e72c62a15e7c6f7ee0c53",
+      "kind": "public-domain NAIP aerial sample derivative",
+      "provenance": "USGS/USDA NAIP product m_3411861_sw_11_060_20220511, 2022; crop/resample/metadata removal, bbox [-118.456705, 34.012771, -118.444705, 34.020271], 1280x800 sRGB JPEG quality 90.",
+      "source_url": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
+      "source_product_id": "m_3411861_sw_11_060_20220511",
+      "source_year": 2022,
+      "source_agency": "USDA",
+      "public_domain_record": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+      "modification_status": "crop/resample/metadata removal",
+      "derivation": {"bboxWgs84": [-118.456705, 34.012771, -118.444705, 34.020271], "outputSize": [1280, 800], "color": "sRGB", "jpegQuality": 90, "metadata": "stripped"},
+      "license": "Public Domain",
       "restrictions": [
-        "No Ultralytics endorsement is implied.",
-        "The image and browser result are not accuracy, evaluation, or model-quality evidence."
+        "Curated integration example only; not accuracy, evaluation, or model-quality evidence.",
+        "No USGS or USDA endorsement is implied."
       ]
+    },
+    {
+      "path": "demo/web/samples/sports-complex.jpg",
+      "bytes": 232752,
+      "sha256": "22974d633ae13f68e78ccf9d418bae2fd17a3109d6ad92a2390eb5a6666380de",
+      "kind": "public-domain NAIP aerial sample derivative",
+      "provenance": "USGS/USDA NAIP product m_3712114_se_10_060_20220614, 2022; crop/resample/metadata removal, bbox [-121.26521, 37.784685, -121.25321, 37.792185], 1280x800 sRGB JPEG quality 90.",
+      "source_url": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
+      "source_product_id": "m_3712114_se_10_060_20220614",
+      "source_year": 2022,
+      "source_agency": "USDA",
+      "public_domain_record": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+      "modification_status": "crop/resample/metadata removal",
+      "derivation": {"bboxWgs84": [-121.26521, 37.784685, -121.25321, 37.792185], "outputSize": [1280, 800], "color": "sRGB", "jpegQuality": 90, "metadata": "stripped"},
+      "license": "Public Domain",
+      "restrictions": ["Curated integration example only; not accuracy, evaluation, or model-quality evidence.", "No USGS or USDA endorsement is implied."]
+    },
+    {
+      "path": "demo/web/samples/harbor.jpg",
+      "bytes": 241046,
+      "sha256": "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
+      "kind": "public-domain NAIP aerial sample derivative",
+      "provenance": "USGS/USDA NAIP product m_3411955_sw_11_060_20220514, 2022; crop/resample/metadata removal, bbox [-119.216719, 34.14417, -119.200719, 34.15417], 1280x800 sRGB JPEG quality 90.",
+      "source_url": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
+      "source_product_id": "m_3411955_sw_11_060_20220514",
+      "source_year": 2022,
+      "source_agency": "USDA",
+      "public_domain_record": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+      "modification_status": "crop/resample/metadata removal",
+      "derivation": {"bboxWgs84": [-119.216719, 34.14417, -119.200719, 34.15417], "outputSize": [1280, 800], "color": "sRGB", "jpegQuality": 90, "metadata": "stripped"},
+      "license": "Public Domain",
+      "restrictions": ["Curated integration example only; not accuracy, evaluation, or model-quality evidence.", "No USGS or USDA endorsement is implied."]
     },
     {
       "path": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
@@ -72,10 +110,17 @@
     }
   ],
   "reviewed_public_artifacts": [
+    {"path": "README.md", "bytes": 15249, "sha256": "9722873345363c048fbfbd858b8bdd95e2a8bdc0777b20d9ad25ce2449cd0a7f", "digest_mode": "canonical-lf"},
+    {"path": "README.en.md", "bytes": 15339, "sha256": "8ef87788f03abd96b43b94724ff9dab5d16c5e915f70eb2281dd96a08e15f1c7", "digest_mode": "canonical-lf"},
+    {"path": "THIRD_PARTY_NOTICES.md", "bytes": 6999, "sha256": "f1876a0813534f56fd1860e4700d7a2050fdc72bc194bcafe6623fae4cedde58", "digest_mode": "canonical-lf"},
+    {"path": "RELEASE_CHECKLIST.md", "bytes": 6285, "sha256": "82b325fd7d5f75bf3df6dff89d748a9278cb57a34cf1cbbaf2f2b046713800d3", "digest_mode": "canonical-lf"},
+    {"path": "CHANGELOG.md", "bytes": 7322, "sha256": "1f321d8c293320977b16c1995a8bc1dff2368da418fa87405aedbc5376d3454c", "digest_mode": "canonical-lf"},
+    {"path": "demo/web/README.md", "bytes": 4119, "sha256": "aecd15280e6d231dcb8908971706009a4be1987b802f5d875cce4829e7da255b", "digest_mode": "canonical-lf"},
+    {"path": "demo/web/THIRD_PARTY_NOTICES.md", "bytes": 2191, "sha256": "6513205963c1912f81de50edfc4e9a86b45f3f886054500f7b4adf25b4b9dd15", "digest_mode": "canonical-lf"},
     {
       "path": "demo/web/app.js",
-      "bytes": 24666,
-      "sha256": "e1564c2ee4ab22f5da349efcd27c0d7144adcb64f30b56cd4ea621688171dfe0",
+      "bytes": 28914,
+      "sha256": "77c6672419ac75a6d58e1f88457153dfab37306da1b5ca8a5830e1289630f2d3",
       "digest_mode": "canonical-lf"
     },
     {
@@ -85,8 +130,8 @@
     },
     {
       "path": "demo/web/index.html",
-      "bytes": 7733,
-      "sha256": "067a13f9ae5876738e84829dca3640ce3647b3cabd5aa35180fda0a4ab0c6d69",
+      "bytes": 8949,
+      "sha256": "25b2b5f9cbeefecac658c9dffb3c7cd65e23cfbb2974fd419d9013be80e25007",
       "digest_mode": "canonical-lf"
     },
     {
@@ -95,14 +140,24 @@
       "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
     },
     {
-      "path": "demo/web/samples/boats.jpg",
-      "bytes": 194872,
-      "sha256": "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f"
+      "path": "demo/web/samples/airfield.jpg",
+      "bytes": 306620,
+      "sha256": "5a60f3a6c7f8678c200f7051bfcdf378d360d08b1d3e72c62a15e7c6f7ee0c53"
+    },
+    {
+      "path": "demo/web/samples/sports-complex.jpg",
+      "bytes": 232752,
+      "sha256": "22974d633ae13f68e78ccf9d418bae2fd17a3109d6ad92a2390eb5a6666380de"
+    },
+    {
+      "path": "demo/web/samples/harbor.jpg",
+      "bytes": 241046,
+      "sha256": "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0"
     },
     {
       "path": "demo/web/style.css",
-      "bytes": 17912,
-      "sha256": "b4a1717a49371a859b35bc2adec035dae83b9c67d20133b953fbce87511a5fe2",
+      "bytes": 19100,
+      "sha256": "8972af5511b4a6d525ea96ff76b8f5f523558a0d827f131e6dee00e88bd82a9f",
       "digest_mode": "canonical-lf"
     },
     {
@@ -119,10 +174,10 @@
     },
     {
       "path": "docs/assets/browser-workbench.png",
-      "bytes": 841550,
-      "sha256": "5e7264a294110c3974f63fa0e50d186996855a8d3ebed0eebd6dd64e74b8621e",
+      "bytes": 955398,
+      "sha256": "8ec993ca8c9ff05ee60522ffd858618ab098ac04a72b0172ad478ee385112acf",
       "kind": "canonical local interface screenshot",
-      "provenance": "Generated from the exact reviewed Pages bytes after genuine local inference with the official sample and privacy-sanitized derivative.",
+      "provenance": "Generated from the exact reviewed Pages bytes after genuine local inference with the default airfield NAIP derivative and privacy-sanitized model.",
       "limitations": [
         "The overlay is model output, not ground truth or model-quality evidence.",
         "The displayed browser runtime is client-specific and not historical T4 latency evidence."

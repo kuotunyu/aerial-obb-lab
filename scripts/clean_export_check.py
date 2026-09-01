@@ -40,7 +40,9 @@ REQUIRED_MEMBERS = {
     "demo/web/index.html",
     "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
     "demo/web/obb.js",
-    "demo/web/samples/boats.jpg",
+    "demo/web/samples/airfield.jpg",
+    "demo/web/samples/sports-complex.jpg",
+    "demo/web/samples/harbor.jpg",
     "demo/web/style.css",
     "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
     "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
@@ -49,6 +51,7 @@ REQUIRED_MEMBERS = {
     "pyproject.toml",
     "release/artifact-manifest.json",
     "release/evidence.json",
+    "release/sample-gallery-sources.json",
     "scripts/browser_smoke.py",
     "scripts/clean_export_check.py",
     "scripts/release_check.py",
@@ -101,6 +104,8 @@ APPROVED_MODIFICATION_STATUS = "metadata-only"
 APPROVED_MODIFICATION_DATE = "2026-08-31"
 APPROVED_MODIFIED_FIELD = "ModelProto.metadata_props[0].value"
 CANONICAL_LF_ARTIFACTS = {
+    "README.md", "README.en.md", "THIRD_PARTY_NOTICES.md", "RELEASE_CHECKLIST.md", "CHANGELOG.md",
+    "demo/web/README.md", "demo/web/THIRD_PARTY_NOTICES.md",
     "demo/web/app.js",
     "demo/web/index.html",
     "demo/web/style.css",

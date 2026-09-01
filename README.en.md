@@ -14,7 +14,7 @@ through OBB/HBB geometry analysis, ONNX/TensorRT benchmarking, and a browser-nat
 The result is reported as-is: matched fine-tuning was a near-tie/slight regression.
 
 **Demo:** [`demo/web/`](demo/web/) · **Model card:** [`docs/model_card.md`](docs/model_card.md) ·
-**Release scope:** code, evidence, the official sample image, and one privacy-sanitized AGPL demo model.
+**Release scope:** code, evidence, three public-domain NAIP aerial derivatives, and one privacy-sanitized AGPL demo model.
 
 <!-- claim:browser-scope -->
 > The browser demo first displays the official aerial original. Only after **Start Detect** does it
@@ -32,11 +32,11 @@ The result is reported as-is: matched fine-tuning was a near-tie/slight regressi
 | Matched evaluation | Fine-tuned vs. official baseline: Δ mAP50 **-0.05pt**, Δ mAP50-95 **-0.13pt** | Near-tie/slight regression, not an accuracy gain |
 | OBB geometry | 456 val images, 28,853 objects; overall weighted mean **1.76×**, bridge mean **2.43×** | Ground-truth geometry, not a detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms / 49.4 FPS** | Historical Tesla T4, batch=1, 1024px environment |
-| Browser-native real-image demo | Official original → user presses Detect → genuine local inference; advanced BYOM remains available | Detect lazy-loads pinned jsDelivr runtime and the same-origin privacy-sanitized derivative; non-zero network, no DOTA pixels |
+| Browser-native real-image demo | Choose one of three public-domain NAIP originals → user presses Detect → genuine local inference; advanced BYOM remains available | Detect lazy-loads pinned jsDelivr runtime and the same-origin privacy-sanitized derivative; non-zero network, no DOTA pixels |
 
-![OBB workbench after genuine local-browser inference on the official sample; not model-quality evidence](docs/assets/browser-workbench.png)
+![OBB workbench after genuine local-browser inference on the default airfield sample; not model-quality evidence](docs/assets/browser-workbench.png)
 
-*After explicit Detect, the official original is processed by genuine local-browser inference and shown with rotated polygons, numeric runtime, and the result table. This is integration evidence, not accuracy, evaluation, or historical T4 latency evidence.*
+*After explicit Detect, the selected public-domain NAIP original is processed by genuine local-browser inference and shown with rotated polygons, numeric runtime, and the result table. These curated clarity examples are integration evidence, not accuracy, evaluation, or historical T4 latency evidence; their guardrails are drift checks only.*
 
 ---
 
@@ -252,7 +252,8 @@ frozen and must not be rerun merely to improve the numbers.
 
 ### 3. Browser Real-image Demo + BYOM
 
-- The shared viewport shows the official `boats.jpg` original at first paint. **Start Detect** then
+- The shared viewport has three compact choices—airfield (default), sports complex, and harbor—of
+  public-domain NAIP originals. **Start Detect** then
   lazy-loads pinned ONNX Runtime Web and the same-origin privacy-sanitized YOLO26n-OBB derivative,
   performs genuine inference in the current browser session, and replaces the original with rotated
   polygons, numeric runtime, provenance, and the result table in that same viewport.
@@ -272,7 +273,7 @@ frozen and must not be rerun merely to improve the numbers.
 - Repository code: **AGPL-3.0-or-later** as declared in `pyproject.toml`; Ultralytics components
   remain subject to their respective AGPL / Enterprise licensing.
 - This candidate includes one AGPL YOLO26n-OBB derivative whose private build metadata was removed
-  without changing graph or weights, plus the official `boats.jpg` sample. It contains no DOTA pixels,
+  without changing graph or weights, plus three public-domain NAIP aerial derivatives. It contains no DOTA pixels,
   annotations, or derived renders. DOTAv1 training provenance is disclosed; the project implies no
   Ultralytics endorsement and makes no commercial-use clearance claim. User-supplied models/images
   remain subject to their dataset, software, weight, and image-rights terms.

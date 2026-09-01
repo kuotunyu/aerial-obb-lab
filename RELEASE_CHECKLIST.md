@@ -2,7 +2,7 @@
 
 **State:** The historical v1.0.0 publication was republished from a clean code-only root after explicit
 owner authorization. The current local Pages candidate adds one exact privacy-sanitized AGPL demo
-model and one official sample image; it remains pending separate remote review gates. Historical
+model and three public-domain NAIP aerial derivatives; it remains pending separate remote review gates. Historical
 Hugging Face artifacts remain Private. No tag, GitHub Release, replacement Space, DOTA data, or
 fine-tuned checkpoint was published.
 
@@ -32,7 +32,7 @@ fine-tuned checkpoint was published.
   and a responsive single-column layout below 960px.
 - [x] Initial navigation is same-origin only; Detect lazy-loads the pinned SRI JavaScript/WASM and
   same-origin manifest-bound derivative without Torch, Ultralytics Python, GPU, or upload.
-- [x] The distributable inventory contains one official sample, one exact metadata-only sanitized
+- [x] The distributable inventory contains three exact public-domain NAIP derivatives, one exact metadata-only sanitized
   derivative, its unmodified AGPL text and sanitization record, plus one self-hosted OFL display font.
 - [x] Committed and archived paths admit only that exact derivative model and contain no DOTA-derived render.
 - [x] Notebooks have zero outputs/execution counts and remain synchronized with Jupytext sources.
@@ -64,7 +64,7 @@ fine-tuned checkpoint was published.
   local verification commit.
 - [x] The historical public branch began at a clean code-only root with no DOTA-derived image,
   private document, owner handle, or private Hugging Face repo identifier.
-- [x] The current candidate adds only the reviewed derivative/sample/license/sanitization inventory;
+- [x] The current candidate adds only the reviewed derivative/NAIP-sample/license/sanitization inventory;
   no second/source model, DOTA pixels, annotations, or derived render is admitted.
 
 No Dockerfile or service was added: the release paths are a static browser site and a Python
