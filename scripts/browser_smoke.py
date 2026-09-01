@@ -1157,6 +1157,35 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
     return run_count
 
 
+def capture_canonical_default_airfield_result(page: object, screenshot: Path) -> None:
+    """Freeze the first, unfiltered genuine airfield result before cache exercises."""
+    selected = page.locator("#sampleSelector [aria-pressed='true']")
+    if selected.count() != 1 or selected.get_attribute("data-sample-id") != "airfield":
+        raise RuntimeError("canonical capture does not retain selected default airfield")
+    if page.locator("#sampleSelector [aria-pressed='true']").get_attribute("aria-pressed") != "true":
+        raise RuntimeError("canonical capture airfield aria state is not exact")
+    if page.evaluate("globalThis.__demoRunCount") != 1:
+        raise RuntimeError("canonical capture is not the first genuine inference run")
+    if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
+        raise RuntimeError("canonical capture runtime is not numeric")
+    if page.locator("#modeBadge").inner_text() != "LOCAL BROWSER INFERENCE":
+        raise RuntimeError("canonical capture mode is not local browser inference")
+    if page.locator("#confSlider").input_value() != "0.25":
+        raise RuntimeError("canonical capture threshold is not the shared 0.25")
+    if page.locator(".class-cb:checked").count() != 0:
+        raise RuntimeError("canonical capture has a narrowed class filter")
+    if page.locator("#canvasFrame").is_hidden() or page.locator("#canvas").is_hidden():
+        raise RuntimeError("canonical capture result canvas is not visible")
+    rows = page.locator("#resultsBody tr:not([data-empty='true'])")
+    if rows.count() < 1 or int(page.locator("#summaryCount").inner_text()) != rows.count():
+        raise RuntimeError("canonical capture result table is not consistent")
+    description = page.locator("#canvasDescription").inner_text()
+    if not description or "class=" not in description:
+        raise RuntimeError("canonical capture description is not consistent with the result")
+    screenshot.parent.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(screenshot), full_page=True)
+
+
 def assert_original_result_toggle(
     page: object, requests: list[str], run_counter: int
 ) -> None:
@@ -2550,11 +2579,10 @@ def run_real_demo_success(
             page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
             assert_real_demo_initial(page, requests, messages)
             run_counter = exercise_real_demo_success(page, requests, messages)
+            if screenshot is not None:
+                capture_canonical_default_airfield_result(page, screenshot)
             assert_original_result_toggle(page, requests, run_counter)
             assert_demo_cached_filters(page, requests, run_counter)
-            if screenshot is not None:
-                screenshot.parent.mkdir(parents=True, exist_ok=True)
-                page.screenshot(path=str(screenshot), full_page=True)
             if mobile_screenshot is not None:
                 page.set_viewport_size({"width": 390, "height": 844})
                 mobile_screenshot.parent.mkdir(parents=True, exist_ok=True)

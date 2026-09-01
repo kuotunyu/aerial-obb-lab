@@ -174,8 +174,8 @@
     },
     {
       "path": "docs/assets/browser-workbench.png",
-      "bytes": 955398,
-      "sha256": "8ec993ca8c9ff05ee60522ffd858618ab098ac04a72b0172ad478ee385112acf",
+      "bytes": 974823,
+      "sha256": "e8e1fb74fac7a5053d87f6f8b697d63622ba5d0aba88a7d2766e9a0ab2e9f8d3",
       "kind": "canonical local interface screenshot",
       "provenance": "Generated from the exact reviewed Pages bytes after genuine local inference with the default airfield NAIP derivative and privacy-sanitized model.",
       "limitations": [
