@@ -264,6 +264,16 @@ td,
 .sample-option[aria-pressed="true"]::after { content: "✓"; font-weight: 800; color: var(--accent-ink); }
 .sample-option:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
+@media (forced-colors: active) {
+  .sample-option[aria-pressed="true"] {
+    border: 3px solid Highlight;
+    box-shadow: none;
+  }
+
+  .sample-option[aria-pressed="true"]::after { color: HighlightText; }
+  .sample-option:focus-visible { outline: 3px solid Highlight; outline-offset: 3px; }
+}
+
 .result-viewport {
   position: relative;
   display: grid;

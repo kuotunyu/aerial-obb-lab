@@ -12,6 +12,7 @@ const ERROR_COPY = Object.freeze({
   DEMO_MODEL_SIZE: "範例模型大小驗證失敗。請重新整理頁面，或使用 BYOM。",
   DEMO_MODEL_DIGEST: "範例模型完整性驗證失敗。請重新整理頁面，或使用 BYOM。",
   DEMO_MODEL_URL: "範例模型來源驗證失敗。請重新整理頁面，或使用 BYOM。",
+  DEMO_IMAGE_DECODE: "這張範例影像目前無法顯示。請選擇其他範例，或重新整理後重試。",
   RUNTIME_LOAD: "Browser runtime 無法載入。請檢查網路或 content blocker 後重試，或使用 BYOM。",
   MODEL_CONTRACT: "請選擇使用 images [1,3,1024,1024] 與 output0 [1,N,7] 的相容 ONNX。",
   IMAGE_DECODE: "Browser 無法解碼影像。請改選 PNG、JPEG 或 WebP。",
@@ -207,6 +208,12 @@ function clearResultState({keepImage = false} = {}) {
 function resetToDemoOriginal() {
   state.source = "demo";
   state.phase = "idle";
+  try {
+    setSampleSelection(state.selectedSampleId);
+  } catch (_error) {
+    reportFailure("DEMO_MANIFEST");
+    return;
+  }
   state.image = demoOriginalImage.complete && demoOriginalImage.naturalWidth
     ? demoOriginalImage
     : null;
@@ -227,6 +234,51 @@ function selectedDemoSample() {
     throw new Error("DEMO_MANIFEST");
   }
   return sample;
+}
+
+function setSampleSelection(sampleId) {
+  const sample = SAMPLE_CATALOG.find((candidate) => candidate.id === sampleId);
+  if (!sample) throw new Error("DEMO_MANIFEST");
+  sampleOptions.forEach((option) => {
+    option.setAttribute("aria-pressed", String(option.dataset.sampleId === sampleId));
+  });
+  demoOriginalImage.alt = `${sample.title}的真實航拍原圖`;
+}
+
+function loadSelectedDemoImage(sample, token) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      demoOriginalImage.removeEventListener("load", onLoad);
+      demoOriginalImage.removeEventListener("error", onError);
+    };
+    const settleStale = () => {
+      cleanup();
+      resolve(null);
+    };
+    const onError = () => {
+      if (!isCurrentGeneration(token)) return settleStale();
+      cleanup();
+      reject(new Error("DEMO_IMAGE_DECODE"));
+    };
+    const onLoad = () => {
+      cleanup();
+      demoOriginalImage.decode().then(
+        () => {
+          if (!isCurrentGeneration(token)) return resolve(null);
+          resolve(demoOriginalImage);
+        },
+        () => {
+          if (!isCurrentGeneration(token)) return resolve(null);
+          reject(new Error("DEMO_IMAGE_DECODE"));
+        },
+      );
+    };
+    demoOriginalImage.addEventListener("load", onLoad, {once: true});
+    demoOriginalImage.addEventListener("error", onError, {once: true});
+    demoOriginalImage.width = sample.width;
+    demoOriginalImage.height = sample.height;
+    demoOriginalImage.src = sample.path;
+  });
 }
 
 async function selectDemoSample(sampleId) {
@@ -254,12 +306,7 @@ async function selectDemoSample(sampleId) {
   state.image = null;
   state.imageSource = null;
   clearResultState({keepImage: true});
-  sampleOptions.forEach((option) => {
-    option.setAttribute("aria-pressed", String(option.dataset.sampleId === sampleId));
-  });
-  demoOriginalImage.src = sample.path;
-  demoOriginalImage.width = sample.width;
-  demoOriginalImage.height = sample.height;
+  setSampleSelection(sampleId);
   state.phase = "loading";
   demoDetectBtn.disabled = true;
   demoDetectBtn.textContent = "開始 Detect";
@@ -267,9 +314,9 @@ async function selectDemoSample(sampleId) {
   setInitialSummary();
   setStatus("正在載入真實航拍原圖…");
   try {
-    await demoOriginalImage.decode();
-    if (!isCurrentGeneration(generation)) return;
-    state.image = demoOriginalImage;
+    const image = await loadSelectedDemoImage(sample, generation);
+    if (!image || !isCurrentGeneration(generation)) return;
+    state.image = image;
     state.imageSource = "demo";
     state.phase = "idle";
     showOriginalSource("demo");
@@ -281,7 +328,7 @@ async function selectDemoSample(sampleId) {
     setStatus("原圖已載入 · 尚未 Detect。");
     return generation;
   } catch (_error) {
-    if (isCurrentGeneration(generation)) reportFailure("IMAGE_DECODE");
+    if (isCurrentGeneration(generation)) reportFailure("DEMO_IMAGE_DECODE");
     return null;
   }
 }
