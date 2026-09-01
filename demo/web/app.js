@@ -66,9 +66,11 @@ const state = {
   source: "demo",
   phase: "idle",
   generation: 0,
+  generationAbort: null,
   session: null,
   sessionSource: null,
   image: null,
+  imageSource: null,
   cached: null,
   elapsedMs: null,
   manifest: null,
@@ -95,15 +97,19 @@ function setStatus(message, kind = "neutral") {
 
 function reportFailure(code) {
   const safe = Object.hasOwn(ERROR_COPY, code) ? code : "INFERENCE_RUN";
-  clearResultPresentation();
+  if (state.generationAbort) state.generationAbort.abort();
+  clearResultState({keepImage: true});
   state.phase = "error";
   console.warn(`[AERIAL_OBB:${safe}]`);
   setStatus(ERROR_COPY[safe], "error");
   runtimeRetryBtn.hidden = safe !== "RUNTIME_LOAD";
+  demoDetectBtn.disabled = !(demoOriginalImage.complete && demoOriginalImage.naturalWidth);
 }
 
 function nextGeneration() {
+  if (state.generationAbort) state.generationAbort.abort();
   state.generation += 1;
+  state.generationAbort = new AbortController();
   return state.generation;
 }
 
@@ -143,10 +149,20 @@ function resetResult() {
   renderSummary([]);
 }
 
-function clearResultPresentation() {
+function clearResultState({keepImage = false} = {}) {
   resetResult();
+  if (!keepImage) {
+    state.image = null;
+    state.imageSource = null;
+  }
+  demoFigure.hidden = false;
+  demoOriginalImage.hidden = false;
+  demoFigureLabel.textContent = "原圖 · 尚未 Detect";
   modeBadge.textContent = "NO RESULT";
   provenanceValue.textContent = "—";
+  detectBtn.disabled = !(
+    state.image && state.imageSource === "byom" && state.sessionSource === "byom"
+  );
 }
 
 function resetToDemoOriginal() {
@@ -155,6 +171,7 @@ function resetToDemoOriginal() {
   state.image = demoOriginalImage.complete && demoOriginalImage.naturalWidth
     ? demoOriginalImage
     : null;
+  state.imageSource = state.image ? "demo" : null;
   resetResult();
   demoFigure.hidden = false;
   demoOriginalImage.hidden = false;
@@ -193,13 +210,14 @@ function loadOrtRuntime() {
   return ortPromise;
 }
 
-async function fetchDemoManifest() {
+async function fetchDemoManifest(signal) {
   let response;
   try {
     response = await fetch("demo-model.json", {
       cache: "force-cache",
       credentials: "same-origin",
       redirect: "error",
+      signal,
     });
     if (!response.ok) throw new Error("DEMO_MANIFEST");
     return DemoAssets.validateManifest(await response.json());
@@ -274,14 +292,16 @@ async function assignCandidate(candidate, source, generation) {
 
 async function ensureDemoSession(generation) {
   if (state.session && state.sessionSource === "demo") return state.session;
-  const manifest = state.manifest || await fetchDemoManifest();
+  const signal = isCurrentGeneration(generation) ? state.generationAbort?.signal : null;
+  if (!signal) return null;
+  const manifest = state.manifest || await fetchDemoManifest(signal);
   if (!isCurrentGeneration(generation)) return null;
   state.manifest = manifest;
   const [runtime, modelBytes] = await Promise.all([
     loadOrtRuntime(),
     state.demoModelBytes
       ? Promise.resolve(state.demoModelBytes)
-      : DemoAssets.fetchVerifiedModel(manifest),
+      : DemoAssets.fetchVerifiedModel(manifest, signal),
   ]);
   if (!isCurrentGeneration(generation)) return null;
   state.demoModelBytes = modelBytes;
@@ -420,7 +440,7 @@ function renderCachedOutput() {
 }
 
 function setResultView(view) {
-  if (!state.cached || (view !== "original" && view !== "result")) return;
+  if (!state.cached || (view !== "original" && view !== "result")) return null;
   state.view = view;
   if (view === "original") {
     canvasFrame.hidden = true;
@@ -428,19 +448,21 @@ function setResultView(view) {
     demoOriginalImage.hidden = false;
     demoFigureLabel.textContent = "原圖";
     viewToggleBtn.textContent = "查看結果";
-    return;
+    return [];
   }
   demoFigure.hidden = true;
   demoFigureLabel.textContent = "Detect 結果";
   canvasFrame.hidden = false;
   viewToggleBtn.textContent = "查看原圖";
-  renderCachedOutput();
+  return renderCachedOutput();
 }
 
 async function runActiveInference(source, generation) {
   const image = state.image;
   const session = state.session;
-  if (!image || !session || state.sessionSource !== source) return null;
+  if (
+    !image || !session || state.sessionSource !== source || state.imageSource !== source
+  ) return null;
   state.source = source;
   state.phase = "loading";
   resetResult();
@@ -477,8 +499,7 @@ async function runActiveInference(source, generation) {
   provenanceValue.textContent = source === "demo" ? DEMO_PROVENANCE : "Local files";
   resultControls.hidden = false;
   viewToggleBtn.hidden = source !== "demo";
-  setResultView("result");
-  const detections = renderCachedOutput();
+  const detections = setResultView("result");
   if (detections === null) return null;
   if (source === "demo") demoDetectBtn.textContent = "再次 Detect";
   setStatus(
@@ -486,6 +507,10 @@ async function runActiveInference(source, generation) {
       ? `完成 · ${detections.length} 個 detections`
       : "完成 · 沒有符合條件的 detections",
     "success",
+  );
+  demoDetectBtn.disabled = false;
+  detectBtn.disabled = !(
+    source === "byom" && state.imageSource === "byom" && state.sessionSource === "byom"
   );
   resultTitle.focus();
   return detections;
@@ -495,6 +520,7 @@ async function runDemo() {
   const generation = nextGeneration();
   state.source = "demo";
   state.image = demoOriginalImage;
+  state.imageSource = "demo";
   resetResult();
   setInitialSummary();
   demoFigure.hidden = false;
@@ -515,11 +541,14 @@ async function runDemo() {
 
 async function handleModelSelection(file) {
   if (!file) return;
+  const keepByomImage = state.source === "byom" && state.imageSource === "byom";
   const generation = nextGeneration();
   state.source = "byom";
-  resetResult();
-  modeBadge.textContent = "NO RESULT";
-  provenanceValue.textContent = "—";
+  if (!keepByomImage) {
+    state.image = null;
+    state.imageSource = null;
+  }
+  clearResultState({keepImage: true});
   setStatus("正在載入 local ONNX model…", "running");
   try {
     const session = await replaceByomSession(file, generation);
@@ -545,13 +574,16 @@ function loadImageUrl(url) {
 async function loadImageFile(file) {
   const generation = nextGeneration();
   state.source = "byom";
-  resetResult();
+  state.image = null;
+  state.imageSource = null;
+  clearResultState({keepImage: true});
   setStatus("正在解碼 local image…", "running");
   const url = URL.createObjectURL(file);
   try {
     const image = await loadImageUrl(url);
     if (!isCurrentGeneration(generation)) return;
     state.image = image;
+    state.imageSource = "byom";
     fileLabel.textContent = "Local image ready";
     detectBtn.disabled = !(state.session && state.sessionSource === "byom");
     setStatus(
