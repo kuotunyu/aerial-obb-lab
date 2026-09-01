@@ -717,7 +717,10 @@ def test_first_publication_bundle_rollback_removes_new_gallery_files_and_keeps_p
     monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
     samples = tmp_path / "demo" / "web" / "samples"; samples.mkdir(parents=True)
     boats = samples / "boats.jpg"
-    boats.write_bytes(subprocess.check_output(["git", "show", "6c14973:demo/web/samples/boats.jpg"], cwd=Path(__file__).resolve().parents[1]))
+    predecessor = b"isolated reviewed predecessor fixture"
+    monkeypatch.setattr(gallery, "_REVIEWED_BOATS_BYTES", len(predecessor))
+    monkeypatch.setattr(gallery, "_REVIEWED_BOATS_SHA256", hashlib.sha256(predecessor).hexdigest())
+    boats.write_bytes(predecessor)
     receipt = tmp_path / "release" / "sample-gallery-sources.json"
     manifest = tmp_path / "demo" / "web" / "demo-model.json"
     loader = tmp_path / "demo" / "web" / "demo-assets.js"
@@ -729,7 +732,7 @@ def test_first_publication_bundle_rollback_removes_new_gallery_files_and_keeps_p
     with pytest.raises(gallery.GalleryError, match="GALLERY_SCOPE"):
         gallery.publish_gallery_bundle(approved_gallery_report, tmp_path, samples.parent, receipt, manifest, loader)
     assert {path.name for path in samples.iterdir()} == {"boats.jpg"}
-    assert boats.read_bytes() == subprocess.check_output(["git", "show", "6c14973:demo/web/samples/boats.jpg"], cwd=Path(__file__).resolve().parents[1])
+    assert boats.read_bytes() == predecessor
     assert not receipt.exists() and not manifest.exists() and not loader.exists()
 
 
