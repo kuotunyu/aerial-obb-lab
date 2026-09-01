@@ -601,6 +601,38 @@ def test_release_artifact_contract_rejects_cross_record_identity_mutation(
     assert expected_error in errors
 
 
+@pytest.mark.parametrize(
+    ("field", "mutation"),
+    [
+        ("digest_mode", None),
+        ("digest_mode", "binary"),
+        ("sha256", "0" * 64),
+    ],
+)
+def test_release_artifact_contract_rejects_license_digest_mutation(
+    tmp_path: Path, field: str, mutation: str | None
+) -> None:
+    release_check = load_release_check()
+    root = _copy_release_candidate(tmp_path)
+    manifest_path = root / "release" / "artifact-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entry = next(
+        item
+        for item in manifest["bundled_third_party_artifacts"]
+        if item["path"] == release_check.APPROVED_MODEL_LICENSE_FILE
+    )
+    if mutation is None:
+        entry.pop(field, None)
+    else:
+        entry[field] = mutation
+    _write_json(manifest_path, manifest)
+
+    assert (
+        f"{release_check.APPROVED_MODEL_LICENSE_FILE}: canonical-LF license identity is not exact"
+        in release_check.verify_artifacts(root)
+    )
+
+
 def test_private_runtime_and_absolute_user_paths_fail_closed(tmp_path: Path) -> None:
     release_check = load_release_check()
 

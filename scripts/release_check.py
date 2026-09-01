@@ -114,6 +114,9 @@ SOURCE_MODEL_URL = "https://github.com/ultralytics/assets/releases/download/v8.4
 APPROVED_MODEL_LICENSE = "AGPL-3.0-only"
 APPROVED_MODEL_LICENSE_FILE = "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt"
 APPROVED_MODEL_LICENSE_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+APPROVED_MODEL_LICENSE_SOURCE_URL = (
+    "https://github.com/ultralytics/ultralytics/blob/main/LICENSE"
+)
 APPROVED_SANITIZATION_RECORD = (
     "demo/web/third_party/yolo26n-obb-privacy-sanitization.json"
 )
@@ -303,6 +306,10 @@ def verify_artifacts(root: Path = ROOT) -> list[str]:
         if digest != entry.get("sha256"):
             errors.append(f"{relative}: SHA-256 differs from manifest")
 
+    if _approved_license_entry(manifest) is None:
+        errors.append(
+            f"{APPROVED_MODEL_LICENSE_FILE}: canonical-LF license identity is not exact"
+        )
     errors.extend(verify_code_only_paths(committed_paths(root), manifest))
     errors.extend(_verify_demo_model_contract(root, manifest))
     return errors
@@ -328,6 +335,28 @@ def _approved_model_entry(manifest: dict) -> dict | None:
         "sanitization_record": APPROVED_SANITIZATION_RECORD,
         "license": APPROVED_MODEL_LICENSE,
         "license_file": APPROVED_MODEL_LICENSE_FILE,
+    }
+    if any(entry.get(field) != value for field, value in expected.items()):
+        return None
+    return entry
+
+
+def _approved_license_entry(manifest: dict) -> dict | None:
+    matches = [
+        entry
+        for entry in manifest.get("bundled_third_party_artifacts", [])
+        if entry.get("path") == APPROVED_MODEL_LICENSE_FILE
+    ]
+    if len(matches) != 1:
+        return None
+    entry = matches[0]
+    expected = {
+        "path": APPROVED_MODEL_LICENSE_FILE,
+        "bytes": 34523,
+        "sha256": APPROVED_MODEL_LICENSE_SHA256,
+        "digest_mode": "canonical-lf",
+        "source_url": APPROVED_MODEL_LICENSE_SOURCE_URL,
+        "license": APPROVED_MODEL_LICENSE,
     }
     if any(entry.get(field) != value for field, value in expected.items()):
         return None

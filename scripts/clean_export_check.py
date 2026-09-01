@@ -91,6 +91,9 @@ SOURCE_MODEL_URL = "https://github.com/ultralytics/assets/releases/download/v8.4
 APPROVED_MODEL_LICENSE = "AGPL-3.0-only"
 APPROVED_MODEL_LICENSE_FILE = "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt"
 APPROVED_MODEL_LICENSE_SHA256 = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+APPROVED_MODEL_LICENSE_SOURCE_URL = (
+    "https://github.com/ultralytics/ultralytics/blob/main/LICENSE"
+)
 APPROVED_SANITIZATION_RECORD = (
     "demo/web/third_party/yolo26n-obb-privacy-sanitization.json"
 )
@@ -135,11 +138,35 @@ def _approved_model_is_manifest_bound(manifest: dict | None) -> bool:
     )
 
 
-def _archive_demo_contract_errors(bundle: zipfile.ZipFile) -> list[str]:
+def _approved_license_is_manifest_bound(manifest: dict | None) -> bool:
+    entries = (manifest or {}).get("bundled_third_party_artifacts", [])
+    matches = [
+        entry for entry in entries if entry.get("path") == APPROVED_MODEL_LICENSE_FILE
+    ]
+    expected = {
+        "path": APPROVED_MODEL_LICENSE_FILE,
+        "bytes": 34523,
+        "sha256": APPROVED_MODEL_LICENSE_SHA256,
+        "digest_mode": "canonical-lf",
+        "source_url": APPROVED_MODEL_LICENSE_SOURCE_URL,
+        "license": APPROVED_MODEL_LICENSE,
+    }
+    return len(matches) == 1 and all(
+        matches[0].get(field) == value for field, value in expected.items()
+    )
+
+
+def _archive_demo_contract_errors(
+    bundle: zipfile.ZipFile, manifest: dict
+) -> list[str]:
     """Bind the approved exception to its same-archive manifest and receipt."""
     demo = json.loads(bundle.read("demo/web/demo-model.json").decode("utf-8"))
     receipt = json.loads(bundle.read(APPROVED_SANITIZATION_RECORD).decode("utf-8"))
     errors: list[str] = []
+    if not _approved_license_is_manifest_bound(manifest):
+        errors.append(
+            f"{APPROVED_MODEL_LICENSE_FILE}: canonical-LF license identity is not exact"
+        )
     expected_relative = APPROVED_DEMO_MODEL.removeprefix("demo/web/")
     if (
         demo.get("model", {}).get("path"),
@@ -262,7 +289,7 @@ def inspect_archive(archive: Path) -> list[str]:
 
             manifest = json.loads(bundle.read("release/artifact-manifest.json").decode("utf-8"))
             errors.extend(archive_policy_errors(names, manifest))
-            errors.extend(_archive_demo_contract_errors(bundle))
+            errors.extend(_archive_demo_contract_errors(bundle, manifest))
             artifacts = manifest.get("bundled_third_party_artifacts", [])
             listed = {entry.get("path") for entry in artifacts}
             maximum = int(manifest.get("policy", {}).get("maximum_unlisted_tracked_file_bytes", 0))

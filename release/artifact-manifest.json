@@ -61,6 +61,7 @@
       "path": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
       "bytes": 34523,
       "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "digest_mode": "canonical-lf",
       "kind": "unmodified upstream model license text",
       "provenance": "Complete AGPL-3.0-only license text distributed with the privacy-sanitized model derivative.",
       "source_url": "https://github.com/ultralytics/ultralytics/blob/main/LICENSE",
