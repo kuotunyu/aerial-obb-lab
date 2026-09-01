@@ -655,6 +655,7 @@ def test_publish_validates_complete_batch_and_restores_prior_batch_on_failure(tm
     assert manifest["model"]["sourceSha256"] == sanitization.source_sha256
     assert manifest["output"] == {"name": "output0", "dims": [1, "N", 7], "type": "float32", "rowWidth": 7, "layout": ["cx", "cy", "w", "h", "confidence", "class", "angleRadians"]}
     assert not ({"results", "detections", "boxes", "tensor", "runtime", "url"} & set(manifest))
+
     before = _files(pages_root)
     real_write_text = Path.write_text
 
@@ -698,6 +699,28 @@ def test_publish_validates_complete_batch_and_restores_prior_batch_on_failure(tm
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_SCOPE"):
         publish_assets(review_root, pages_root)
     assert _files(pages_root) == before_rollback_failure
+
+
+def test_gallery_receipt_admits_only_the_published_three_sample_bytes(tmp_path: Path) -> None:
+    """Changing a gallery digest or adding boats must make asset publication refuse it."""
+    receipt = {
+        "schemaVersion": 1,
+        "samples": [
+            {"id": "airfield", "path": "samples/airfield.jpg", "bytes": 3, "sha256": hashlib.sha256(b"one").hexdigest()},
+            {"id": "sports-complex", "path": "samples/sports-complex.jpg", "bytes": 3, "sha256": hashlib.sha256(b"two").hexdigest()},
+            {"id": "harbor", "path": "samples/harbor.jpg", "bytes": 5, "sha256": hashlib.sha256(b"three").hexdigest()},
+        ],
+    }
+    pages = tmp_path / "web"
+    (pages / "samples").mkdir(parents=True)
+    for item, body in zip(receipt["samples"], (b"one", b"two", b"three"), strict=True):
+        (pages / item["path"]).write_bytes(body)
+    receipt_path = tmp_path / "sample-gallery-sources.json"
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    demo_assets.validate_gallery_publication(pages, receipt_path)
+    (pages / "samples" / "boats.jpg").write_bytes(b"stale")
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.validate_gallery_publication(pages, receipt_path)
 
 
 def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.CaptureFixture[str]) -> None:

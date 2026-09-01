@@ -24,8 +24,8 @@
   </header>
 
   <section id="claimBoundary" class="claim-boundary" aria-labelledby="claimTitle">
-    <h2 id="claimTitle">真實影像 · 本機 Browser inference</h2>
-    <p>這是真實官方航拍範例；Detect 只在目前的 browser session 執行，影像與模型不會上傳。本頁不是 accuracy、evaluation 或 latency benchmark evidence。</p>
+    <strong id="claimTitle">真實航拍範例 · 實際瀏覽器推論</strong>
+    <p>選擇一張 USGS／USDA NAIP 公領域航拍範例，再按下 Detect。頁面才會載入 OBB 模型並在你的瀏覽器中執行推論；影像不會上傳。範例經挑選以便清楚展示操作，不是 accuracy、evaluation 或 latency benchmark。</p>
   </section>
 
   <main id="mainContent" tabindex="-1">
@@ -33,11 +33,25 @@
       <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
         <div class="rail-heading">
           <h2 id="controlsTitle">範例與設定</h2>
-          <p>先查看原圖，再由目前的 browser 執行 Detect。</p>
+          <p>先選擇一張真實航拍原圖，再由目前的 browser 執行 Detect。</p>
         </div>
-        <article id="sampleCard" class="sample-card" aria-labelledby="sampleTitle">
-          <img id="sampleThumbnail" src="samples/boats.jpg" alt="" aria-hidden="true" />
-          <div><h3 id="sampleTitle">官方港區航拍範例</h3><p id="sampleState">Original · ready</p></div>
+        <article id="sampleCard" class="sample-card" aria-labelledby="sampleSelector">
+          <fieldset id="sampleSelector" class="sample-selector">
+            <legend>選擇範例</legend>
+            <button class="sample-option" type="button" name="demo-sample" value="airfield" data-sample-id="airfield" aria-pressed="true">
+              <img src="samples/airfield.jpg" alt="小型機場航拍原圖縮圖" width="96" height="60" />
+              <span><strong>小型機場航拍範例</strong><small>真實航拍原圖</small></span>
+            </button>
+            <button class="sample-option" type="button" name="demo-sample" value="sports-complex" data-sample-id="sports-complex" aria-pressed="false">
+              <img src="samples/sports-complex.jpg" alt="運動場館航拍原圖縮圖" width="96" height="60" />
+              <span><strong>運動場館航拍範例</strong><small>真實航拍原圖</small></span>
+            </button>
+            <button class="sample-option" type="button" name="demo-sample" value="harbor" data-sample-id="harbor" aria-pressed="false">
+              <img src="samples/harbor.jpg" alt="低密度港區航拍原圖縮圖" width="96" height="60" />
+              <span><strong>低密度港區航拍範例</strong><small>真實航拍原圖</small></span>
+            </button>
+          </fieldset>
+          <p id="sampleState">Original · ready</p>
           <button id="demoDetectBtn" type="button" aria-describedby="claimTitle">開始 Detect</button>
           <button id="viewToggleBtn" class="secondary-action" type="button" hidden>查看原圖</button>
         </article>
@@ -91,14 +105,14 @@
             <div><dt>Top confidence</dt><dd id="summaryTop">—</dd></div>
             <div><dt>本次 browser 執行</dt><dd id="runtimeValue">—</dd></div>
             <div class="mode-entry"><dt>Mode</dt><dd id="modeBadge">尚未 Detect</dd></div>
-            <div class="mode-entry"><dt>Provenance</dt><dd id="provenanceValue">官方範例 · 尚未執行</dd></div>
+            <div class="mode-entry"><dt>Provenance</dt><dd id="provenanceValue">USGS／USDA NAIP · 尚未執行</dd></div>
           </dl>
         </div>
         <div id="resultViewport" class="result-viewport">
           <figure id="demoFigure" class="viewport-original">
             <figcaption id="demoFigureLabel">原圖 · 尚未 Detect</figcaption>
-            <img id="demoOriginalImage" src="samples/boats.jpg" width="1920" height="1080"
-                 alt="海面與碼頭附近的多艘船隻航拍影像" />
+            <img id="demoOriginalImage" src="samples/airfield.jpg" width="1280" height="800"
+                 alt="小型機場的真實航拍原圖" />
             <img id="viewportByomImage" hidden alt="使用者選擇的航拍影像" />
           </figure>
           <div class="canvas-frame" id="canvasFrame" hidden>

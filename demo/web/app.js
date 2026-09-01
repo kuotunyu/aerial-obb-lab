@@ -32,6 +32,8 @@ const CLASS_COLORS = Object.freeze([
 ]);
 
 const demoOriginalImage = document.getElementById("demoOriginalImage");
+const sampleOptions = Array.from(document.querySelectorAll(".sample-option"));
+const SAMPLE_CATALOG = DemoAssets.getSampleCatalog();
 const viewportByomImage = document.getElementById("viewportByomImage");
 const demoFigure = document.getElementById("demoFigure");
 const demoFigureLabel = document.getElementById("demoFigureLabel");
@@ -77,6 +79,7 @@ const state = {
   elapsedMs: null,
   manifest: null,
   demoModelBytes: null,
+  selectedSampleId: "airfield",
   view: "original",
 };
 
@@ -138,7 +141,7 @@ function setInitialSummary() {
   summaryTop.textContent = "—";
   runtimeValue.textContent = "—";
   modeBadge.textContent = "尚未 Detect";
-  provenanceValue.textContent = "官方範例 · 尚未執行";
+  provenanceValue.textContent = "USGS／USDA NAIP · 尚未執行";
 }
 
 function setFilterAvailability(available) {
@@ -216,6 +219,51 @@ function resetToDemoOriginal() {
   demoDetectBtn.disabled = state.image === null;
   setInitialSummary();
   setStatus(state.image ? "原圖已載入 · 尚未 Detect。" : "正在載入官方範例原圖…");
+}
+
+function selectedDemoSample() {
+  const sample = SAMPLE_CATALOG.find((candidate) => candidate.id === state.selectedSampleId);
+  if (!sample || !sampleOptions.some((option) => option.dataset.sampleId === sample.id)) {
+    throw new Error("DEMO_MANIFEST");
+  }
+  return sample;
+}
+
+async function selectDemoSample(sampleId) {
+  const sample = SAMPLE_CATALOG.find((candidate) => candidate.id === sampleId);
+  if (!sample) return;
+  const generation = nextGeneration();
+  state.source = "demo";
+  state.selectedSampleId = sampleId;
+  if (state.sessionSource !== "demo") {
+    state.session = null;
+    state.sessionSource = null;
+  }
+  state.image = null;
+  state.imageSource = null;
+  clearResultState({keepImage: true});
+  sampleOptions.forEach((option) => {
+    option.setAttribute("aria-pressed", String(option.dataset.sampleId === sampleId));
+  });
+  demoOriginalImage.src = sample.path;
+  demoOriginalImage.width = sample.width;
+  demoOriginalImage.height = sample.height;
+  try {
+    await demoOriginalImage.decode();
+    if (!isCurrentGeneration(generation)) return;
+    state.image = demoOriginalImage;
+    state.imageSource = "demo";
+    state.phase = "idle";
+    showOriginalSource("demo");
+    demoFigureLabel.textContent = "原圖 · 尚未 Detect";
+    demoDetectBtn.textContent = "開始 Detect";
+    demoDetectBtn.disabled = false;
+    sampleState.textContent = "Original · ready";
+    setInitialSummary();
+    setStatus("原圖已載入 · 尚未 Detect。");
+  } catch (_error) {
+    if (isCurrentGeneration(generation)) reportFailure("IMAGE_DECODE");
+  }
 }
 
 function loadOrtRuntime() {
@@ -535,7 +583,9 @@ async function runActiveInference(source, generation) {
   modeBadge.textContent = source === "demo"
     ? "LOCAL BROWSER INFERENCE"
     : "BYOM · LOCAL BROWSER INFERENCE";
-  provenanceValue.textContent = source === "demo" ? DEMO_PROVENANCE : "Local files";
+  provenanceValue.textContent = source === "demo"
+    ? `${DEMO_PROVENANCE} · ${selectedDemoSample().title}`
+    : "Local files";
   viewToggleBtn.hidden = source !== "demo";
   const detections = setResultView("result");
   if (detections === null) return null;
@@ -552,8 +602,18 @@ async function runActiveInference(source, generation) {
 
 async function runDemo() {
   const generation = nextGeneration();
+  let sample;
+  try {
+    sample = selectedDemoSample();
+  } catch (error) {
+    reportFailure(error.message || "DEMO_MANIFEST");
+    return;
+  }
+  if (!state.image || state.image !== demoOriginalImage || demoOriginalImage.getAttribute("src") !== sample.path) {
+    reportFailure("IMAGE_DECODE");
+    return;
+  }
   state.source = "demo";
-  state.image = demoOriginalImage;
   state.imageSource = "demo";
   resetResult();
   setInitialSummary();
@@ -655,6 +715,9 @@ viewToggleBtn.addEventListener("click", () => {
   setResultView(state.view === "result" ? "original" : "result");
 });
 demoDetectBtn.addEventListener("click", () => void runDemo());
+sampleOptions.forEach((option) => {
+  option.addEventListener("click", () => void selectDemoSample(option.dataset.sampleId));
+});
 modelInput.addEventListener("change", () => void handleModelSelection(modelInput.files[0]));
 fileInput.addEventListener("change", () => {
   if (fileInput.files[0]) void loadImageFile(fileInput.files[0]);

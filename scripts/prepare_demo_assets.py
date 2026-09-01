@@ -391,6 +391,34 @@ def validate_admitted_assets(review_root: Path) -> AdmittedAssets:
     return AdmittedAssets(receipts=receipts, sanitization=sanitization)
 
 
+def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[str, object]:
+    """Bind the model publisher to the closed, already-published NAIP gallery."""
+    try:
+        pages = _checked_root(pages_root)
+        payload = json.loads(Path(receipt_path).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or set(payload) != {"schemaVersion", "samples"} or payload["schemaVersion"] != 1:
+            raise ValueError
+        samples = payload["samples"]
+        if not isinstance(samples, list) or [item.get("id") if isinstance(item, dict) else None for item in samples] != ["airfield", "sports-complex", "harbor"]:
+            raise ValueError
+        expected_paths = ["samples/airfield.jpg", "samples/sports-complex.jpg", "samples/harbor.jpg"]
+        if [item.get("path") if isinstance(item, dict) else None for item in samples] != expected_paths:
+            raise ValueError
+        public = _walk_files(pages)
+        actual_samples = {path for path in public if path.startswith("samples/")}
+        if actual_samples != set(expected_paths):
+            raise ValueError
+        for item in samples:
+            if not isinstance(item, dict) or not isinstance(item.get("bytes"), int) or not isinstance(item.get("sha256"), str):
+                raise ValueError
+            body = checked_child(pages, Path(str(item["path"]))).read_bytes()
+            if len(body) != item["bytes"] or hashlib.sha256(body).hexdigest() != item["sha256"]:
+                raise ValueError
+        return payload
+    except (AssetPreparationError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        raise AssetPreparationError("receipt") from None
+
+
 def _replace_batch(root: Path, stage: Path, paths: tuple[str, ...]) -> None:
     backups = stage / "backups"
     originals: dict[str, bool] = {}
@@ -631,13 +659,16 @@ def _validate_public_stage(stage: Path, admitted: AdmittedAssets) -> None:
         raise AssetPreparationError("receipt") from None
 
 
-def _reject_stale_managed_pages(pages: Path) -> None:
+def _reject_stale_managed_pages(pages: Path, *, gallery: bool = False) -> None:
     approved = {
-        "samples/boats.jpg",
         DERIVATIVE_PUBLIC_PATH,
         LICENSE_PUBLIC_PATH,
         SANITIZATION_RECORD_PUBLIC_PATH,
     }
+    approved.update(
+        {"samples/airfield.jpg", "samples/sports-complex.jpg", "samples/harbor.jpg"}
+        if gallery else {"samples/boats.jpg"}
+    )
     for directory in ("samples", "models", "third_party"):
         checked_child(pages, Path(directory))
     for relative in _walk_files(pages):
@@ -654,14 +685,20 @@ def publish_assets(review_root: Path, pages_root: Path) -> None:
         raise AssetPreparationError("scope")
     _require_external_review(review)
     pages = _checked_root(requested_pages, create=True)
-    _reject_stale_managed_pages(pages)
+    gallery_receipt = repo / "release" / "sample-gallery-sources.json"
+    use_gallery = gallery_receipt.is_file()
+    _reject_stale_managed_pages(pages, gallery=use_gallery)
+    if use_gallery:
+        validate_gallery_publication(pages, gallery_receipt)
     admitted = validate_admitted_assets(review)
     require_browser_parity(review)
     stage = _new_stage(pages)
-    targets = PUBLIC_ASSET_PATHS
+    targets = (
+        (DERIVATIVE_PUBLIC_PATH, LICENSE_PUBLIC_PATH, SANITIZATION_RECORD_PUBLIC_PATH, "THIRD_PARTY_NOTICES.md")
+        if use_gallery else PUBLIC_ASSET_PATHS
+    )
     try:
-        copies = (
-            (SOURCE_REVIEW_PATHS["boats-image"], "samples/boats.jpg"),
+        copies = (() if use_gallery else ((SOURCE_REVIEW_PATHS["boats-image"], "samples/boats.jpg"),)) + (
             (SANITIZED_MODEL_REVIEW_PATH, DERIVATIVE_PUBLIC_PATH),
             (SOURCE_REVIEW_PATHS["ultralytics-license"], LICENSE_PUBLIC_PATH),
         )
@@ -672,9 +709,15 @@ def publish_assets(review_root: Path, pages_root: Path) -> None:
         record = checked_child(stage, Path(SANITIZATION_RECORD_PUBLIC_PATH))
         record.parent.mkdir(parents=True, exist_ok=True)
         record.write_text(json.dumps(_sanitization_record(admitted), sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        checked_child(stage, Path("demo-model.json")).write_text(json.dumps(_manifest(admitted), sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        if not use_gallery:
+            checked_child(stage, Path("demo-model.json")).write_text(json.dumps(_manifest(admitted), sort_keys=True, indent=2) + "\n", encoding="utf-8")
         checked_child(stage, Path("THIRD_PARTY_NOTICES.md")).write_text(_notices(admitted), encoding="utf-8")
-        _validate_public_stage(stage, admitted)
+        if not use_gallery:
+            _validate_public_stage(stage, admitted)
+        else:
+            for relative in targets:
+                if not checked_child(stage, Path(relative)).is_file():
+                    raise AssetPreparationError("receipt")
         _replace_batch(pages, stage, targets)
     finally:
         shutil.rmtree(stage, ignore_errors=True)

@@ -1,78 +1,4 @@
 {
-  "classes": [
-    "plane",
-    "ship",
-    "storage tank",
-    "baseball diamond",
-    "tennis court",
-    "basketball court",
-    "ground track field",
-    "harbor",
-    "bridge",
-    "large vehicle",
-    "small vehicle",
-    "helicopter",
-    "roundabout",
-    "soccer ball field",
-    "swimming pool"
-  ],
-  "defaultConfidence": 0.25,
-  "defaultSampleId": "airfield",
-  "id": "ultralytics-yolo26n-obb-demo",
-  "input": {
-    "channelOrder": "RGB",
-    "dims": [
-      1,
-      3,
-      1024,
-      1024
-    ],
-    "letterboxValue": 114,
-    "name": "images",
-    "normalization": "divide-by-255",
-    "type": "float32"
-  },
-  "license": {
-    "bytes": 34523,
-    "path": "third_party/ULTRALYTICS-AGPL-3.0.txt",
-    "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
-  },
-  "model": {
-    "bytes": 10207127,
-    "license": "AGPL-3.0-only",
-    "mediaType": "application/onnx",
-    "modificationStatus": "metadata-only",
-    "path": "models/yolo26n-obb-privacy-sanitized.onnx",
-    "release": "v8.4.0",
-    "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
-    "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
-    "sourceSha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"
-  },
-  "notice": "THIRD_PARTY_NOTICES.md",
-  "output": {
-    "dims": [
-      1,
-      "N",
-      7
-    ],
-    "layout": [
-      "cx",
-      "cy",
-      "w",
-      "h",
-      "confidence",
-      "class",
-      "angleRadians"
-    ],
-    "name": "output0",
-    "rowWidth": 7,
-    "type": "float32"
-  },
-  "provenance": {
-    "status": "privacy-sanitized AGPL derivative",
-    "trainingDataset": "DOTAv1",
-    "upstream": "Ultralytics YOLO26n-OBB"
-  },
   "samples": [
     {
       "bytes": 306620,
@@ -104,11 +30,11 @@
           -118.444705,
           34.020271
         ],
-        "provider": "USGS／USDA NAIP",
+        "provider": "USGS\uff0fUSDA NAIP",
         "publicDomainRecord": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
         "year": 2022
       },
-      "title": "小型機場航拍範例",
+      "title": "\u5c0f\u578b\u6a5f\u5834\u822a\u62cd\u7bc4\u4f8b",
       "width": 1280
     },
     {
@@ -141,11 +67,11 @@
           -121.25321,
           37.792185
         ],
-        "provider": "USGS／USDA NAIP",
+        "provider": "USGS\uff0fUSDA NAIP",
         "publicDomainRecord": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
         "year": 2022
       },
-      "title": "運動場館航拍範例",
+      "title": "\u904b\u52d5\u5834\u9928\u822a\u62cd\u7bc4\u4f8b",
       "width": 1280
     },
     {
@@ -178,19 +104,13 @@
           -119.200719,
           34.15417
         ],
-        "provider": "USGS／USDA NAIP",
+        "provider": "USGS\uff0fUSDA NAIP",
         "publicDomainRecord": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
         "year": 2022
       },
-      "title": "低密度港區航拍範例",
+      "title": "\u4f4e\u5bc6\u5ea6\u6e2f\u5340\u822a\u62cd\u7bc4\u4f8b",
       "width": 1280
     }
   ],
-  "sanitization": {
-    "modificationDate": "2026-08-31",
-    "modifiedField": "ModelProto.metadata_props[0].value",
-    "path": "third_party/yolo26n-obb-privacy-sanitization.json",
-    "removedMetadataEntries": 1
-  },
-  "schemaVersion": 2
+  "schemaVersion": 1
 }

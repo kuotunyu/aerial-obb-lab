@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Callable, Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
@@ -746,12 +747,223 @@ def verify_approved(review_root: Path) -> None:
         raise GalleryError("GALLERY_RECORD") from None
 
 
+_PUBLIC_SAMPLE_IDS = ("airfield", "sports-complex", "harbor")
+_PUBLIC_SAMPLE_TITLES = {
+    "airfield": "小型機場航拍範例",
+    "sports-complex": "運動場館航拍範例",
+    "harbor": "低密度港區航拍範例",
+}
+
+
+def _public_sample_record(record: dict[str, object]) -> dict[str, object]:
+    """Convert one reviewed record to the deliberately small public receipt shape."""
+    category = record["category"]
+    image = record["image"]
+    source = record["source"]
+    derivation = record["derivation"]
+    if not isinstance(category, str) or not isinstance(image, dict) or not isinstance(source, dict) or not isinstance(derivation, dict):
+        raise GalleryError("GALLERY_RECORD")
+    return {
+        "id": category,
+        "title": _PUBLIC_SAMPLE_TITLES[category],
+        "path": f"samples/{category}.jpg",
+        "bytes": image["bytes"],
+        "sha256": image["sha256"],
+        "mediaType": "image/jpeg",
+        "width": OUTPUT_SIZE[0],
+        "height": OUTPUT_SIZE[1],
+        "source": {
+            "provider": "USGS／USDA NAIP",
+            "publicDomainRecord": source["publicDomainRecord"],
+            "year": source["year"],
+            "acquisitionDate": source["acquisitionDate"],
+            "bboxWgs84": source["bboxWgs84"],
+        },
+        "derivation": {
+            "outputSize": derivation["outputSize"],
+            "color": derivation["color"],
+            "jpegQuality": derivation["jpegQuality"],
+            "metadata": derivation["metadata"],
+        },
+        "guardrails": {
+            "threshold": derivation["threshold"],
+            "classFilter": derivation["classFilter"],
+            "precomputedOutputs": False,
+            "inference": "browser-only",
+        },
+    }
+
+
+def _validate_public_jpeg(data: bytes, expected: dict[str, object]) -> None:
+    try:
+        if (
+            not data.startswith(b"\xff\xd8\xff")
+            or not data.endswith(b"\xff\xd9")
+            or len(data) != expected["bytes"]
+            or hashlib.sha256(data).hexdigest() != expected["sha256"]
+        ):
+            raise ValueError
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+            if image.format != "JPEG" or image.mode != "RGB" or image.size != OUTPUT_SIZE:
+                raise ValueError
+    except (KeyError, OSError, UnidentifiedImageError, ValueError):
+        raise GalleryError("GALLERY_RECORD") from None
+
+
+def _atomic_replace_gallery(pages_root: Path, receipt_path: Path, staged: Path) -> None:
+    samples = _checked_child(pages_root, "samples")
+    samples.mkdir(exist_ok=True)
+    permitted = {"boats.jpg", *[f"{sample_id}.jpg" for sample_id in _PUBLIC_SAMPLE_IDS]}
+    existing = list(samples.iterdir())
+    if any(path.name not in permitted or not path.is_file() or is_reparse_point(path) or path.stat().st_nlink > 1 for path in existing):
+        raise GalleryError("GALLERY_SCOPE")
+    previous = staged / "previous"
+    previous.mkdir()
+    changes = [(staged / "samples" / f"{sample_id}.jpg", samples / f"{sample_id}.jpg") for sample_id in _PUBLIC_SAMPLE_IDS]
+    changes.append((staged / "receipt.json", receipt_path))
+    boats = samples / "boats.jpg"
+    if boats.exists():
+        changes.append((None, boats))
+    for _new, target in changes:
+        if target.exists():
+            backup = previous / ("receipt.json" if target == receipt_path else target.name)
+            os.replace(target, backup)
+    applied: list[tuple[Path | None, Path]] = []
+    try:
+        for new, target in changes:
+            if new is not None:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(new, target)
+            applied.append((new, target))
+    except OSError:
+        for _new, target in reversed(applied):
+            if target.exists():
+                target.unlink()
+        for backup in previous.iterdir():
+            destination = receipt_path if backup.name == "receipt.json" else samples / backup.name
+            os.replace(backup, destination)
+        raise GalleryError("GALLERY_SCOPE") from None
+
+
+def publish_approved_gallery(
+    report: dict[str, object], review_root: Path, pages_root: Path, receipt_path: Path
+) -> dict[str, object]:
+    """Publish only three verified approved derivatives and their public-safe receipt."""
+    review = _checked_root(review_root)
+    pages = _checked_root(pages_root.parent, create=True) / Path(pages_root).name
+    pages.mkdir(exist_ok=True)
+    pages = _checked_root(pages)
+    receipt = Path(os.path.abspath(receipt_path))
+    repo = _checked_root(REPO_ROOT)
+    try:
+        pages.relative_to(repo)
+        receipt.relative_to(repo)
+    except ValueError:
+        # Unit fixtures deliberately replace REPO_ROOT with their isolated root.
+        raise GalleryError("GALLERY_SCOPE") from None
+    if any(review == worktree or review.is_relative_to(worktree) for worktree in _git_worktree_roots(REPO_ROOT)):
+        raise GalleryError("GALLERY_SCOPE")
+    approved = validate_approved_gallery(report, review)
+    receipt_payload = {"schemaVersion": 1, "samples": [_public_sample_record(record) for record in approved]}
+    stage = Path(tempfile.mkdtemp(prefix=".gallery-publish-", dir=str(pages.parent)))
+    try:
+        (stage / "samples").mkdir()
+        for record, sample in zip(approved, receipt_payload["samples"], strict=True):
+            image = record["image"]
+            if not isinstance(image, dict):
+                raise GalleryError("GALLERY_RECORD")
+            data = _checked_child(review, str(image["reviewName"])).read_bytes()
+            _validate_public_jpeg(data, sample)
+            (stage / "samples" / f"{sample['id']}.jpg").write_bytes(data)
+        serialized = json.dumps(receipt_payload, sort_keys=True, indent=2) + "\n"
+        (stage / "receipt.json").write_text(serialized, encoding="utf-8")
+        _atomic_replace_gallery(pages, receipt, stage)
+        return receipt_payload
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def _demo_manifest(receipt: dict[str, object]) -> dict[str, object]:
+    return {
+        "schemaVersion": 2,
+        "id": "ultralytics-yolo26n-obb-demo",
+        "defaultConfidence": 0.25,
+        "defaultSampleId": "airfield",
+        "samples": receipt["samples"],
+        "classes": ["plane", "ship", "storage tank", "baseball diamond", "tennis court", "basketball court", "ground track field", "harbor", "bridge", "large vehicle", "small vehicle", "helicopter", "roundabout", "soccer ball field", "swimming pool"],
+        "model": {"path": "models/yolo26n-obb-privacy-sanitized.onnx", "bytes": 10207127, "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97", "mediaType": "application/onnx", "release": "v8.4.0", "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx", "sourceSha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38", "license": "AGPL-3.0-only", "modificationStatus": "metadata-only"},
+        "input": {"name": "images", "type": "float32", "dims": [1, 3, 1024, 1024], "channelOrder": "RGB", "normalization": "divide-by-255", "letterboxValue": 114},
+        "output": {"name": "output0", "type": "float32", "dims": [1, "N", 7], "rowWidth": 7, "layout": ["cx", "cy", "w", "h", "confidence", "class", "angleRadians"]},
+        "provenance": {"upstream": "Ultralytics YOLO26n-OBB", "status": "privacy-sanitized AGPL derivative", "trainingDataset": "DOTAv1"},
+        "sanitization": {"path": "third_party/yolo26n-obb-privacy-sanitization.json", "modificationDate": "2026-08-31", "removedMetadataEntries": 1, "modifiedField": "ModelProto.metadata_props[0].value"},
+        "license": {"path": "third_party/ULTRALYTICS-AGPL-3.0.txt", "bytes": 34523, "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"},
+        "notice": "THIRD_PARTY_NOTICES.md",
+    }
+
+
+def _demo_assets_source(manifest: dict[str, object]) -> str:
+    expected = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
+    return f'''(function exposeDemoAssets(root) {{
+  "use strict";
+  const MAX_MODEL_BYTES = 15 * 1024 * 1024;
+  const SAMPLE_IDS = Object.freeze(["airfield", "sports-complex", "harbor"]);
+  function fail(code) {{ throw new Error(code); }}
+  function exactValue(actual, expected) {{
+    if (Array.isArray(expected)) return Array.isArray(actual) && actual.length === expected.length && expected.every((item, index) => exactValue(actual[index], item));
+    if (expected && typeof expected === "object") {{
+      if (!actual || typeof actual !== "object" || Array.isArray(actual)) return false;
+      const actualKeys = Object.keys(actual).sort(); const expectedKeys = Object.keys(expected).sort();
+      return exactValue(actualKeys, expectedKeys) && expectedKeys.every((key) => exactValue(actual[key], expected[key]));
+    }}
+    return typeof actual === typeof expected && Object.is(actual, expected);
+  }}
+  function deepFreeze(value) {{ if (!value || typeof value !== "object" || Object.isFrozen(value)) return value; Object.values(value).forEach(deepFreeze); return Object.freeze(value); }}
+  const EXPECTED = deepFreeze({expected});
+  function validateManifest(value) {{
+    let copy; try {{ if (!exactValue(value, EXPECTED)) fail("DEMO_MANIFEST"); copy = JSON.parse(JSON.stringify(value)); }} catch (_error) {{ fail("DEMO_MANIFEST"); }}
+    return deepFreeze(copy);
+  }}
+  function getSampleCatalog() {{ return EXPECTED.samples; }}
+  function toHex(buffer) {{ return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join(""); }}
+  async function fetchVerifiedModel(manifest, signal) {{
+    if (!Object.isFrozen(manifest) || !Object.isFrozen(manifest.model)) fail("DEMO_MANIFEST");
+    const admitted = validateManifest(manifest); let url; let expectedUrl;
+    try {{ url = new URL(admitted.model.path, globalThis.location.href); expectedUrl = new URL(EXPECTED.model.path, globalThis.location.href); }} catch (_error) {{ fail("DEMO_MODEL_URL"); }}
+    if (url.origin !== globalThis.location.origin || url.pathname !== expectedUrl.pathname || url.search || url.hash) fail("DEMO_MODEL_URL");
+    let response; try {{ response = await fetch(url.href, {{cache:"force-cache", credentials:"same-origin", redirect:"error", signal}}); }} catch (_error) {{ fail("DEMO_MODEL_FETCH"); }}
+    if (!response.ok || !response.body) fail("DEMO_MODEL_FETCH"); const declaredLength = response.headers.get("content-length");
+    if (declaredLength !== null && (!/^\\d+$/.test(declaredLength) || Number(declaredLength) !== admitted.model.bytes)) fail("DEMO_MODEL_SIZE");
+    const reader = response.body.getReader(); const chunks = []; let length = 0;
+    try {{ while (true) {{ const {{done, value}} = await reader.read(); if (done) break; length += value.byteLength; if (length > MAX_MODEL_BYTES || length > admitted.model.bytes) {{ await reader.cancel(); fail("DEMO_MODEL_SIZE"); }} chunks.push(value); }} }} catch (error) {{ if (error?.message === "DEMO_MODEL_SIZE") throw error; fail("DEMO_MODEL_FETCH"); }}
+    if (length !== admitted.model.bytes) fail("DEMO_MODEL_SIZE"); const bytes = new Uint8Array(length); let offset = 0; for (const chunk of chunks) {{ bytes.set(chunk, offset); offset += chunk.byteLength; }}
+    let digest; try {{ digest = toHex(await crypto.subtle.digest("SHA-256", bytes)); }} catch (_error) {{ fail("DEMO_MODEL_DIGEST"); }} if (digest !== admitted.model.sha256) fail("DEMO_MODEL_DIGEST"); return bytes.buffer;
+  }}
+  root.DemoAssets = Object.freeze({{validateManifest, fetchVerifiedModel, getSampleCatalog}});
+}})(globalThis);
+'''
+
+
+def publish_gallery_bundle(
+    report: dict[str, object], review_root: Path, pages_root: Path, receipt_path: Path,
+    manifest_path: Path, loader_path: Path,
+) -> None:
+    receipt = publish_approved_gallery(report, review_root, pages_root, receipt_path)
+    manifest = _demo_manifest(receipt)
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    loader_path.write_text(_demo_assets_source(manifest), encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("command", choices=("acquire", "approve", "verify-approved"))
+    parser.add_argument("command", choices=("acquire", "approve", "verify-approved", "publish"))
     parser.add_argument("--review-root", type=Path, required=True)
     parser.add_argument("--observations", type=Path)
     parser.add_argument("--pointer", type=Path)
+    parser.add_argument("--pages-root", type=Path)
+    parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--loader", type=Path)
     args = parser.parse_args(argv)
     try:
         if args.command == "acquire" and args.observations is None and args.pointer is None:
@@ -760,6 +972,15 @@ def main(argv: list[str] | None = None) -> int:
             approve(args.review_root, args.observations, args.pointer)
         elif args.command == "verify-approved" and args.observations is None and args.pointer is None:
             verify_approved(args.review_root)
+        elif (
+            args.command == "publish" and args.observations is None and args.pointer is None
+            and args.pages_root is not None and args.receipt is not None
+            and args.manifest is not None and args.loader is not None
+        ):
+            report = _read_json(_checked_child(_checked_root(args.review_root), "approved-gallery.json"))
+            if not isinstance(report, dict):
+                raise GalleryError("GALLERY_RECORD")
+            publish_gallery_bundle(report, args.review_root, args.pages_root, args.receipt, args.manifest, args.loader)
         else:
             raise GalleryError("GALLERY_SCOPE")
     except GalleryError as error:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import io
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -608,6 +609,38 @@ def test_approved_gallery_requires_one_visually_approved_record_per_fixed_catego
     missing["visualReview"].pop(missing["records"][0]["candidateId"])
     with pytest.raises(GalleryError, match="GALLERY_RECORD"):
         validate_approved_gallery(missing, tmp_path)
+
+
+def test_publish_writes_exact_three_images_and_public_safe_receipt_atomically(
+    tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Removing a managed image or leaking review data must break publication."""
+    review_root = tmp_path
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    pages_root = tmp_path / "demo" / "web"
+    receipt_path = tmp_path / "release" / "receipt.json"
+    monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
+    gallery.publish_approved_gallery(
+        approved_gallery_report, review_root, pages_root, receipt_path
+    )
+    assert sorted(path.name for path in (pages_root / "samples").iterdir()) == [
+        "airfield.jpg", "harbor.jpg", "sports-complex.jpg"
+    ]
+    receipt = json.loads(receipt_path.read_text("utf-8"))
+    serialized = json.dumps(receipt, sort_keys=True).casefold()
+    assert "watsonville" not in serialized
+    assert "private" not in serialized
+    assert "reviewname" not in serialized
+
+
+def test_demo_manifest_declares_exact_sample_catalog_and_default() -> None:
+    """A wrong sample order/default would make the initial workbench misleading."""
+    manifest = json.loads((Path(__file__).resolve().parents[1] / "demo/web/demo-model.json").read_text("utf-8"))
+    assert manifest["schemaVersion"] == 2
+    assert manifest["defaultSampleId"] == "airfield"
+    assert [item["id"] for item in manifest["samples"]] == [
+        "airfield", "sports-complex", "harbor"
+    ]
 
 
 def test_approval_verification_rejects_a_candidate_outside_the_acquired_pool(tmp_path: Path) -> None:

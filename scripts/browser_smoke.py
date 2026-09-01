@@ -23,7 +23,7 @@ ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
 ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
 DEMO_MANIFEST_PATH = "/demo-model.json"
 DEMO_MODEL_PATH = "/models/yolo26n-obb-privacy-sanitized.onnx"
-DEMO_IMAGE_PATH = "/samples/boats.jpg"
+DEMO_IMAGE_PATH = "/samples/airfield.jpg"
 DEMO_PROVENANCE = "Ultralytics YOLO26n-OBB · privacy-sanitized AGPL derivative"
 FIXED_CONSOLE_DIAGNOSTICS = frozenset(
     f"[AERIAL_OBB:{code}]"
@@ -322,7 +322,7 @@ def assert_real_demo_initial(page: object, requests: list[str], messages: list[s
         "[summaryCount.textContent, summaryTop.textContent, runtimeValue.textContent, "
         "modeBadge.textContent, provenanceValue.textContent]"
     )
-    if summary != ["0", "—", "—", "尚未 Detect", "官方範例 · 尚未執行"]:
+    if summary != ["0", "—", "—", "尚未 Detect", "USGS／USDA NAIP · 尚未執行"]:
         raise RuntimeError(f"real demo initial summary is wrong: {summary!r}")
     if page.locator("#demoDetectBtn").inner_text() != "開始 Detect":
         raise RuntimeError("real demo primary action is not exact")
@@ -341,6 +341,57 @@ def assert_real_demo_initial(page: object, requests: list[str], messages: list[s
         raise RuntimeError("initial page requested a lazy WASM asset")
     if messages:
         raise RuntimeError("initial page emitted console or page errors")
+
+
+def assert_sample_gallery_initial(page: object, requests: list[str], messages: list[str]) -> None:
+    """Exercise the published selector before it can trigger any lazy model work."""
+    options = page.locator("#sampleSelector .sample-option")
+    if options.count() != 3:
+        raise RuntimeError("real sample selector does not expose exactly three options")
+    if page.locator('.sample-option[aria-pressed="true"]').get_attribute("data-sample-id") != "airfield":
+        raise RuntimeError("airfield is not the exact initial sample")
+    if page.locator("#demoOriginalImage").get_attribute("src") != "samples/airfield.jpg":
+        raise RuntimeError("initial original is not the admitted airfield image")
+    if any(path in _request_paths(requests) for path in (DEMO_MANIFEST_PATH, DEMO_MODEL_PATH)):
+        raise RuntimeError("sample gallery loaded model resources before Detect")
+    if messages:
+        raise RuntimeError("sample gallery initial state emitted console or page errors")
+
+
+def run_sample_gallery(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+    screenshot: Path | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            _record_errors(page, requests, messages)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            assert_sample_gallery_initial(page, requests, messages)
+            for sample_id in ("sports-complex", "harbor", "airfield"):
+                page.locator(f'.sample-option[data-sample-id="{sample_id}"]').click()
+                page.wait_for_function(
+                    "([id]) => document.querySelector('#demoOriginalImage').getAttribute('src') === `samples/${id}.jpg`",
+                    arg=[sample_id],
+                )
+                if page.locator('.sample-option[aria-pressed="true"]').get_attribute("data-sample-id") != sample_id:
+                    raise RuntimeError("sample selection did not expose the active semantic state")
+                if page.locator("#sampleState").inner_text() != "Original · ready" or page.locator("#summaryCount").inner_text() != "0":
+                    raise RuntimeError("sample selection did not clear the former result state")
+            if screenshot is not None:
+                screenshot.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(screenshot), full_page=True)
+        finally:
+            browser.close()
 
 
 def assert_workbench_initial_layout(page: object) -> None:
@@ -371,7 +422,7 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
     )
     if page.locator("#status").inner_text() != "完成 · 可調整 filters。":
         raise RuntimeError("completed demo live status is not count-neutral")
-    if page.locator("#provenanceValue").inner_text() != DEMO_PROVENANCE:
+    if page.locator("#provenanceValue").inner_text() != f"{DEMO_PROVENANCE} · 小型機場航拍範例":
         raise RuntimeError("real demo provenance is not exact")
     runtime = page.locator("#runtimeValue").inner_text()
     if not re.fullmatch(r"\d+ ms", runtime):
@@ -382,18 +433,18 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
     if rows.count() < 1:
         raise RuntimeError("real demo produced no accepted detection rows")
     row_values = [row.locator("td").all_text_contents() for row in rows.all()]
-    ship_rows = [row for row in row_values if row and row[0] == "ship"]
-    if not ship_rows:
-        raise RuntimeError("real demo produced no accepted ship row")
+    accepted_rows = [row for row in row_values if row and row[0] and row[0] != "尚未執行 Detect。"]
+    if not accepted_rows:
+        raise RuntimeError("real demo produced no accepted result row")
     polygons = page.evaluate("globalThis.__obbStrokedPolygons")
     if not polygons or any(len(polygon["points"]) != 4 for polygon in polygons):
         raise RuntimeError("real demo did not paint oriented polygon pixels")
     description = page.locator("#canvasDescription")
     if description.get_attribute("aria-live") is not None:
         raise RuntimeError("canvas description must remain non-live")
-    ship = ship_rows[0]
+    visible_row = accepted_rows[0]
     description_text = description.inner_text()
-    if f"class={ship[0]}" not in description_text or f"confidence={ship[1]}" not in description_text:
+    if f"class={visible_row[0]}" not in description_text or f"confidence={visible_row[1]}" not in description_text:
         raise RuntimeError("visible table and canvas description are not synchronized")
     if page.locator("#demoDetectBtn").inner_text() != "再次 Detect":
         raise RuntimeError("completed demo primary action is not exact")
@@ -491,15 +542,22 @@ def assert_demo_cached_filters(
     page.locator("#confSlider").evaluate(
         "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
     )
-    ship = page.locator('.class-cb[value="1"]')
+    first_class = page.locator("#resultsBody tr:not([data-empty='true']) td").first.inner_text()
+    class_index = page.evaluate(
+        "([name]) => Array.from(document.querySelectorAll('.class-cb')).findIndex((box) => box.parentElement.textContent === name)",
+        arg=[first_class],
+    )
+    if not isinstance(class_index, int) or class_index < 0:
+        raise RuntimeError("cached filter could not locate the visible class")
+    ship = page.locator(f'.class-cb[value="{class_index}"]')
     page.evaluate("globalThis.__obbStrokedPolygons = []")
     ship.check()
     rows = page.locator("#resultsBody tr:not([data-empty='true'])")
     if rows.count() < 1:
-        raise RuntimeError("cached ship filter lost the admitted ship result")
+        raise RuntimeError("cached selected-class filter lost the admitted result")
     row_values = [row.locator("td").all_text_contents() for row in rows.all()]
-    if any(not row or row[0] != "ship" for row in row_values):
-        raise RuntimeError("cached class filter retained a non-ship table row")
+    if any(not row or row[0] != first_class for row in row_values):
+        raise RuntimeError("cached class filter retained a different table row")
     if int(page.locator("#summaryCount").inner_text()) != len(row_values):
         raise RuntimeError("cached class filter did not synchronize the summary count")
     description = page.locator("#canvasDescription").inner_text()
@@ -514,7 +572,7 @@ def assert_demo_cached_filters(
     ):
         raise RuntimeError("cached table and rendered polygons are not synchronized")
     described = re.findall(
-        r"class=ship; confidence=[0-9.]+; center-x=([0-9.]+) px; "
+        r"class=[^;]+; confidence=[0-9.]+; center-x=([0-9.]+) px; "
         r"center-y=([0-9.]+) px; width=([0-9.]+) px; height=([0-9.]+) px; "
         r"angle=(-?[0-9.]+)°\.",
         description,
@@ -538,7 +596,7 @@ def assert_demo_cached_filters(
                 (-width / 2, height / 2),
             )
         ]
-        if polygon["strokeStyle"].lower() != "#dc2626" or any(
+        if any(
             abs(actual_axis - expected_axis) > 0.5
             for actual, wanted in zip(polygon["points"], expected)
             for actual_axis, expected_axis in zip(actual, wanted)
@@ -1836,6 +1894,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--scenario",
         choices=(
+            "sample-gallery",
             "real-demo-success",
             "stubbed-cache",
             "manifest-failure",
@@ -1855,7 +1914,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        if args.scenario == "real-demo-success":
+        if args.scenario == "sample-gallery":
+            run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
+        elif args.scenario == "real-demo-success":
             run_real_demo_success(
                 args.executable_path,
                 args.base_url,
@@ -1891,6 +1952,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.scenario == "mobile":
             run_mobile(args.executable_path, args.base_url)
         else:
+            run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
             run_real_demo_success(
                 args.executable_path,
                 args.base_url,
@@ -1914,7 +1976,9 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1
-    if args.scenario == "real-demo-success":
+    if args.scenario == "sample-gallery":
+        print("[OK] Real sample gallery initial state")
+    elif args.scenario == "real-demo-success":
         print("[OK] Real demo browser smoke: genuine local derivative inference")
     elif args.scenario == "stubbed-cache":
         print("[OK] Real demo cache smoke: one verified model and reusable session")
