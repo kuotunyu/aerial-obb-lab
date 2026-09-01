@@ -128,11 +128,11 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "8c9db0372fa817ced18731bda1296478d5146e418ca40d85177518c596aaecb2",
+        "067a13f9ae5876738e84829dca3640ce3647b3cabd5aa35180fda0a4ab0c6d69",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "62b2fc5365855c83a3cfcc8d5d5f74a70538f3a888b412b5aa807c97502aff54",
+        "17c8d18f1d35bc522cb9865ae3f4e199f261f9a97ef0f5e7c9b2943709e2ce22",
         "reviewed application bytes differ",
     ),
     "obb.js": (
@@ -144,7 +144,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed demo asset loader bytes differ",
     ),
     "style.css": (
-        "70cfd7920c508d3e833a865b467653086a9a5e443f8d98a2a1bd0b01bbda961c",
+        "b4a1717a49371a859b35bc2adec035dae83b9c67d20133b953fbce87511a5fe2",
         "reviewed stylesheet bytes differ",
     ),
     "fonts/IBM-Plex-OFL.txt": (
@@ -152,7 +152,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed font license bytes differ",
     ),
     "README.md": (
-        "8bc13d6e4c6cd3528be42a874e1809f23d0127d5f757811d295a58df947308a7",
+        "3264301979dfdfacffca6da9218a703436c9d7b8b72886ccee5d81891a06a273",
         "reviewed README bytes differ",
     ),
     "demo-model.json": (

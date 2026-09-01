@@ -106,6 +106,27 @@ LOCAL_PATH_BYTES_RE = re.compile(
 )
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlpackage"}
+APPROVED_DEMO_MODEL = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+APPROVED_DEMO_MODEL_BYTES = 10207127
+APPROVED_DEMO_MODEL_SHA256 = "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
+SOURCE_MODEL_SHA256 = "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"
+REQUIRED_BUNDLED_THIRD_PARTY_ARTIFACTS = {
+    "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
+    APPROVED_DEMO_MODEL,
+    "demo/web/samples/boats.jpg",
+    "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+}
+REQUIRED_REVIEWED_PUBLIC_ARTIFACTS = {
+    "demo/web/app.js",
+    "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
+    "demo/web/index.html",
+    APPROVED_DEMO_MODEL,
+    "demo/web/samples/boats.jpg",
+    "demo/web/style.css",
+    "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+    "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+    "docs/assets/browser-workbench.png",
+}
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
@@ -125,6 +146,8 @@ def verify_evidence(root: Path = ROOT) -> list[str]:
 
     if evidence.get("schema_version") != 1:
         errors.append("release/evidence.json: unsupported schema_version")
+    if evidence.get("release_candidate") != "unreleased-pages-candidate":
+        errors.append("release/evidence.json: current Pages candidate identity is missing")
 
     matched = evidence["matched_evaluation"]
     for key, metric_key in (("mAP50", "mAP50"), ("mAP50_95", "mAP50-95")):
@@ -186,6 +209,21 @@ def verify_evidence(root: Path = ROOT) -> list[str]:
     browser = evidence["browser_demo"]
     if browser["represents_fine_tuned_medium_accuracy"] or browser["represents_t4_latency"]:
         errors.append("browser demo must not inherit medium accuracy or T4 latency evidence")
+    expected_browser = {
+        "distribution_mode": "public-agpl-privacy-sanitized-demo-model-plus-byom",
+        "showcase_enabled": False,
+        "demo_inference_performed": True,
+        "model_bundled": True,
+        "demo_image": "demo/web/samples/boats.jpg",
+        "demo_model": APPROVED_DEMO_MODEL,
+        "runtime_load": "lazy-on-demo-detect-or-byom-selection",
+        "layout": "workbench-31-69",
+        "responsive_breakpoint_px": 960,
+        "primary_action_first_viewport": True,
+    }
+    for field, expected in expected_browser.items():
+        if browser.get(field) != expected:
+            errors.append(f"browser_demo.{field} is inconsistent with the reviewed real demo")
 
     owner_visibility = evidence.get("owner_visibility_follow_up", {})
     model_archive = owner_visibility.get("historical_model_archive", {})
@@ -208,39 +246,127 @@ def verify_artifacts(root: Path = ROOT) -> list[str]:
     if manifest.get("schema_version") != 2:
         errors.append("release/artifact-manifest.json: unsupported schema_version")
         return errors
-    if manifest.get("distribution_mode") != "code-only-byom":
-        errors.append("artifact manifest must declare code-only-byom distribution")
+    if manifest.get("release_candidate") != "unreleased-pages-candidate":
+        errors.append("release/artifact-manifest.json: current Pages candidate identity is missing")
+    if (
+        manifest.get("distribution_mode")
+        != "public-agpl-privacy-sanitized-demo-model-plus-byom"
+    ):
+        errors.append("artifact manifest must declare the privacy-sanitized real-demo distribution")
+    if manifest.get("policy", {}).get("commercial_use_cleared") is not False:
+        errors.append("artifact manifest must not claim commercial-use clearance")
     entries = manifest.get("bundled_third_party_artifacts", [])
     paths = [entry.get("path") for entry in entries]
     if len(paths) != len(set(paths)):
         errors.append("artifact manifest contains duplicate paths")
+    if set(paths) != REQUIRED_BUNDLED_THIRD_PARTY_ARTIFACTS:
+        errors.append("artifact manifest bundled third-party inventory is not exact")
 
-    for entry in entries:
+    reviewed_entries = manifest.get("reviewed_public_artifacts", [])
+    reviewed_paths = [entry.get("path") for entry in reviewed_entries]
+    if len(reviewed_paths) != len(set(reviewed_paths)):
+        errors.append("artifact manifest contains duplicate reviewed public paths")
+    if set(reviewed_paths) != REQUIRED_REVIEWED_PUBLIC_ARTIFACTS:
+        errors.append("artifact manifest reviewed public inventory is not exact")
+
+    for entry in entries + reviewed_entries:
         relative = entry.get("path", "")
         path = root / relative
-        for field in ("kind", "provenance", "source_url", "license", "restrictions"):
-            if not entry.get(field):
-                errors.append(f"{relative}: missing artifact field {field}")
+        if entry in entries:
+            for field in ("kind", "provenance", "source_url", "license", "restrictions"):
+                if not entry.get(field):
+                    errors.append(f"{relative}: missing artifact field {field}")
         if not path.is_file():
             errors.append(f"{relative}: artifact is missing")
             continue
-        if path.stat().st_size != entry.get("bytes"):
+        payload = path.read_bytes()
+        if entry.get("digest_mode") == "canonical-lf":
+            payload = (
+                payload.decode("utf-8")
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+                .encode("utf-8")
+            )
+        if len(payload) != entry.get("bytes"):
             errors.append(f"{relative}: byte size differs from manifest")
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = hashlib.sha256(payload).hexdigest()
         if digest != entry.get("sha256"):
             errors.append(f"{relative}: SHA-256 differs from manifest")
 
     errors.extend(verify_code_only_paths(committed_paths(root), manifest))
+    errors.extend(_verify_demo_model_contract(root, manifest))
+    return errors
+
+
+def _approved_model_entry(manifest: dict) -> dict | None:
+    matches = [
+        entry
+        for entry in manifest.get("bundled_third_party_artifacts", [])
+        if entry.get("path") == APPROVED_DEMO_MODEL
+    ]
+    if len(matches) != 1:
+        return None
+    entry = matches[0]
+    if (entry.get("bytes"), entry.get("sha256")) != (
+        APPROVED_DEMO_MODEL_BYTES,
+        APPROVED_DEMO_MODEL_SHA256,
+    ):
+        return None
+    return entry
+
+
+def _verify_demo_model_contract(root: Path, manifest: dict) -> list[str]:
+    errors: list[str] = []
+    model_entry = _approved_model_entry(manifest)
+    if model_entry is None:
+        return [f"{APPROVED_DEMO_MODEL}: exact manifest-bound model entry is missing"]
+    if model_entry.get("source_sha256") != SOURCE_MODEL_SHA256:
+        errors.append(f"{APPROVED_DEMO_MODEL}: source digest is not preserved")
+    if model_entry.get("modification_status") != "metadata-only":
+        errors.append(f"{APPROVED_DEMO_MODEL}: modification status is not metadata-only")
+
+    demo = load_json(root / "demo" / "web" / "demo-model.json")
+    receipt = load_json(
+        root / "demo" / "web" / "third_party" / "yolo26n-obb-privacy-sanitization.json"
+    )
+    expected_relative = APPROVED_DEMO_MODEL.removeprefix("demo/web/")
+    expected = (expected_relative, APPROVED_DEMO_MODEL_BYTES, APPROVED_DEMO_MODEL_SHA256)
+    if (
+        demo.get("model", {}).get("path"),
+        demo.get("model", {}).get("bytes"),
+        demo.get("model", {}).get("sha256"),
+    ) != expected:
+        errors.append("demo-model.json: derivative identity differs from artifact manifest")
+    if (
+        receipt.get("derivative", {}).get("path"),
+        receipt.get("derivative", {}).get("bytes"),
+        receipt.get("derivative", {}).get("sha256"),
+    ) != expected:
+        errors.append("sanitization receipt: derivative identity differs from artifact manifest")
+    if receipt.get("source", {}).get("sha256") != SOURCE_MODEL_SHA256:
+        errors.append("sanitization receipt: source digest is not preserved")
+    transformation = receipt.get("transformation", {})
+    if (
+        transformation.get("modificationStatus"),
+        transformation.get("modificationDate"),
+    ) != ("metadata-only", "2026-08-31"):
+        errors.append("sanitization receipt: modification record is incomplete")
+    if receipt.get("provenance", {}).get("commercialUseCleared") is not False:
+        errors.append("sanitization receipt must not claim commercial-use clearance")
     return errors
 
 
 def verify_code_only_paths(relative_paths: list[str], manifest: dict) -> list[str]:
-    """Reject model binaries and known DOTA-derived visuals from public distributions."""
+    """Admit one exact derivative and reject every other model/DOTA visual."""
     errors: list[str] = []
     normalized = {path.replace("\\", "/") for path in relative_paths}
     for relative in sorted(normalized):
         if Path(relative).suffix.casefold() in FORBIDDEN_MODEL_SUFFIXES:
-            errors.append(f"code-only release contains model binary: {relative}")
+            if relative == APPROVED_DEMO_MODEL:
+                if _approved_model_entry(manifest) is None:
+                    errors.append(f"public release model exception is not exact: {relative}")
+            else:
+                errors.append(f"public release contains unapproved model binary: {relative}")
         if DOTA_DERIVED_VISUAL_RE.match(relative):
             errors.append(f"code-only release contains DOTA-derived visual: {relative}")
     for entry in manifest.get("excluded_historical_artifacts", []):
@@ -398,7 +524,7 @@ def main() -> int:
         for error in errors:
             print(f"[FAIL] {error}", file=sys.stderr)
         return 1
-    print("[OK] Release evidence, claims, artifacts, browser BYOM, and committed privacy")
+    print("[OK] Release evidence, claims, exact real-demo artifacts, BYOM, and committed privacy")
     return 0
 
 

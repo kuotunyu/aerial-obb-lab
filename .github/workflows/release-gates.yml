@@ -44,7 +44,7 @@ jobs:
         run: uv run --no-sync python scripts/clean_export_check.py --skip-browser
 
   browser-smoke:
-    name: Synthetic browser smoke / Ubuntu CPU
+    name: Live demo browser smoke / Ubuntu CPU
     runs-on: ubuntu-latest
     env:
       CUDA_VISIBLE_DEVICES: "-1"
@@ -61,7 +61,7 @@ jobs:
         run: uv sync --frozen --no-install-project
       - name: Install headless Chromium
         run: uv run --no-sync playwright install --with-deps chromium
-      - name: Exercise the static UI with a synthetic fixture and stubbed output
+      - name: Exercise the real-image browser demo and BYOM safety paths
         run: uv run --no-sync python scripts/browser_smoke.py
 
   pages-candidate:

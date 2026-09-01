@@ -33,11 +33,18 @@ REQUIRED_MEMBERS = {
     "RELEASE_CHECKLIST.md",
     "THIRD_PARTY_NOTICES.md",
     "demo/web/app.js",
+    "demo/web/demo-assets.js",
+    "demo/web/demo-model.json",
     "demo/web/fonts/IBM-Plex-OFL.txt",
     "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "demo/web/index.html",
+    "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
     "demo/web/obb.js",
+    "demo/web/samples/boats.jpg",
     "demo/web/style.css",
+    "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+    "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+    "demo/web/THIRD_PARTY_NOTICES.md",
     "docs/assets/browser-workbench.png",
     "pyproject.toml",
     "release/artifact-manifest.json",
@@ -46,7 +53,6 @@ REQUIRED_MEMBERS = {
     "scripts/clean_export_check.py",
     "scripts/release_check.py",
     "scripts/repo_check.py",
-    "demo/web/fixtures/showcase.svg",
     "tests/fixtures/browser_parity.json",
     "tests/js/browser_parity_runner.js",
     "uv.lock",
@@ -77,6 +83,9 @@ LOCAL_PATH_BYTES_RE = re.compile(
 )
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".py", ".toml", ".txt", ".yaml", ".yml"}
 FORBIDDEN_MODEL_SUFFIXES = {".pt", ".onnx", ".engine", ".torchscript", ".tflite", ".mlpackage"}
+APPROVED_DEMO_MODEL = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+APPROVED_DEMO_MODEL_BYTES = 10207127
+APPROVED_DEMO_MODEL_SHA256 = "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
@@ -95,7 +104,17 @@ def _unsafe_member(raw: str) -> bool:
     )
 
 
-def archive_policy_errors(member_names: list[str]) -> list[str]:
+def _approved_model_is_manifest_bound(manifest: dict | None) -> bool:
+    entries = (manifest or {}).get("bundled_third_party_artifacts", [])
+    matches = [entry for entry in entries if entry.get("path") == APPROVED_DEMO_MODEL]
+    return len(matches) == 1 and (
+        matches[0].get("bytes"), matches[0].get("sha256")
+    ) == (APPROVED_DEMO_MODEL_BYTES, APPROVED_DEMO_MODEL_SHA256)
+
+
+def archive_policy_errors(
+    member_names: list[str], manifest: dict | None = None
+) -> list[str]:
     """Return deterministic path-policy violations for archive member names."""
     errors: list[str] = []
     for raw in member_names:
@@ -114,7 +133,13 @@ def archive_policy_errors(member_names: list[str]) -> list[str]:
             errors.append(f"internal-only path: {relative}")
         elif lowered.startswith(RUNTIME_PREFIXES) or any(part in PurePosixPath(lowered).parts for part in RUNTIME_PARTS):
             errors.append(f"runtime/model path: {relative}")
-        elif PurePosixPath(lowered).suffix in FORBIDDEN_MODEL_SUFFIXES:
+        elif (
+            PurePosixPath(lowered).suffix in FORBIDDEN_MODEL_SUFFIXES
+            and not (
+                relative == APPROVED_DEMO_MODEL
+                and _approved_model_is_manifest_bound(manifest)
+            )
+        ):
             errors.append(f"model binary path: {relative}")
         elif DOTA_DERIVED_VISUAL_RE.match(relative):
             errors.append(f"DOTA-derived visual path: {relative}")
@@ -128,7 +153,6 @@ def inspect_archive(archive: Path) -> list[str]:
         with zipfile.ZipFile(archive) as bundle:
             infos = [info for info in bundle.infolist() if not info.is_dir()]
             names = [_normalized_member(info.filename) for info in infos]
-            errors.extend(archive_policy_errors(names))
             if len(names) != len(set(names)):
                 errors.append("archive contains duplicate members")
             missing = sorted(REQUIRED_MEMBERS - set(names))
@@ -137,15 +161,18 @@ def inspect_archive(archive: Path) -> list[str]:
                 return errors
 
             manifest = json.loads(bundle.read("release/artifact-manifest.json").decode("utf-8"))
+            errors.extend(archive_policy_errors(names, manifest))
             artifacts = manifest.get("bundled_third_party_artifacts", [])
             listed = {entry.get("path") for entry in artifacts}
             maximum = int(manifest.get("policy", {}).get("maximum_unlisted_tracked_file_bytes", 0))
-            for entry in artifacts:
+            for entry in artifacts + manifest.get("reviewed_public_artifacts", []):
                 name = entry.get("path", "")
                 if name not in names:
-                    errors.append(f"manifest artifact missing from archive: {name}")
+                    errors.append(f"reviewed artifact missing from archive: {name}")
                     continue
                 payload = bundle.read(name)
+                if entry.get("digest_mode") == "canonical-lf":
+                    payload = payload.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
                 if len(payload) != entry.get("bytes"):
                     errors.append(f"{name}: byte size differs from manifest")
                 if hashlib.sha256(payload).hexdigest() != entry.get("sha256"):

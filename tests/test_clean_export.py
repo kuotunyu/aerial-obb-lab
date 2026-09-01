@@ -72,7 +72,7 @@ def test_clean_export_has_a_snapshot_rebuild_gate() -> None:
     assert "run_browser" in inspect.signature(verify_snapshot).parameters
 
 
-def test_archive_policy_rejects_model_and_dota_visuals() -> None:
+def test_archive_policy_rejects_unapproved_model_and_dota_visuals() -> None:
     assert archive_policy_errors(
         [
             "README.md",
@@ -85,13 +85,29 @@ def test_archive_policy_rejects_model_and_dota_visuals() -> None:
     ]
 
 
-def test_archive_policy_accepts_code_only_release_files() -> None:
+def test_clean_export_admits_only_the_reviewed_derivative_demo_model() -> None:
+    approved_demo_model = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+    manifest = {
+        "bundled_third_party_artifacts": [
+            {
+                "path": approved_demo_model,
+                "bytes": 10207127,
+                "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+            }
+        ]
+    }
+
+    assert archive_policy_errors(["README.md", approved_demo_model], manifest) == []
     assert archive_policy_errors(
-        ["README.md", "src/obbkit/__init__.py", "demo/web/fixtures/showcase.svg"]
-    ) == []
+        ["README.md", approved_demo_model, "demo/web/models/second.onnx"],
+        manifest,
+    ) == ["model binary path: demo/web/models/second.onnx"]
+    assert archive_policy_errors(["README.md", approved_demo_model], {}) == [
+        f"model binary path: {approved_demo_model}"
+    ]
 
 
-def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
+def test_clean_export_keeps_its_own_gate_and_real_demo_assets() -> None:
     assert {
         "README.en.md",
         "demo/web/app.js",
@@ -103,12 +119,17 @@ def test_clean_export_keeps_its_own_gate_and_browser_fixture() -> None:
         "docs/assets/browser-workbench.png",
         "scripts/clean_export_check.py",
         "scripts/browser_smoke.py",
-        "demo/web/fixtures/showcase.svg",
+        "demo/web/demo-assets.js",
+        "demo/web/demo-model.json",
+        "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+        "demo/web/samples/boats.jpg",
+        "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+        "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
     } <= REQUIRED_MEMBERS
     assert not any("gradio" in member.casefold() for member in REQUIRED_MEMBERS)
 
 
-def test_release_archive_keeps_showcase_fixture_and_omits_internal_docs(
+def test_release_archive_keeps_real_demo_assets_and_omits_internal_docs(
     tmp_path: Path,
 ) -> None:
     attributes = ROOT / ".gitattributes"
@@ -119,7 +140,7 @@ def test_release_archive_keeps_showcase_fixture_and_omits_internal_docs(
     members = {
         ".gitattributes": attributes.read_bytes(),
         "README.md": b"public release\n",
-        "demo/web/fixtures/showcase.svg": b"<svg/>\n",
+        "demo/web/samples/boats.jpg": b"reviewed image placeholder\n",
         "docs/superpowers/plans/2026-08-31-aerial-obb-pages-showcase.md": b"internal plan\n",
         "docs/superpowers/specs/2026-08-31-aerial-obb-pages-showcase-design.md": b"internal spec\n",
     }
@@ -147,7 +168,7 @@ def test_release_archive_keeps_showcase_fixture_and_omits_internal_docs(
     with zipfile.ZipFile(archive) as bundle:
         archived = {info.filename for info in bundle.infolist() if not info.is_dir()}
 
-    assert "demo/web/fixtures/showcase.svg" in archived
+    assert "demo/web/samples/boats.jpg" in archived
     assert not any(name.startswith("docs/superpowers/") for name in archived)
 
 

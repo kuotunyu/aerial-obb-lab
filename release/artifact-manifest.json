@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
-  "release_candidate": "v1.0.0-rc.2",
-  "distribution_mode": "code-only-byom",
+  "release_candidate": "unreleased-pages-candidate",
+  "distribution_mode": "public-agpl-privacy-sanitized-demo-model-plus-byom",
   "generated_from_committed_files": true,
   "policy": {
     "maximum_unlisted_tracked_file_bytes": 25000000,
     "commercial_use_cleared": false,
-    "notes": "The public release bundles no third-party model binary or DOTA-derived raster image. Historical artifact records are retained only as exclusion audit metadata."
+    "notes": "The public release bundles one exact privacy-sanitized AGPL demo model and one official sample image. No DOTA pixels, annotations, or DOTA-derived renders are distributed; commercial-use clearance is not claimed. Historical exclusion records remain audit metadata."
   },
   "bundled_third_party_artifacts": [
     {
@@ -23,6 +23,108 @@
       "restrictions": [
         "Keep the copyright notice and SIL Open Font License 1.1 with redistributed copies.",
         "Reserved Font Name Plex applies if the font is modified."
+      ]
+    },
+    {
+      "path": "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+      "bytes": 10207127,
+      "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+      "kind": "privacy-sanitized browser demo model",
+      "provenance": "Ultralytics YOLO26n-OBB v8.4.0, trained on DOTAv1; one non-inference metadata entry was removed on 2026-08-31 while graph and weights remained structurally unchanged.",
+      "source_url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
+      "source_sha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38",
+      "modification_status": "metadata-only",
+      "modification_date": "2026-08-31",
+      "sanitization_record": "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+      "license": "AGPL-3.0-only",
+      "license_file": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+      "restrictions": [
+        "No Ultralytics endorsement is implied.",
+        "The project makes no commercial-use clearance claim for the DOTAv1-trained derivative.",
+        "Closed-source or commercial use requires separate license and data-rights analysis."
+      ]
+    },
+    {
+      "path": "demo/web/samples/boats.jpg",
+      "bytes": 194872,
+      "sha256": "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f",
+      "kind": "official aerial sample image",
+      "provenance": "Unmodified Ultralytics boats.jpg public sample used solely for the browser integration demonstration.",
+      "source_url": "https://ultralytics.com/images/boats.jpg",
+      "license": "Source-provided sample; separate image rights are not asserted by this project",
+      "restrictions": [
+        "No Ultralytics endorsement is implied.",
+        "The image and browser result are not accuracy, evaluation, or model-quality evidence."
+      ]
+    },
+    {
+      "path": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+      "bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "kind": "unmodified upstream model license text",
+      "provenance": "Complete AGPL-3.0-only license text distributed with the privacy-sanitized model derivative.",
+      "source_url": "https://github.com/ultralytics/ultralytics/blob/main/LICENSE",
+      "license": "AGPL-3.0-only",
+      "restrictions": [
+        "Redistribution and network use remain subject to the included AGPL-3.0-only terms."
+      ]
+    }
+  ],
+  "reviewed_public_artifacts": [
+    {
+      "path": "demo/web/app.js",
+      "bytes": 24369,
+      "sha256": "17c8d18f1d35bc522cb9865ae3f4e199f261f9a97ef0f5e7c9b2943709e2ce22",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
+      "bytes": 66040,
+      "sha256": "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d"
+    },
+    {
+      "path": "demo/web/index.html",
+      "bytes": 7733,
+      "sha256": "067a13f9ae5876738e84829dca3640ce3647b3cabd5aa35180fda0a4ab0c6d69",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+      "bytes": 10207127,
+      "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
+    },
+    {
+      "path": "demo/web/samples/boats.jpg",
+      "bytes": 194872,
+      "sha256": "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f"
+    },
+    {
+      "path": "demo/web/style.css",
+      "bytes": 17912,
+      "sha256": "b4a1717a49371a859b35bc2adec035dae83b9c67d20133b953fbce87511a5fe2",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+      "bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+      "bytes": 1351,
+      "sha256": "e0e03b45e5750ebe21070e93ef4f2c537f6040f471980f55428aa4d69d7a659b",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "docs/assets/browser-workbench.png",
+      "bytes": 842229,
+      "sha256": "c8b54c2409fb27165e90bed7be65e5b36af557f47f3d2b5049e6d7f734749354",
+      "kind": "canonical local interface screenshot",
+      "provenance": "Generated from the exact reviewed Pages bytes after genuine local inference with the official sample and privacy-sanitized derivative.",
+      "limitations": [
+        "The overlay is model output, not ground truth or model-quality evidence.",
+        "The displayed browser runtime is client-specific and not historical T4 latency evidence."
       ]
     }
   ],

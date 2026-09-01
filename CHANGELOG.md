@@ -4,18 +4,17 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-### Browser evidence showcase
+### Real-image browser workbench
 
-- Added a one-action, deterministic Synthetic Showcase with an authored SVG, fixed result data,
-  visible provenance, and `N/A · no inference`; it includes no DOTA pixels and makes no model,
-  accuracy, evaluation, or latency claim.
-- Kept inference exclusive to BYOM and lazy-loaded the pinned ONNX Runtime Web runtime only after
-  model selection, with explicit JS-only SRI and non-zero-network boundaries plus safe recovery for
-  asset, runtime, model, inference, output, render, and image-decode failures.
-- Aligned release evidence, screenshot, and clean-export membership with the canonical showcase
-  fixture while excluding tracked internal design plans from release archives.
-- Cleared stale polygon/table/summary state after inference, output-schema, or result-render failures,
-  and reset BYOM file selections plus readiness labels whenever Synthetic Showcase takes control.
+- Replaced the Synthetic-first entry with an official aerial original that is visible at first paint;
+  the primary action now runs genuine local-browser inference with one exact privacy-sanitized AGPL
+  YOLO26n-OBB derivative and replaces the original in the same compact 31/69 workbench viewport.
+- Kept runtime/model loading lazy until Detect, with pinned JS-only SRI, same-origin model integrity,
+  numeric runtime, cached original/result switching and filters, and the existing safe BYOM path.
+- Recorded the metadata-only modification, DOTAv1 provenance, included AGPL text, no-endorsement and
+  no-commercial-clearance boundaries while continuing to exclude DOTA pixels and derived renders.
+- Aligned release evidence, canonical screenshot, exact digests, clean-export membership, privacy
+  gates, and Ubuntu CPU browser-smoke labels with the reviewed real-demo bytes.
 
 ## [1.0.0] - 2026-08-16
 

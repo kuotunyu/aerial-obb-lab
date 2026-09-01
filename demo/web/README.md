@@ -34,6 +34,7 @@ filter 與 rendering pipeline。選入無效的新 model 不會取代最後一�
 <!-- claim:browser-scope -->
 - Demo 與 BYOM model 的 input 必須是 `images [1,3,1024,1024]` float32 RGB CHW，output 必須符合
   end-to-end `output0 [1,N,7]`。
+- BYOM 接受 user-supplied compatible model 與 image，兩者只在目前的 browser session 內處理。
 - 這個 browser integration demo **does not represent** fine-tuned `yolo26m-obb` checkpoint 的
   accuracy、evaluation 或歷史 T4 latency；UI result 與 screenshot 也不是這些指標的 evidence。
 <!-- /claim:browser-scope -->

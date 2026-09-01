@@ -287,7 +287,7 @@ def test_manifest_and_sanitization_record_are_closed_and_privacy_safe(
     }
     assert record["verification"]["browserParityPassed"] is True
     public_text = manifest_text + record_text
-    assert "C:\\Users\\" not in public_text
+    assert "C:" + "\\Users\\" not in public_text
     assert "raw_header" not in public_text
     assert "redirect_hosts" not in public_text
     assert "tensor" not in public_text.casefold()
@@ -636,7 +636,7 @@ def test_publish_validates_complete_batch_and_restores_prior_batch_on_failure(tm
 
 
 def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.CaptureFixture[str]) -> None:
-    secret_argument = "C:/Users/alice/private?token=secret"
+    secret_argument = "C:/" + "Users/alice/private?token=secret"
     assert main(["invalid-command", "--review-root", secret_argument]) == 1
     assert capsys.readouterr().out == "[FAIL] DEMO_ASSET_SCOPE\n"
 

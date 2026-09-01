@@ -14,14 +14,14 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 結果不美化：fine-tuned model 在同條件下是持平略降。
 
 **Demo：**[`demo/web/`](demo/web/) · **Model card：**[`docs/model_card.md`](docs/model_card.md) ·
-**發布範圍：**僅程式碼與證據，不含 weights。
+**發布範圍：**程式碼、證據、官方範例圖，以及一個 privacy-sanitized AGPL demo model。
 
 <!-- claim:browser-scope -->
-> 瀏覽器 demo 有兩種明確模式：按一次「載入 Synthetic Showcase」即可呈現 repository 內的
-> authored SVG、固定結果與 rotated polygon，完全不載入 runtime、也不執行推論；BYOM 才是
-> inference 路徑，需要使用者自行提供相容 ONNX 與圖片，兩者都只在本機瀏覽器處理。
-> 模型與圖片都只在本機瀏覽器處理；Synthetic Showcase 與 screenshot 不代表 fine-tuned
-> `yolo26m-obb` 的 accuracy、evaluation 或 latency evidence。
+> 瀏覽器 demo 首先顯示官方航拍原圖；使用者按「開始 Detect」後，才會載入 same-origin
+> privacy-sanitized AGPL derivative 與 pinned runtime，在目前的 browser session 執行真正 inference。
+> BYOM 仍可使用使用者自行提供的相容 ONNX 與圖片；所有 model／image bytes 都不會上傳。
+> 這個 integration demo 與 screenshot **不代表** fine-tuned `yolo26m-obb` 的 accuracy、evaluation
+> 或歷史 T4 latency evidence。
 <!-- /claim:browser-scope -->
 
 ## 關鍵成果
@@ -31,11 +31,11 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 | Matched evaluation | Fine-tuned 相較官方 baseline：Δ mAP50 **-0.05pt**、Δ mAP50-95 **-0.13pt** | 持平略降，不宣稱精度提升 |
 | OBB geometry | 456 張 val images、28,853 個 objects；全體 weighted mean HBB／OBB 面積比 **1.76×**（bridge mean 2.43×） | Ground-truth geometry，不是 detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms／49.4 FPS** | 歷史 Tesla T4、batch=1、1024px 指定環境 |
-| Browser-native dual-mode demo | 一鍵 Synthetic Showcase（no inference）＋本機 BYOM inference | BYOM 選擇模型時才 lazy-load jsDelivr runtime；非零網路、JS script 受 SRI 驗證，不含模型或 DOTA pixels |
+| Browser-native real-image demo | 官方原圖 → 使用者按 Detect → 本機 genuine inference；另有進階 BYOM | Detect 才 lazy-load pinned jsDelivr runtime 與 same-origin privacy-sanitized derivative；非零網路、不含 DOTA pixels |
 
-![Synthetic UI fixture：Browser-native BYOM workbench，不代表模型精度](docs/assets/browser-workbench.png)
+![真實範例影像完成本機 browser inference 的 OBB workbench；不代表模型精度](docs/assets/browser-workbench.png)
 
-*Synthetic UI fixture：一次操作載入固定 SVG 與 authored `[1,N,7]` output，驗證 UI／UX、decode 與 rendering；`N/A · no inference`，不代表 accuracy、evaluation 或 latency。*
+*官方原圖經使用者按 Detect 後，在本機 browser 完成真正 inference 並顯示 rotated polygons、數值 runtime 與結果表；這是 integration evidence，不代表 accuracy、evaluation 或歷史 T4 latency。*
 
 ---
 
@@ -154,7 +154,7 @@ HBB／OBB 面積比為 **1.76×**；`bridge` mean 為 **2.43×**。
 **限制：**這是 ground-truth geometry proxy，不是 detector／NMS 實驗。它顯示 HBB 可能高估
 密集物件重疊與 suppression risk，沒有量測特定 detector 實際少掉多少 predictions。
 
-**3. 視覺來源：**五張 DOTA 衍生比較圖不納入 code-only release；僅保留可重現數據。
+**3. 視覺來源：**五張 DOTA 衍生比較圖不納入本 public release；僅保留可重現數據。
 <!-- /claim:analysis -->
 
 ---
@@ -193,7 +193,7 @@ PyTorch。ONNX 仍是 `demo/web/` 使用的 ONNX Runtime **Web** 模型交換格
 
 ## 重現步驟
 
-### 1. 本機開發（CPU-only，不需訓練或模型推論）
+### 1. 本機開發（CPU-only，不需訓練或 GPU）
 
 需求：Python 3.11、CPU。不要跨電腦複製 `.venv`。
 
@@ -207,7 +207,8 @@ uv sync --frozen --no-install-project
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-- Demo：開啟 `http://localhost:8765`；模型與圖片留在本機瀏覽器，runtime code 由固定版本 CDN + SRI 載入。
+- Demo：開啟 `http://localhost:8765`；先看官方航拍原圖，再按「開始 Detect」。影像與模型不會上傳；
+  第一次 Detect 才會讀取 same-origin privacy-sanitized derivative，並由固定版本 CDN + SRI 載入 runtime。
 - Default env：不含 Torch、CUDA、Ultralytics 或 Python ONNX Runtime。
 - 壞掉的 `.venv`：執行 `uv venv --clear --python 3.11`；Linux/macOS 改用 `.venv/bin/python`。
 - Windows 非 ASCII path：使用 `--no-install-project` 並直接呼叫 Python；細節見
@@ -215,7 +216,7 @@ uv sync --frozen --no-install-project
 - `tool.uv.link-mode = "copy"`：避免環境與 uv cache 互相污染。
 
 Clean-export gate 會在乾淨 HEAD 重建環境，檢查 tests／links／privacy／artifacts／browser，
-再 build 並安裝 wheel。Browser smoke 只用 synthetic fixture，不跑 inference：
+再 build 並安裝 wheel。Browser smoke 會在 Chromium 中執行真實範例 inference 與 BYOM 安全路徑：
 
 ```powershell
 .venv/Scripts/playwright.exe install chromium
@@ -238,20 +239,18 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
 **Accepted evidence：**[evidence.json](release/evidence.json) ·
 [per_class_metrics.json](docs/per_class_metrics.json) · [training_results](docs/training_results.md)
 
-### 3. 瀏覽器 BYOM Demo
+### 3. 瀏覽器真實影像 Demo + BYOM
 
-- 一次按下「載入 Synthetic Showcase」就會載入 committed authored SVG 與固定 output，繪出 rotated
-  polygon，顯示 provenance 與 `N/A · no inference`；不請求外部 runtime、不含 DOTA pixels，也不建立
-  accuracy、evaluation 或 latency evidence。
-- 只有 BYOM 模式執行 inference。以 static HTTP server 提供 `demo/web/`，再選擇本機 ONNX 與圖片；
-  model／image bytes 不離開 Browser，且不會下載、export 或 fallback 到具名模型。
-- ONNX Runtime Web 直到選擇 BYOM model 才 lazy-load。首次載入或 cache miss 會向 jsDelivr 請求 pinned
-  JavaScript 與 WASM assets，因此 BYOM 不是 zero-network。SHA-384 SRI 只驗證 `ort.min.js`；runtime
-  後續取得的 WASM assets 不在這個 script SRI 的涵蓋範圍。
-- Showcase asset、runtime、model contract、inference、output、render 或 image decode 失敗時，UI 會清除
-  stale 結果、提供固定且不洩漏檔名的錯誤與可用的重試／重新選擇路徑；無效的新 model 不會取代最後一個
-  已驗證 session。切換到 Synthetic Showcase 會釋放 BYOM session、清除 file selections，並把 model／image
-  labels 還原為未選擇狀態；inference／output／render failure 會保留 base image，但移除 polygon、table 與摘要。
+- 首次開啟即在共同 viewport 顯示官方 `boats.jpg` 原圖；按「開始 Detect」才會 lazy-load pinned
+  ONNX Runtime Web 與 same-origin privacy-sanitized YOLO26n-OBB derivative，在目前的 browser session
+  完成真正 inference，然後在同一位置顯示 rotated polygons、數值 runtime、provenance 與結果表格。
+- 「查看原圖／查看偵測結果」以及 confidence／class filters 都只重繪同一份 cached output，不會重新 inference。
+  BYOM 是預設收合的進階入口，user-supplied model／image bytes 同樣只在 Browser 內處理且不會上傳。
+- 第一次 Detect 或 cache miss 會向 jsDelivr 請求 pinned JavaScript 與 WASM assets，所以不是 zero-network。
+  SHA-384 SRI 只驗證 `ort.min.js`；runtime 後續取得的 WASM assets 不在該 script SRI 的涵蓋範圍。
+- Asset、runtime、integrity、model contract、inference、output、render 或 image decode 失敗時，UI 會清除
+  stale 結果，保留安全的原圖／重試路徑，並只顯示固定且不洩漏 local filename 的錯誤。無效的新 BYOM
+  model 不會取代最後一個已驗證 session。
 
 ---
 
@@ -259,8 +258,10 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
 
 - Repository code：依 `pyproject.toml` 宣告為 **AGPL-3.0-or-later**；Ultralytics components
   仍受 Ultralytics 各自的 AGPL／Enterprise 授權路線約束。
-- 這份 code-only candidate 不含 DOTA 圖像、標註、衍生 render、訓練權重或匯出模型。DOTA 仍限
-  學術用途；使用者自行提供的模型仍受其資料集、上游軟體與權重條款約束，本專案不主張取得商用許可。
+- 本 candidate 包含一個已移除私人 build metadata、graph／weights 不變的 YOLO26n-OBB AGPL derivative，
+  以及官方 `boats.jpg` 範例；不含 DOTA pixels、標註或衍生 render。模型的 DOTAv1 training provenance
+  已揭露，本專案不暗示 Ultralytics endorsement，也不主張取得商用許可。使用者自行提供的模型與影像
+  仍受其資料集、上游軟體、權重及 image-rights 條款約束。
 - Artifact hash、第三方條款與 release gates：見 [artifact manifest](release/artifact-manifest.json)、
   [third-party notices](THIRD_PARTY_NOTICES.md) 與 [release checklist](RELEASE_CHECKLIST.md)。
 

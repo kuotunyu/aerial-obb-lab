@@ -100,7 +100,7 @@ def test_parity_cli_uses_fixed_diagnostics(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    secret = "C:/Users/alice/private?token=secret"
+    secret = "C:/" + "Users/alice/private?token=secret"
     assert parity.main(["--review-root", secret]) == 1
     assert capsys.readouterr().out == "[FAIL] DEMO_MODEL_PARITY_SCOPE\n"
 

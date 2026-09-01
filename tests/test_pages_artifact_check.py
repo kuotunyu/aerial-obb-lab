@@ -299,6 +299,24 @@ def test_pages_tree_rejects_reviewed_asset_content_mismatch(
     assert f"{relative}: {reason}" in verify_pages_tree(site)
 
 
+@pytest.mark.parametrize(
+    ("relative", "reason"),
+    (
+        ("index.html", "reviewed HTML bytes differ"),
+        ("app.js", "reviewed application bytes differ"),
+        ("style.css", "reviewed stylesheet bytes differ"),
+    ),
+)
+def test_pages_tree_rejects_changed_reviewed_workbench_text(
+    tmp_path: Path, relative: str, reason: str
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    path = site / relative
+    path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    assert f"{relative}: {reason}" in verify_pages_tree(site)
+
+
 def test_final_pages_tree_rejects_synthetic_paths_and_references(tmp_path: Path) -> None:
     path_site = copied_pages_tree(tmp_path / "path")
     (path_site / "showcase-fixture.js").write_text("fixture", encoding="utf-8")

@@ -55,60 +55,59 @@ def test_dota8_and_t4_claims_are_strictly_scoped() -> None:
     assert evidence["t4_benchmark"]["universal_performance_claim"] is False
 
 
-def test_browser_demo_is_not_medium_checkpoint_evidence() -> None:
+def test_browser_demo_evidence_is_genuine_local_inference_with_privacy_sanitized_derivative() -> None:
     browser = load_evidence()["browser_demo"]
 
-    assert browser["distribution_mode"] == "bring-your-own-model"
-    assert browser["model"] == "user-supplied compatible YOLO26 OBB ONNX"
-    assert "model_sha256" not in browser
-    assert "model_bytes" not in browser
+    assert (
+        browser["distribution_mode"]
+        == "public-agpl-privacy-sanitized-demo-model-plus-byom"
+    )
+    assert browser["showcase_enabled"] is False
+    assert browser["demo_inference_performed"] is True
+    assert browser["model_bundled"] is True
+    assert browser["demo_image"] == "demo/web/samples/boats.jpg"
+    assert (
+        browser["demo_model"]
+        == "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+    )
+    assert browser["runtime_load"] == "lazy-on-demo-detect-or-byom-selection"
     assert "space_revision" not in browser
     assert browser["represents_fine_tuned_medium_accuracy"] is False
     assert browser["represents_t4_latency"] is False
 
 
-def test_browser_showcase_evidence_is_explicit_and_model_free() -> None:
-    browser = load_evidence()["browser_demo"]
-
-    assert browser["showcase_enabled"] is True
-    assert browser["showcase_fixture"] == "demo/web/fixtures/showcase.svg"
-    assert browser["showcase_image"] == "authored synthetic SVG"
-    assert browser["showcase_inference_performed"] is False
-    assert browser["showcase_runtime_label"] == "N/A · no inference"
-    assert browser["showcase_external_runtime_requests"] is False
-    assert browser["runtime_load"] == "lazy-on-byom-selection"
-    assert "demo/web/showcase-fixture.js" in browser["source_files"]
-    assert "demo/web/fixtures/showcase.svg" in browser["source_files"]
-    assert "tests/fixtures/browser-smoke.svg" not in browser["source_files"]
-
-
-def test_browser_demo_has_one_canonical_source_path() -> None:
+def test_browser_demo_has_one_canonical_real_demo_source_path() -> None:
     browser = load_evidence()["browser_demo"]
     assert browser["source_files"] == [
+        "demo/web/THIRD_PARTY_NOTICES.md",
         "demo/web/app.js",
-        "demo/web/fixtures/showcase.svg",
+        "demo/web/demo-assets.js",
+        "demo/web/demo-model.json",
         "demo/web/fonts/IBM-Plex-OFL.txt",
         "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "demo/web/index.html",
+        "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
         "demo/web/obb.js",
-        "demo/web/showcase-fixture.js",
+        "demo/web/samples/boats.jpg",
         "demo/web/style.css",
+        "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+        "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
         "docs/assets/browser-workbench.png",
     ]
     assert (ROOT / "demo" / "web" / "index.html").is_file()
     assert not (ROOT / "demo" / "space-static").exists()
 
 
-def test_browser_ui_evidence_has_no_bundled_model_or_gradio_surface() -> None:
+def test_browser_ui_evidence_matches_restored_workbench() -> None:
     evidence = load_evidence()
     browser = evidence["browser_demo"]
-    assert browser["model_bundled"] is False
+    assert browser["model_bundled"] is True
     assert browser["language"] == "zh-TW"
-    assert browser["layout"] == "workbench-34-66"
+    assert browser["layout"] == "workbench-31-69"
     assert browser["base_font_px"] == 19
     assert browser["minimum_secondary_text_px"] == 15
     assert browser["desktop_max_width_px"] == 1760
-    assert browser["responsive_breakpoint_px"] == 900
+    assert browser["responsive_breakpoint_px"] == 960
     assert browser["corner_style"] == "square"
     assert browser["primary_action_first_viewport"] is True
     assert browser["dense_canvas_labels"] is False
@@ -116,13 +115,22 @@ def test_browser_ui_evidence_has_no_bundled_model_or_gradio_surface() -> None:
     assert "gradio_ui" not in evidence
 
 
-def test_model_card_uses_current_browser_byom_path() -> None:
+def test_model_card_uses_current_real_demo_and_advanced_byom_path() -> None:
     text = (ROOT / "docs" / "model_card.md").read_text(encoding="utf-8")
 
     for retired in ("--group demo", "MODEL_PATH", "MODEL_DEVICE", "demo/app.py"):
         assert retired not in text
     assert "demo/web" in text
     assert "python.exe -m http.server 8765 --directory demo/web" in text
+    for token in (
+        "official aerial original",
+        "privacy-sanitized YOLO26n-OBB AGPL derivative",
+        "genuine local inference",
+        "filters reuse cached output",
+        "Advanced BYOM",
+        "does not represent the fine-tuned `yolo26m-obb`",
+    ):
+        assert token in text
 
 
 def test_owner_hf_artifacts_are_anonymously_private() -> None:
@@ -339,31 +347,44 @@ def test_geometry_overall_mean_is_weighted_and_readme_scoped() -> None:
     assert "acknowledge_dota_academic_use" in generator
 
 
-def test_code_only_manifest_bundles_only_licensed_display_font() -> None:
+def test_real_demo_manifest_records_exact_public_artifacts() -> None:
     manifest = json.loads(
         (ROOT / "release" / "artifact-manifest.json").read_text(encoding="utf-8")
     )
+    evidence = load_evidence()
 
     assert manifest["schema_version"] == 2
-    assert manifest["distribution_mode"] == "code-only-byom"
-    assert manifest["bundled_third_party_artifacts"] == [
-        {
-            "path": "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
-            "bytes": 66040,
-            "sha256": "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d",
-            "kind": "self-hosted web font",
-            "provenance": "Unmodified IBM Plex Sans Condensed SemiBold WOFF2 from @ibm/plex-sans-condensed@2.0.0.",
-            "source_url": "https://github.com/IBM/plex/releases/tag/%40ibm%2Fplex-sans-condensed%402.0.0",
-            "upstream_git_head": "bb3ab6404e1881ea286f8742dc839e09057db6dd",
-            "upstream_integrity": "sha512-dzgR4Npf/JJMiTYf6iOBQJpTDQfllZFLN0A0FkW5gtWhNr9JeQNvRrIRwJvbZHfL0I8wae8kIhO/ukYdeXW54g==",
-            "license": "OFL-1.1",
-            "license_file": "demo/web/fonts/IBM-Plex-OFL.txt",
-            "restrictions": [
-                "Keep the copyright notice and SIL Open Font License 1.1 with redistributed copies.",
-                "Reserved Font Name Plex applies if the font is modified.",
-            ],
-        }
-    ]
+    assert (
+        manifest["release_candidate"]
+        == evidence["release_candidate"]
+        == "unreleased-pages-candidate"
+    )
+    assert (
+        manifest["distribution_mode"]
+        == "public-agpl-privacy-sanitized-demo-model-plus-byom"
+    )
+    assert manifest["policy"]["commercial_use_cleared"] is False
+    bundled = {entry["path"]: entry for entry in manifest["bundled_third_party_artifacts"]}
+    assert set(bundled) == {
+        "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
+        "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+        "demo/web/samples/boats.jpg",
+        "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+    }
+    model = bundled["demo/web/models/yolo26n-obb-privacy-sanitized.onnx"]
+    assert model["bytes"] == 10207127
+    assert model["sha256"] == "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
+    assert model["modification_status"] == "metadata-only"
+    assert model["source_sha256"] == "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"
+    assert model["source_sha256"] != model["sha256"]
+    reviewed = {entry["path"] for entry in manifest["reviewed_public_artifacts"]}
+    assert {
+        "demo/web/app.js",
+        "demo/web/index.html",
+        "demo/web/style.css",
+        "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+        "docs/assets/browser-workbench.png",
+    } <= reviewed
     assert len(manifest["excluded_historical_artifacts"]) == 6
 
 
@@ -375,14 +396,16 @@ def test_release_checklist_records_completed_clean_history_publication() -> None
         "admin enforcement and linear history enabled",
         "force pushes",
         "branch deletion are disabled",
-        "Hosted Ubuntu CPU, Windows CPU, and synthetic browser checks pass",
+        "Historical v1.0.0",
+        "privacy-sanitized nano derivative",
+        "live-demo browser checks remain a separate authorized remote gate",
     ):
         assert token in checklist
-    assert "[x] Publish the reviewed code-only tree from a clean root commit" in checklist
+    assert "publish the reviewed code-only tree from a clean root commit" in checklist
     assert "[x] Restore branch protection" in checklist
 
 
-def test_committed_tree_contains_no_model_or_dota_visual() -> None:
+def test_committed_tree_contains_only_the_approved_demo_model_and_no_dota_visual() -> None:
     release_check = load_release_check()
     manifest = release_check.load_json(ROOT / "release" / "artifact-manifest.json")
 
@@ -390,6 +413,30 @@ def test_committed_tree_contains_no_model_or_dota_visual() -> None:
         release_check.committed_paths(ROOT), manifest
     ) == []
     assert release_check.verify_artifacts(ROOT) == []
+
+
+def test_model_release_exception_is_exact_manifest_bound_and_source_safe() -> None:
+    release_check = load_release_check()
+    approved = "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
+    manifest = {
+        "bundled_third_party_artifacts": [
+            {
+                "path": approved,
+                "bytes": 10207127,
+                "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+            }
+        ],
+        "excluded_historical_artifacts": [],
+    }
+
+    assert release_check.verify_code_only_paths([approved], manifest) == []
+    assert release_check.verify_code_only_paths(
+        [approved, "demo/web/models/second.onnx"], manifest
+    ) == ["public release contains unapproved model binary: demo/web/models/second.onnx"]
+    manifest["bundled_third_party_artifacts"][0]["sha256"] = release_check.SOURCE_MODEL_SHA256
+    assert release_check.verify_code_only_paths([approved], manifest) == [
+        f"public release model exception is not exact: {approved}"
+    ]
 
 
 def test_private_runtime_and_absolute_user_paths_fail_closed(tmp_path: Path) -> None:
