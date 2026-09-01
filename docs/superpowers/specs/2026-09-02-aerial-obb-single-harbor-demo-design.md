@@ -4,7 +4,7 @@
 - **Repository:** `kuotunyu/aerial-obb-lab`
 - **Branch:** `feat/pages-live-real-image-demo`
 - **Design parent:** `c465ec858a95fd9b0d9a06716a7e1c78ae87cadc`
-- **Status:** Design approved; awaiting written spec review
+- **Status:** Approved for implementation planning
 - **Scope:** replace the three-option real-sample gallery with one fixed low-density harbor example while preserving the approved original-before-Detect browser-inference workbench
 
 ## Authorization and relationship to earlier designs
