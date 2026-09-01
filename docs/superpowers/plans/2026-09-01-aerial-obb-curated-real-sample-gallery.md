@@ -72,7 +72,7 @@ Record starting HEAD, fresh implementer/reviewer identities, exact candidate-rev
 
 | Path | Responsibility |
 | --- | --- |
-| `scripts/prepare_sample_gallery.py` | Exact nine-recipe NAIP acquisition, locked-raster validation, deterministic JPEG derivation, public-safe receipt validation, and atomic publication of three approved files. |
+| `scripts/prepare_sample_gallery.py` | Exact nine-recipe NAIP candidate-pool acquisition, per-recipe locked-raster admission, deterministic JPEG derivation, public-safe receipt validation, and atomic publication of three approved files. |
 | `scripts/sample_gallery_smoke.py` | Repository-external real-browser inference, public-safe observation report, bounded guardrail calculation, and screenshot capture for candidate admission. |
 | `tests/test_sample_gallery.py` | Source allowlist, raster identity, deterministic derivation, metadata/privacy, report schema, three-category approval, containment, and atomic publication tests. |
 | `release/sample-gallery-sources.json` | Exact final three-image source/derivation/digest/guardrail receipt; no rejected candidate or local path. |
@@ -155,7 +155,7 @@ runDemo()                               // uses state.image for state.selectedSa
 - Create: `tests/test_sample_gallery.py`
 
 **Interfaces:**
-- Produces the exact Python interfaces and nine recipes above, a repository-external `approved-gallery.json`, and repository-external before/result screenshots.
+- Produces the exact Python interfaces and closed nine-recipe pool above, a source-valid subset containing two or three candidates per category, a repository-external `approved-gallery.json`, and repository-external before/result screenshots.
 - Does not create or modify any tracked public image, manifest, UI file, release evidence, or current sample.
 
 - [ ] **Step 1: Write the source/derivation/report batch RED**
@@ -210,6 +210,14 @@ distinct `NAIP` path segment. Observe the old name-token rule fail before changi
 Mutation coverage must independently reject a missing/ambiguous NAIP path segment, credentials, query,
 fragment, a blank product name, and any HRO/commercial marker.
 
+Add `test_acquisition_pool_keeps_two_or_three_source_valid_candidates_per_category` as the regression for
+the approved pool ruling. Attempt all nine immutable recipes, fail closed only the individual recipe whose
+source gate raises exact `GalleryError("GALLERY_SOURCE_REJECTED")`, and assert the written batch contains
+only source-valid records with category counts in `[2, 3]`. Assert that fewer than two retained records in any
+category aborts the whole batch, and that network, parse, derivation, containment, or write failures are fatal
+rather than silently treated as candidate rejection. Neither the tracked report nor the committed files may
+identify a rejected recipe.
+
 - [ ] **Step 2: Run the batch and record the earliest actual RED**
 
 ```powershell
@@ -243,11 +251,11 @@ For every recipe:
 5. Decode the response, composite alpha over black only if present, convert to RGB, resize with Pillow LANCZOS when the service response differs, and save deterministic JPEG quality `90`, `subsampling=0`, `optimize=False`, `progressive=False`, with no EXIF/ICC/comment.
 6. Write a public-safe record containing source values, service-response SHA-256, bbox, derivation, final bytes/SHA-256, and the opaque review filename produced by `f"{candidate_id}.jpg"`. Never serialize the local review root, response headers/body, exception, or temporary export URL.
 
-Containment checks reject a review root inside any Git worktree, symlink/reparse component, traversal, existing unrelated leaf, and overwrite of a prior review batch. Publishing is not implemented in this task.
+Containment checks reject a review root inside any Git worktree, symlink/reparse component, traversal, existing unrelated leaf, and overwrite of a prior review batch. `acquire_all` attempts every immutable recipe, catches only exact `GalleryError("GALLERY_SOURCE_REJECTED")` per recipe, requires two or three retained candidates per category, and writes the complete batch only after the pool passes. Every other failure remains fatal. Publishing is not implemented in this task.
 
 - [ ] **Step 4: Implement the real-browser candidate smoke and report schema**
 
-`scripts/sample_gallery_smoke.py` serves the current tracked `demo/web`, selects the existing public sanitized model through BYOM, selects each repository-external candidate image through the real file input, clicks BYOM Detect, and reads the actual table/canvas state. Its report has exact top-level keys `schemaVersion`, `threshold`, `modelSha256`, and `candidates`. Each candidate has exact keys `candidateId`, `category`, `runCompleted`, `numericRuntime`, `detections`, and `visualReview`; each detection has finite measured `classId`, `confidence`, `cx`, `cy`, `w`, `h`, and `angle`. `candidateId` must be one of the fixed nine, `category` must match that recipe, `threshold` is exactly `0.25`, the model digest is exactly `a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97`, and the initial review state is exactly `unreviewed`.
+`scripts/sample_gallery_smoke.py` serves the current tracked `demo/web`, selects the existing public sanitized model through BYOM, selects each source-valid repository-external candidate image through the real file input, clicks BYOM Detect, and reads the actual table/canvas state. Its report has exact top-level keys `schemaVersion`, `threshold`, `modelSha256`, and `candidates`. Each candidate has exact keys `candidateId`, `category`, `runCompleted`, `numericRuntime`, `detections`, and `visualReview`; each detection has finite measured `classId`, `confidence`, `cx`, `cy`, `w`, `h`, and `angle`. `candidateId` must be one of the fixed nine and present in the source-valid acquisition batch, `category` must match that recipe, every category must contribute two or three candidates, `threshold` is exactly `0.25`, the model digest is exactly `a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97`, and the initial review state is exactly `unreviewed`.
 
 It captures `f"{candidate_id}-original.png"` and `f"{candidate_id}-result.png"` outside the repository. UI/console/page errors fail the run; the report and screenshot metadata must contain no input path, filename other than fixed candidate ID, model metadata, raw error, stack, browser profile, or rejected source URL.
 
@@ -261,7 +269,7 @@ git diff --check
 
 Expected: the new unit suite and unchanged asset/parity suites pass; `git status --short` lists only the three new code/test paths plus preserved `.superpowers/`.
 
-- [ ] **Step 6: Acquire and evaluate the exact nine candidates outside the repository**
+- [ ] **Step 6: Attempt the exact nine-recipe pool and evaluate every source-valid candidate outside the repository**
 
 ```powershell
 $reviewRoot = Join-Path ([IO.Path]::GetTempPath()) ('aerial-obb-naip-review-' + [guid]::NewGuid().ToString('N'))
@@ -270,7 +278,7 @@ uv run --no-sync python scripts/prepare_sample_gallery.py acquire --review-root 
 uv run --no-sync python scripts/sample_gallery_smoke.py --review-root $reviewRoot --model demo/web/models/yolo26n-obb-privacy-sanitized.onnx --report (Join-Path $reviewRoot 'observations.json') --screenshot-dir (Join-Path $reviewRoot 'screenshots')
 ```
 
-Inspect all nine original/result pairs. Approve exactly one ID per category only if it passes every visual-suitability rule in the spec. Record the three public IDs in the ignored ledger, then use the script's explicit approval command:
+The acquisition command attempts all nine immutable recipes. Exact `GalleryError("GALLERY_SOURCE_REJECTED")` excludes only that recipe; every other error aborts the batch. Require two or three source-valid candidates per category, run smoke for every retained candidate, and inspect every resulting original/result pair. Approve exactly one ID per category only if it passes every visual-suitability rule in the spec. Record category pass counts and the three public IDs in the ignored ledger, then use the script's explicit approval command:
 
 ```powershell
 $approvalPointer = Join-Path $worktree '.superpowers\sdd\2026-09-01-aerial-obb-curated-real-sample-gallery\approved-gallery-location.txt'
@@ -278,11 +286,11 @@ uv run --no-sync python scripts/prepare_sample_gallery.py approve --review-root 
 uv run --no-sync python scripts/prepare_sample_gallery.py verify-approved --review-root $reviewRoot
 ```
 
-The `approve` command presents the three candidates in each category and requires the reviewer to select one fixed ID after inspecting the screenshot pairs; it writes the selection into repository-external `approved-gallery.json` and writes only the review-root location to the ignored pointer. If any category lacks a passing image at confidence `0.25`, exit without writing either file and stop implementation; do not change the threshold/category/source/model or approve a weak result.
+The `approve` command presents the two or three source-valid candidates in each category and requires the reviewer to select one fixed ID after inspecting the screenshot pairs; it writes the selection into repository-external `approved-gallery.json` and writes only the review-root location to the ignored pointer. If any category retains fewer than two source-valid candidates or lacks a visually passing image at confidence `0.25`, exit without writing either file and stop implementation; do not replace a recipe, change the threshold/category/source/model, or approve a weak result.
 
 - [ ] **Step 7: Review and commit Task 1**
 
-Fresh spec and quality reviewers inspect the source allowlist, deterministic bytes, privacy/containment, real BYOM inference, all nine screenshot pairs, and exactly three approvals. Resolve findings through the Task 1 implementer and rerun Steps 5–6. Stage exactly:
+Fresh spec and quality reviewers inspect the source allowlist, per-recipe fail-closed behavior, deterministic bytes, privacy/containment, real BYOM inference, every source-valid screenshot pair, the two-or-three-per-category pool invariant, and exactly three approvals. Resolve findings through the Task 1 implementer and rerun Steps 5–6. Stage exactly:
 
 ```powershell
 git add scripts/prepare_sample_gallery.py scripts/sample_gallery_smoke.py tests/test_sample_gallery.py
@@ -790,7 +798,7 @@ Open `http://127.0.0.1:8766/`. At 1280×720, 390×844, and 200%-zoom-equivalent 
 
 - [ ] **Step 6: Broad whole-branch review and one bounded fix wave**
 
-Provide the most capable fresh reviewer with the approved spec, this plan, the full `40a6eb130b6e2cf46b89469750eb10f9133d8a83...HEAD` diff, all task ledgers/reports, the exact approved receipt, nine admission screenshot pairs, three final artifact screenshot pairs, browser/network output, canonical screenshot, full-suite/direct-gate output, strict clean-export digest, and privacy scans.
+Provide the most capable fresh reviewer with the approved spec, this plan, the full `40a6eb130b6e2cf46b89469750eb10f9133d8a83...HEAD` diff, all task ledgers/reports, the exact approved receipt, every source-valid admission screenshot pair, category pool counts, three final artifact screenshot pairs, browser/network output, canonical screenshot, full-suite/direct-gate output, strict clean-export digest, and privacy scans.
 
 Critical or Important findings permit one focused test-first fix wave through the responsible original implementer, its own minimal commit, and fresh re-review. A second product fix wave, source/license ambiguity, weak visual admission, artifact mismatch, privacy leak, unexpected origin, model/inference contract failure, or unresolved Important finding stops completion. Record Minor findings without unrelated polish.
 
@@ -824,7 +832,7 @@ No task in this plan authorizes push, PR, merge, auto-merge, force push, Pages e
 - **Spec coverage:** Task 1 covers exact public-domain source, deterministic derivation, same-model threshold, privacy, visual admission, and stop conditions. Task 2 covers the closed catalog, three files, selector, default original, switching, one result/session, and genuine Detect. Task 3 covers failures, races, guardrails, BYOM, accessibility, responsive behavior, and all three real runs. Task 4 covers notices, evidence, digests, artifact/clean-export gates, documentation, and canonical screenshot. Task 5 covers full regression, exact export, operable preview, and broad review.
 - **Interface consistency:** `CandidateRecipe`, the nine IDs/bboxes, three public IDs/paths, schema version 2, `defaultSampleId`, `getSampleById`, `selectDemoSample`, `loadSelectedDemoImage`, `setSampleSelection`, and `state.selectedSampleId` are defined once and used with the same names and domains.
 - **TDD honesty:** Every implementation task names its first expected reachable RED and explicitly forbids claiming later assertions blocked by it. Successful sample inference uses real browser/model bytes; error routes may be stubbed but mock-only coverage cannot satisfy admission.
-- **No unresolved implementation gaps:** Candidate selection is a bounded runtime admission from nine exact recipes with an explicit stop condition, not an unspecified asset search. Measured source/digest/guardrail facts are generated and validated by Task 1–2 rather than represented by fake literals.
+- **No unresolved implementation gaps:** Candidate selection is a bounded runtime admission from nine exact recipes, permits only dedicated per-recipe source rejection, requires two or three retained candidates per category, and has explicit stop conditions; it is not an unspecified asset search. Measured source/digest/guardrail facts are generated and validated by Task 1–2 rather than represented by fake literals.
 - **Asset/privacy boundary:** Exactly three public-domain JPEG derivatives, one existing sanitized ONNX derivative, and existing licenses enter the artifact. Source tiles, rejected candidates, DOTA content, commercial imagery, local paths, raw diagnostics, tokens, and precomputed results remain excluded.
 - **Claim boundary:** Curated visual clarity is disclosed and never promoted as accuracy/evaluation/benchmark evidence; confidence stays `0.25` for every candidate and public sample.
 - **Remote boundary:** All remote gates are listed separately and are unauthorized by plan approval or local execution.

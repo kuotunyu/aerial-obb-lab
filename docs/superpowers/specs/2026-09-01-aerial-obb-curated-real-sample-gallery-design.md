@@ -121,7 +121,10 @@ ambiguous product identity, multiple raster identities, HRO, and commercial reco
 
 ### Exact asset derivation and provenance
 
-Implementation evaluates two or three candidates for each fixed category outside the repository. Each
+Implementation attempts the plan's closed nine-recipe pool outside the repository. Source admission is
+fail-closed per recipe: a recipe without one unambiguous source-qualified raster is excluded before any
+browser smoke, and its identity is not serialized into tracked evidence. After all nine attempts, each fixed
+category must retain two or three source-valid candidates; fewer than two stops implementation. Every retained
 candidate is derived from one exact NAIP source product by a recorded, deterministic operation:
 
 - source product identifier, acquisition year, official download URL, retrieval date, source byte length,
