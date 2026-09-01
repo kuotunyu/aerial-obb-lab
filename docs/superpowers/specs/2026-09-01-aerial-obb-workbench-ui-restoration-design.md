@@ -1,7 +1,7 @@
 # Aerial OBB Workbench UI Restoration Design
 
 **Date:** 2026-09-01
-**Status:** Design approved; pending written-spec review
+**Status:** Approved for implementation planning
 **Base:** `b6a4cd6193a9c34bd08e437805248dbc9658e3d5` on `feat/pages-live-real-image-demo`
 
 ## Objective
