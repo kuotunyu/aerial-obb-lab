@@ -8,7 +8,7 @@
 
 **Tech Stack:** Static HTML, CSS, and JavaScript; ONNX Runtime Web 1.20.1/WASM; Python 3.11; Pillow; Playwright through Python; pytest; USGS NAIP Plus ArcGIS REST ImageServer; standard-library release/Pages/clean-export gates; `uv`; Git.
 
-**Plan Status:** Written from approved design commit `a7b6fb14fd97c72c92c97709e8f3ba23fde299b2`; pending written plan review. This documentation commit authorizes no implementation or remote action.
+**Plan Status:** Approved for local implementation; the source-admission refinement was approved in writing on 2026-09-01. Remote Gates A–E remain unauthorized.
 
 ## Global Constraints
 
@@ -16,7 +16,7 @@
 - Execute in the retained isolated worktree `D:\AI-Portfolio\.worktrees\aerial-obb-live-real-image-demo` on `feat/pages-live-real-image-demo`. Preserve untracked `.superpowers/` and stage only the exact task paths.
 - The public catalog has exactly `airfield`, `sports-complex`, and `harbor`, at `samples/airfield.jpg`, `samples/sports-complex.jpg`, and `samples/harbor.jpg`; the initial ID is `airfield`.
 - Every admitted image is a `1280×800` metadata-stripped sRGB JPEG encoded at quality `90`, derived from one locked NAIP raster in the contiguous United States and recorded by official source identity, crop/export rectangle, year, acquisition date, agency, bytes, and SHA-256.
-- The authoritative imagery service is exactly `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer`; admission requires a NAIP/USDA source record and rejects HRO/commercial/ambiguous imagery.
+- The authoritative imagery service is exactly `https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer`; admission requires one five-point-locked source row whose `agency` identifies USDA/FSA and whose official HTTPS `download_url` path contains a distinct `NAIP` segment. `Name` and `raster_name` must be present and must not identify HRO/commercial imagery, but need not repeat the literal `NAIP` token. Query, fragment, credentials, multiple-source, HRO, commercial, and ambiguous records fail closed.
 - Candidate evaluation uses the exact reviewed model `demo/web/models/yolo26n-obb-privacy-sanitized.onnx`, exact browser pipeline, and shared confidence `0.25`. Never tune threshold, class filter, NMS, preprocessing, or model per image.
 - The current `boats.jpg` leaves the public catalog and Pages artifact. Do not use DOTA pixels/annotations/renders, commercial basemap screenshots, private imagery, precomputed output, manually edited boxes, or an annotated committed image.
 - Initial navigation may request the three same-origin JPEGs, HTML/CSS/JavaScript, and self-hosted font. It must request zero `demo-model.json`, ORT script, WASM, or ONNX resources before explicit Detect.
@@ -203,6 +203,13 @@ def test_approved_gallery_requires_one_visually_approved_record_per_fixed_catego
 
 The invalid mutation set must cover wrong service host/path, non-USDA agency, HRO/non-NAIP product, two raster IDs for one crop, changed bbox, output size/quality/threshold/class filter, missing source digest, extra field, absolute path, query/header/token, raw error/stack, rejected candidate in approved output, duplicate category, and missing visual approval.
 
+Add `test_admission_accepts_official_usda_fsa_record_with_naip_download_path` as the regression for the
+approved source refinement. Its fixture keeps `Name` and `raster_name` nonblank and free of HRO/commercial
+markers without a literal `NAIP` token, identifies USDA/FSA in `agency`, and uses an HTTPS source URL with a
+distinct `NAIP` path segment. Observe the old name-token rule fail before changing production validation.
+Mutation coverage must independently reject a missing/ambiguous NAIP path segment, credentials, query,
+fragment, a blank product name, and any HRO/commercial marker.
+
 - [ ] **Step 2: Run the batch and record the earliest actual RED**
 
 ```powershell
@@ -230,9 +237,9 @@ SOURCE_FIELDS = (
 For every recipe:
 
 1. Query the exact bbox against the service and require one raster identity to cover the centre plus four inset corners.
-2. Require `agency` to identify USDA/FSA and `Name` or `raster_name` to identify NAIP; reject HRO, commercial, blank, multiple-source, or out-of-CONUS results.
-3. Lock `exportImage` to that `OBJECTID` with an ArcGIS `esriMosaicLockRaster` rule; request the recipe bbox in EPSG:4326 and `1280,800` output.
-4. Cap service JSON at 256 KiB and raster response at 25 MiB; accept only HTTPS from `imagery.nationalmap.gov` for service output and the exact official `download_url` host recorded by the source item.
+2. Require `agency` to identify USDA/FSA and the parsed official HTTPS `download_url` path to contain a distinct case-insensitive `NAIP` segment. Require nonblank `Name` and `raster_name`; reject HRO/commercial markers in either product field or agency, plus blank, multiple-source, ambiguous, or out-of-CONUS results.
+3. Send every centre/inset identify point as JSON geometry with `spatialReference: {"wkid": 4326}`. Lock `exportImage` to that one `OBJECTID` with an ArcGIS `esriMosaicLockRaster` rule; request the recipe bbox in EPSG:4326 and `1280,800` output.
+4. Cap service JSON at 256 KiB and raster response at 25 MiB; accept service responses only from HTTPS `imagery.nationalmap.gov`. Preserve the exact official HTTPS `download_url` host and normalized path recorded by the selected source item, rejecting credentials, query, fragment, traversal, or a missing distinct `NAIP` path segment; the source URL is provenance, not a runtime browser request.
 5. Decode the response, composite alpha over black only if present, convert to RGB, resize with Pillow LANCZOS when the service response differs, and save deterministic JPEG quality `90`, `subsampling=0`, `optimize=False`, `progressive=False`, with no EXIF/ICC/comment.
 6. Write a public-safe record containing source values, service-response SHA-256, bbox, derivation, final bytes/SHA-256, and the opaque review filename produced by `f"{candidate_id}.jpg"`. Never serialize the local review root, response headers/body, exception, or temporary export URL.
 

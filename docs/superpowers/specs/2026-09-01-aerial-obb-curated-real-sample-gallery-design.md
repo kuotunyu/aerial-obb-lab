@@ -4,7 +4,7 @@
 - **Repository:** `kuotunyu/aerial-obb-lab`
 - **Design branch:** `feat/pages-live-real-image-demo`
 - **Design parent:** `40a6eb130b6e2cf46b89469750eb10f9133d8a83`
-- **Status:** Approved for implementation planning
+- **Status:** Approved for local implementation; source-admission refinement approved 2026-09-01
 - **Scope:** replace the single dense harbor example with three switchable, public-domain real aerial
   examples while preserving the approved workbench and genuine click-to-run browser inference
 
@@ -110,6 +110,14 @@ distributed by the U.S. Geological Survey. The authoritative records are:
 Those USGS records identify the collection as public-domain aerial orthoimagery. Commercial basemaps,
 Google/Bing/Apple imagery, map screenshots, DOTA/DOTAv1 pixels or annotations, social-media images, stock
 photography, and any source whose exact redistribution basis is unclear are forbidden.
+
+For the approved USGS NAIP Plus ImageServer admission path, one locked raster identity must cover the centre
+and four inset crop points with explicit EPSG:4326 geometry. The selected official catalog row proves NAIP
+identity through the conjunction of the exact USGS service, an `agency` value identifying USDA/FSA, and an
+HTTPS `download_url` whose normalized path contains a distinct `NAIP` segment. `Name` and `raster_name` must
+be present and free of HRO/commercial markers, but they are not required to repeat the literal `NAIP` token.
+The official download host and path are frozen from the selected source row; query, fragment, credentials,
+ambiguous product identity, multiple raster identities, HRO, and commercial records fail closed.
 
 ### Exact asset derivation and provenance
 
