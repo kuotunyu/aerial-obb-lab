@@ -22,6 +22,7 @@ def _copy_release_candidate(tmp_path: Path) -> Path:
     )
     relative_paths = {
         "release/artifact-manifest.json",
+        "release/sample-gallery-sources.json",
         "demo/web/demo-model.json",
         "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
         *(entry["path"] for entry in manifest["bundled_third_party_artifacts"]),
