@@ -775,6 +775,28 @@ def test_gallery_receipt_rejects_each_closed_contract_mutation(tmp_path: Path, p
         demo_assets.validate_gallery_publication(pages.parent, receipt)
 
 
+@pytest.mark.parametrize("path,operation", [
+    ((), "extra"), ((), "missing"), (("samples", 0), "extra"), (("samples", 0), "missing"),
+    (("samples", 0, "source"), "extra"), (("samples", 0, "source"), "missing"),
+    (("samples", 0, "derivation"), "extra"), (("samples", 0, "derivation"), "missing"),
+    (("samples", 0, "guardrails"), "extra"), (("samples", 0, "guardrails"), "missing"),
+])
+def test_gallery_receipt_rejects_each_nested_missing_or_extra_key(tmp_path: Path, path: tuple[object, ...], operation: str) -> None:
+    """Every canonical object layer rejects both omission and unreviewed extension."""
+    root = Path(__file__).resolve().parents[1]
+    payload = json.loads((root / "release/sample-gallery-sources.json").read_text("utf-8"))
+    pages = tmp_path / "web" / "samples"; pages.mkdir(parents=True)
+    for item in payload["samples"]:
+        (pages.parent / item["path"]).write_bytes((root / "demo/web" / item["path"]).read_bytes())
+    mutated = deepcopy(payload); target: object = mutated
+    for key in path: target = target[key]  # type: ignore[index]
+    if operation == "extra": target["unreviewed"] = True  # type: ignore[index]
+    else: target.pop(next(iter(target)))  # type: ignore[union-attr]
+    receipt = tmp_path / "receipt.json"; receipt.write_text(json.dumps(mutated), encoding="utf-8")
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.validate_gallery_publication(pages.parent, receipt)
+
+
 def test_cli_diagnostics_are_fixed_and_do_not_echo_arguments(capsys: pytest.CaptureFixture[str]) -> None:
     secret_argument = "C:/" + "Users/alice/private?token=secret"
     assert main(["invalid-command", "--review-root", secret_argument]) == 1
