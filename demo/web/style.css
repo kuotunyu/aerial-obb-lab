@@ -242,9 +242,12 @@ td,
 .result-viewport {
   position: relative;
   display: grid;
-  min-height: 410px;
+  aspect-ratio: 16 / 9;
+  min-height: min(410px, 68vh);
+  max-height: 68vh;
   overflow: hidden;
-  border: 1px solid var(--canvas-line);
+  outline: 1px solid var(--canvas-line);
+  outline-offset: -1px;
   background: var(--canvas);
 }
 
@@ -252,8 +255,13 @@ td,
 .canvas-frame {
   grid-area: 1 / 1;
   width: 100%;
-  min-height: 410px;
+  height: 100%;
+  min-height: 0;
   margin: 0;
+}
+
+.viewport-original {
+  position: relative;
 }
 
 .viewport-original figcaption {
@@ -271,10 +279,12 @@ td,
 
 .viewport-original img,
 .canvas-frame canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-  max-height: 68vh;
+  max-height: none;
   object-fit: contain;
 }
 
@@ -643,6 +653,11 @@ input[type="range"]:focus-visible {
   min-width: 0;
 }
 
+.class-list label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .result-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -651,6 +666,22 @@ input[type="range"]:focus-visible {
   padding: 12px;
   border: 1px solid var(--line);
   background: var(--surface);
+}
+
+.result-controls[data-ready="false"] {
+  background: var(--surface-muted);
+}
+
+.result-controls :disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+#filterAvailability {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
 }
 
 .result-controls .control-block,
@@ -939,9 +970,8 @@ footer code {
     min-height: 0;
   }
 
-  .canvas-frame,
-  canvas {
-    min-height: 320px;
+  .result-viewport {
+    min-height: min(320px, 68vh);
   }
 
   footer {
@@ -972,9 +1002,8 @@ footer code {
     justify-content: flex-start;
   }
 
-  .canvas-frame,
-  canvas {
-    min-height: 250px;
+  .result-viewport {
+    min-height: 0;
   }
 }
 

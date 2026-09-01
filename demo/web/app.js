@@ -32,11 +32,13 @@ const CLASS_COLORS = Object.freeze([
 ]);
 
 const demoOriginalImage = document.getElementById("demoOriginalImage");
+const viewportByomImage = document.getElementById("viewportByomImage");
 const demoFigure = document.getElementById("demoFigure");
 const demoFigureLabel = document.getElementById("demoFigureLabel");
 const demoDetectBtn = document.getElementById("demoDetectBtn");
 const viewToggleBtn = document.getElementById("viewToggleBtn");
 const resultControls = document.getElementById("resultControls");
+const filterAvailability = document.getElementById("filterAvailability");
 const modelInput = document.getElementById("modelInput");
 const modelLabel = document.getElementById("modelLabel");
 const fileInput = document.getElementById("fileInput");
@@ -85,6 +87,7 @@ CLASS_NAMES.forEach((name, index) => {
   checkbox.value = String(index);
   checkbox.name = "class-filter";
   checkbox.className = "class-cb";
+  checkbox.disabled = true;
   label.append(checkbox, document.createTextNode(name));
   classList.appendChild(label);
 });
@@ -135,15 +138,46 @@ function setInitialSummary() {
   provenanceValue.textContent = "官方範例 · 尚未執行";
 }
 
+function setFilterAvailability(available) {
+  confSlider.disabled = !available;
+  classList.querySelectorAll(".class-cb").forEach((checkbox) => {
+    checkbox.disabled = !available;
+  });
+  resultControls.dataset.ready = available ? "true" : "false";
+  resultControls.setAttribute("aria-disabled", String(!available));
+  filterAvailability.textContent = available
+    ? "調整 filters 只會重繪目前的 cached result。"
+    : "Detect 完成後即可調整 filters。";
+}
+
+function renderEmptyTable(message) {
+  resultsBody.innerHTML = "";
+  const row = document.createElement("tr");
+  row.dataset.empty = "true";
+  const cell = document.createElement("td");
+  cell.colSpan = 5;
+  cell.textContent = message;
+  row.appendChild(cell);
+  resultsBody.appendChild(row);
+}
+
+function showOriginalSource(source) {
+  const byom = source === "byom";
+  demoOriginalImage.hidden = byom;
+  viewportByomImage.hidden = !byom;
+  demoFigure.hidden = false;
+  canvasFrame.hidden = true;
+}
+
 function resetResult() {
   state.cached = null;
   state.elapsedMs = null;
   state.view = "original";
-  resultsBody.innerHTML = "";
+  setFilterAvailability(false);
+  renderEmptyTable("尚未執行 Detect。");
   canvasDescription.textContent = "尚無 detection result。";
   canvasFrame.classList.remove("has-results");
   canvasFrame.hidden = true;
-  resultControls.hidden = true;
   viewToggleBtn.hidden = true;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   renderSummary([]);
@@ -155,8 +189,7 @@ function clearResultState({keepImage = false} = {}) {
     state.image = null;
     state.imageSource = null;
   }
-  demoFigure.hidden = false;
-  demoOriginalImage.hidden = false;
+  showOriginalSource(state.imageSource === "byom" ? "byom" : "demo");
   demoFigureLabel.textContent = "原圖 · 尚未 Detect";
   modeBadge.textContent = "NO RESULT";
   provenanceValue.textContent = "—";
@@ -173,8 +206,7 @@ function resetToDemoOriginal() {
     : null;
   state.imageSource = state.image ? "demo" : null;
   resetResult();
-  demoFigure.hidden = false;
-  demoOriginalImage.hidden = false;
+  showOriginalSource("demo");
   demoFigureLabel.textContent = "原圖 · 尚未 Detect";
   demoDetectBtn.textContent = "開始 Detect";
   demoDetectBtn.disabled = state.image === null;
@@ -384,6 +416,10 @@ function drawDetections(detections) {
 }
 
 function fillTable(detections) {
+  if (!detections.length) {
+    renderEmptyTable("目前篩選條件下沒有 detections。");
+    return;
+  }
   resultsBody.innerHTML = "";
   for (const detection of detections) {
     const row = document.createElement("tr");
@@ -443,9 +479,7 @@ function setResultView(view) {
   if (!state.cached || (view !== "original" && view !== "result")) return null;
   state.view = view;
   if (view === "original") {
-    canvasFrame.hidden = true;
-    demoFigure.hidden = false;
-    demoOriginalImage.hidden = false;
+    showOriginalSource(state.imageSource === "byom" ? "byom" : "demo");
     demoFigureLabel.textContent = "原圖";
     viewToggleBtn.textContent = "查看結果";
     return [];
@@ -493,11 +527,11 @@ async function runActiveInference(source, generation) {
   state.cached = {results, geometry: prepared.geometry, elapsedMs, source};
   state.elapsedMs = elapsedMs;
   state.phase = "result";
+  setFilterAvailability(true);
   modeBadge.textContent = source === "demo"
     ? "LOCAL BROWSER INFERENCE"
     : "BYOM · LOCAL BROWSER INFERENCE";
   provenanceValue.textContent = source === "demo" ? DEMO_PROVENANCE : "Local files";
-  resultControls.hidden = false;
   viewToggleBtn.hidden = source !== "demo";
   const detections = setResultView("result");
   if (detections === null) return null;
@@ -523,7 +557,7 @@ async function runDemo() {
   state.imageSource = "demo";
   resetResult();
   setInitialSummary();
-  demoFigure.hidden = false;
+  showOriginalSource("demo");
   demoFigureLabel.textContent = "原圖";
   demoDetectBtn.disabled = true;
   setStatus("正在驗證範例模型與 Browser runtime…", "running");
@@ -562,11 +596,22 @@ async function handleModelSelection(file) {
   }
 }
 
-function loadImageUrl(url) {
+function loadImageUrl(image, url) {
   return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("IMAGE_DECODE"));
+    const cleanup = () => {
+      image.removeEventListener("load", onLoad);
+      image.removeEventListener("error", onError);
+    };
+    const onLoad = () => {
+      cleanup();
+      resolve(image);
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("IMAGE_DECODE"));
+    };
+    image.addEventListener("load", onLoad);
+    image.addEventListener("error", onError);
     image.src = url;
   });
 }
@@ -580,10 +625,11 @@ async function loadImageFile(file) {
   setStatus("正在解碼 local image…", "running");
   const url = URL.createObjectURL(file);
   try {
-    const image = await loadImageUrl(url);
+    const image = await loadImageUrl(viewportByomImage, url);
     if (!isCurrentGeneration(generation)) return;
     state.image = image;
     state.imageSource = "byom";
+    showOriginalSource("byom");
     fileLabel.textContent = "Local image ready";
     detectBtn.disabled = !(state.session && state.sessionSource === "byom");
     setStatus(

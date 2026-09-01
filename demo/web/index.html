@@ -43,13 +43,13 @@
         </article>
         <p id="status" class="status" role="status" aria-live="polite">原圖已載入 · 尚未 Detect。</p>
         <button id="runtimeRetryBtn" class="runtime-retry" type="button" hidden>重試載入 Browser runtime</button>
-        <div id="resultControls" class="result-controls" hidden>
+        <div id="resultControls" class="result-controls" data-ready="false" aria-disabled="true">
           <div class="control-block threshold-control">
             <div class="control-label-row">
               <label for="confSlider">Confidence threshold</label>
               <output id="confVal" for="confSlider">0.25</output>
             </div>
-            <input id="confSlider" name="confidence" type="range" min="0.05" max="0.9" step="0.05" value="0.25" />
+            <input id="confSlider" name="confidence" type="range" min="0.05" max="0.9" step="0.05" value="0.25" disabled />
             <div class="range-scale" aria-hidden="true"><span>0.05</span><span>0.90</span></div>
           </div>
           <fieldset id="classFilter" class="class-filter">
@@ -57,6 +57,7 @@
             <p>未選擇時顯示全部 classes</p>
             <div id="classList" class="class-list"></div>
           </fieldset>
+          <p id="filterAvailability">Detect 完成後即可調整 filters。</p>
         </div>
         <details id="byomPanel" class="byom-panel">
           <summary>使用自己的模型與圖片（進階）</summary>
@@ -118,7 +119,9 @@
                   <th scope="col">h(px)</th><th scope="col">angle(°)</th>
                 </tr>
               </thead>
-              <tbody id="resultsBody"></tbody>
+              <tbody id="resultsBody">
+                <tr data-empty="true"><td colspan="5">尚未執行 Detect。</td></tr>
+              </tbody>
             </table>
           </div>
         </section>

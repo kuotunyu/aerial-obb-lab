@@ -7,6 +7,7 @@ from contextlib import contextmanager, nullcontext
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -195,8 +196,7 @@ SRI_STUB_SHIM = f"""
 }})();
 """
 
-REAL_INSTRUMENTATION = """
-globalThis.__demoRunCount = 0;
+CANVAS_INSTRUMENTATION = """
 globalThis.__obbStrokedPolygons = [];
 let currentPath = [];
 const originalBeginPath = CanvasRenderingContext2D.prototype.beginPath;
@@ -216,9 +216,18 @@ CanvasRenderingContext2D.prototype.lineTo = function (x, y, ...args) {
   return originalLineTo.call(this, x, y, ...args);
 };
 CanvasRenderingContext2D.prototype.stroke = function (...args) {
-  if (currentPath.length) globalThis.__obbStrokedPolygons.push([...currentPath]);
+  if (currentPath.length) {
+    globalThis.__obbStrokedPolygons.push({
+      points: [...currentPath],
+      strokeStyle: this.strokeStyle,
+    });
+  }
   return originalStroke.apply(this, args);
 };
+"""
+
+REAL_INSTRUMENTATION = CANVAS_INSTRUMENTATION + """
+globalThis.__demoRunCount = 0;
 let runtime;
 Object.defineProperty(globalThis, "ort", {
   configurable: true,
@@ -268,6 +277,36 @@ def _request_paths(requests: list[str]) -> list[str]:
     return [urlparse(request).path for request in requests]
 
 
+def _assert_box_matches_viewport(page: object, selector: str, label: str) -> None:
+    viewport = page.locator("#resultViewport").bounding_box()
+    layer = page.locator(selector).bounding_box()
+    if viewport is None or layer is None:
+        raise RuntimeError(f"{label} lacks measurable viewport bounds")
+    for edge in ("x", "y", "width", "height"):
+        if abs(viewport[edge] - layer[edge]) > 1:
+            raise RuntimeError(
+                f"{label} does not share the result viewport bounds: "
+                f"viewport={viewport!r}, layer={layer!r}"
+            )
+
+
+def _assert_empty_disabled_result_state(page: object) -> None:
+    controls = page.locator("#resultControls")
+    if not controls.is_visible():
+        raise RuntimeError("result filters are not visible before Detect")
+    if not page.locator("#confSlider").is_disabled():
+        raise RuntimeError("confidence filter is enabled without cached output")
+    if page.locator(".class-cb:not(:disabled)").count() != 0:
+        raise RuntimeError("class filters are enabled without cached output")
+    disabled_label_style = page.locator(".class-list label").first.evaluate(
+        "label => [getComputedStyle(label).cursor, getComputedStyle(label).opacity]"
+    )
+    if disabled_label_style[0] != "not-allowed" or float(disabled_label_style[1]) > 0.62:
+        raise RuntimeError("disabled class filter labels still look interactive")
+    if page.locator("#resultsBody tr[data-empty='true']").count() != 1:
+        raise RuntimeError("initial table lacks one explicit empty state")
+
+
 def assert_real_demo_initial(page: object, requests: list[str], messages: list[str]) -> None:
     """Assert the first paint is the official original and has no lazy assets."""
     if "Synthetic" in page.locator("body").inner_text():
@@ -289,8 +328,7 @@ def assert_real_demo_initial(page: object, requests: list[str], messages: list[s
         raise RuntimeError("real demo primary action is not exact")
     if not page.locator("#viewToggleBtn").is_hidden():
         raise RuntimeError("original/result toggle is visible before a completed result")
-    if not page.locator("#resultControls").is_hidden():
-        raise RuntimeError("result filters are visible before a completed result")
+    _assert_empty_disabled_result_state(page)
     byom = page.locator("#byomPanel")
     if byom.count() != 1 or byom.get_attribute("open") is not None:
         raise RuntimeError("advanced BYOM controls are not collapsed initially")
@@ -344,7 +382,7 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
     if not ship_rows:
         raise RuntimeError("real demo produced no accepted ship row")
     polygons = page.evaluate("globalThis.__obbStrokedPolygons")
-    if not polygons or any(len(polygon) != 4 for polygon in polygons):
+    if not polygons or any(len(polygon["points"]) != 4 for polygon in polygons):
         raise RuntimeError("real demo did not paint oriented polygon pixels")
     description = page.locator("#canvasDescription")
     if description.get_attribute("aria-live") is not None:
@@ -359,6 +397,13 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
         raise RuntimeError("completed demo toggle is not exact")
     if page.locator("#resultControls").is_hidden():
         raise RuntimeError("completed demo filters remain hidden")
+    if page.locator("#confSlider").is_disabled():
+        raise RuntimeError("completed confidence filter remains disabled")
+    if page.locator(".class-cb:not(:disabled)").count() == 0:
+        raise RuntimeError("completed class filters remain disabled")
+    if page.locator("#canvasFrame").is_hidden() or page.locator("#canvas").is_hidden():
+        raise RuntimeError("completed demo result canvas is not visible")
+    _assert_box_matches_viewport(page, "#canvas", "result canvas")
     paths = _request_paths(requests)
     if paths.count(DEMO_MANIFEST_PATH) != 1 or paths.count(DEMO_MODEL_PATH) != 1:
         raise RuntimeError("real demo did not request the exact manifest/model once")
@@ -384,35 +429,112 @@ def assert_original_result_toggle(
         raise RuntimeError("original view did not expose the result action")
     if page.locator("#demoFigureLabel").inner_text() != "原圖":
         raise RuntimeError("original view label is not exact")
+    visible_original = page.locator("#demoFigure img:visible")
+    if visible_original.count() != 1:
+        raise RuntimeError("original view does not expose exactly one original layer")
+    _assert_box_matches_viewport(page, "#demoFigure img:visible", "active original layer")
     page.locator("#viewToggleBtn").click()
     if page.locator("#viewToggleBtn").inner_text() != "查看原圖":
         raise RuntimeError("result view did not restore the original action")
     if page.locator("#demoFigureLabel").inner_text() != "Detect 結果":
         raise RuntimeError("result view label is not exact")
+    for width, height in ((640, 360), (1280, 500)):
+        page.set_viewport_size({"width": width, "height": height})
+        _assert_box_matches_viewport(page, "#canvas", "short-viewport result canvas")
+        page.locator("#viewToggleBtn").click()
+        _assert_box_matches_viewport(
+            page, "#demoFigure img:visible", "short-viewport original layer"
+        )
+        page.locator("#viewToggleBtn").click()
+    page.set_viewport_size({"width": 1280, "height": 720})
     if page.evaluate("globalThis.__demoRunCount") != run_counter:
         raise RuntimeError("original/result switching ran inference again")
     if len(requests) != request_count:
         raise RuntimeError("original/result switching requested another asset")
 
 
-def assert_demo_cached_filters(page: object, run_counter: int) -> None:
+def assert_demo_cached_filters(
+    page: object, requests: list[str], run_counter: int
+) -> None:
     """Re-filter the completed output without another session.run."""
     runtime = page.locator("#runtimeValue").inner_text()
+    request_count = len(requests)
     page.locator("#confSlider").evaluate(
         "slider => { slider.value = '0.90'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
     )
+    plane = page.locator('.class-cb[value="0"]')
+    plane.check()
+    if page.locator("#resultsBody tr[data-empty='true']").count() != 1:
+        raise RuntimeError("empty cached filter lacks one explicit empty state")
+    if page.locator("#canvasDescription").inner_text() != (
+        "目前篩選條件下沒有 detections；canvas 沒有 oriented polygons。"
+    ):
+        raise RuntimeError("empty cached table and canvas description are not synchronized")
+    plane.uncheck()
     page.locator("#confSlider").evaluate(
         "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
     )
     ship = page.locator('.class-cb[value="1"]')
+    page.evaluate("globalThis.__obbStrokedPolygons = []")
     ship.check()
-    if page.locator("#resultsBody tr").count() < 1:
+    rows = page.locator("#resultsBody tr:not([data-empty='true'])")
+    if rows.count() < 1:
         raise RuntimeError("cached ship filter lost the admitted ship result")
-    ship.uncheck()
+    row_values = [row.locator("td").all_text_contents() for row in rows.all()]
+    if any(not row or row[0] != "ship" for row in row_values):
+        raise RuntimeError("cached class filter retained a non-ship table row")
+    description = page.locator("#canvasDescription").inner_text()
+    if any(
+        f"class={row[0]}" not in description or f"confidence={row[1]}" not in description
+        for row in row_values
+    ):
+        raise RuntimeError("cached table and canvas description are not synchronized")
+    polygons = page.evaluate("globalThis.__obbStrokedPolygons")
+    if len(polygons) != len(row_values) or any(
+        len(polygon["points"]) != 4 for polygon in polygons
+    ):
+        raise RuntimeError("cached table and rendered polygons are not synchronized")
+    described = re.findall(
+        r"class=ship; confidence=[0-9.]+; center-x=([0-9.]+) px; "
+        r"center-y=([0-9.]+) px; width=([0-9.]+) px; height=([0-9.]+) px; "
+        r"angle=(-?[0-9.]+)°\.",
+        description,
+    )
+    if len(described) != len(polygons):
+        raise RuntimeError("cached polygon geometry lacks matching described detections")
+    for values, polygon in zip(described, polygons):
+        cx, cy, width, height, angle_degrees = map(float, values)
+        angle = math.radians(angle_degrees)
+        cos_angle = math.cos(angle)
+        sin_angle = math.sin(angle)
+        expected = [
+            (
+                cx + x * cos_angle - y * sin_angle,
+                cy + x * sin_angle + y * cos_angle,
+            )
+            for x, y in (
+                (-width / 2, -height / 2),
+                (width / 2, -height / 2),
+                (width / 2, height / 2),
+                (-width / 2, height / 2),
+            )
+        ]
+        if polygon["strokeStyle"].lower() != "#dc2626" or any(
+            abs(actual_axis - expected_axis) > 0.5
+            for actual, wanted in zip(polygon["points"], expected)
+            for actual_axis, expected_axis in zip(actual, wanted)
+        ):
+            raise RuntimeError("cached polygon geometry or class color is out of sync")
     if page.evaluate("globalThis.__demoRunCount") != run_counter:
         raise RuntimeError("cached filters ran inference again")
+    if len(requests) != request_count:
+        raise RuntimeError("cached filters requested another asset")
     if page.locator("#runtimeValue").inner_text() != runtime:
         raise RuntimeError("cached filters changed the completed runtime")
+    if page.locator("#viewToggleBtn").inner_text() != "查看原圖":
+        raise RuntimeError("cached filters changed the current result view")
+    if page.locator("#canvasFrame").is_hidden():
+        raise RuntimeError("cached filters hid the current result view")
 
 
 def assert_malformed_frozen_manifest_is_closed(page: object) -> None:
@@ -492,12 +614,9 @@ def _assert_failure_cleanup(page: object) -> None:
         raise RuntimeError("failure retained completed summary state")
     if not page.locator("#canvasFrame").is_hidden():
         raise RuntimeError("failure retained the result canvas")
-    if not page.locator("#resultControls").is_hidden():
-        raise RuntimeError("failure retained result filters")
+    _assert_empty_disabled_result_state(page)
     if not page.locator("#viewToggleBtn").is_hidden():
         raise RuntimeError("failure retained the original/result toggle")
-    if page.locator("#resultsBody tr").count() != 0:
-        raise RuntimeError("failure retained detection table rows")
     if page.locator("#canvasDescription").inner_text() != "尚無 detection result。":
         raise RuntimeError("failure retained the completed canvas description")
     if "LOCAL BROWSER INFERENCE" in page.locator("#modeBadge").inner_text():
@@ -521,13 +640,20 @@ def _assert_privacy_surfaces(
         raise RuntimeError("failure evidence retained a page error or stack")
     if any(message not in FIXED_CONSOLE_DIAGNOSTICS for message in console_messages):
         raise RuntimeError("failure evidence retained a non-fixed console diagnostic")
-    text_surfaces = "\n".join(
-        [page.locator("body").inner_text(), *requests, *console_messages, *page_errors]
-    )
-    screenshot = page.screenshot()
+    text_surfaces = "\n".join([
+        page.locator("html").evaluate("node => node.outerHTML"),
+        page.locator("body").inner_text(),
+        page.evaluate("(globalThis.__privacyRenderedText || []).join('\\n')"),
+        *requests,
+        *console_messages,
+        *page_errors,
+    ])
+    screenshot_metadata_bytes = page.screenshot()
     for sentinel in sentinels:
-        if sentinel in text_surfaces or sentinel.encode("utf-8") in screenshot:
+        if sentinel in text_surfaces:
             raise RuntimeError("failure evidence exposed a private sentinel")
+        if sentinel.encode("utf-8") in screenshot_metadata_bytes:
+            raise RuntimeError("screenshot metadata retained a private sentinel")
     forbidden_patterns = (
         r"(?i)\b[a-z]:[\\/](?:users|documents and settings)[\\/]",
         r"(?i)/(?:home|users)/[^/\s]+/",
@@ -561,6 +687,15 @@ def _assert_privacy_oracle_rejects_open_diagnostics(
         except RuntimeError:
             continue
         raise RuntimeError("privacy oracle accepted an open browser diagnostic")
+    page.evaluate(
+        "value => canvas.getContext('2d').fillText(value, 1, 12)", sentinels[1]
+    )
+    try:
+        _assert_privacy_surfaces(page, requests, [], [], sentinels)
+    except RuntimeError:
+        page.evaluate("globalThis.__privacyRenderedText = []")
+    else:
+        raise RuntimeError("privacy oracle accepted user-visible canvas text")
 
 
 def run_manifest_failure(
@@ -601,6 +736,7 @@ def run_manifest_failure(
 
                 page.route(f"**{DEMO_MANIFEST_PATH}", fail_manifest)
                 page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+                _install_privacy_probe(page, sentinels)
                 page.locator("#demoDetectBtn").click()
                 page.wait_for_function(
                     "document.querySelector('#status').dataset.kind === 'error'",
@@ -632,6 +768,14 @@ def _install_privacy_probe(page: object, sentinels: tuple[str, ...]) -> None:
             token: values[6],
             signedQuery: values[7],
           };
+          globalThis.__privacyRenderedText = [];
+          for (const method of ['fillText', 'strokeText']) {
+            const original = CanvasRenderingContext2D.prototype[method];
+            CanvasRenderingContext2D.prototype[method] = function (text, ...args) {
+              globalThis.__privacyRenderedText.push(String(text));
+              return original.call(this, text, ...args);
+            };
+          }
         }
         """,
         list(sentinels),
@@ -952,8 +1096,7 @@ def run_stale_generation(
             page.wait_for_timeout(100)
             if page.locator("#provenanceValue").inner_text() == DEMO_PROVENANCE:
                 raise RuntimeError("stale demo completion replaced the BYOM selection")
-            if page.locator("#resultsBody tr").count() != 0:
-                raise RuntimeError("stale demo completion restored cleared detections")
+            _assert_empty_disabled_result_state(page)
             _assert_privacy_surfaces(
                 page, requests, console_messages, page_errors, sentinels
             )
@@ -995,8 +1138,7 @@ def run_stale_generation(
                 raise RuntimeError("stale delayed candidate was installed instead of released")
             if page.locator("#provenanceValue").inner_text() == DEMO_PROVENANCE:
                 raise RuntimeError("stale delayed candidate replaced the BYOM selection")
-            if page.locator("#resultsBody tr").count() != 0:
-                raise RuntimeError("stale delayed candidate restored cleared detections")
+            _assert_empty_disabled_result_state(page)
             _assert_privacy_surfaces(
                 page, requests, console_messages, page_errors, sentinels
             )
@@ -1013,7 +1155,7 @@ def run_byom_transition(
     except ImportError as exc:
         raise RuntimeError("Playwright is required; run the locked development environment") from exc
 
-    sentinels = _privacy_sentinels()
+    sentinels = (*_privacy_sentinels(), "private-selected-image.jpg")
     server = nullcontext(base_url) if base_url else static_server()
     with server as served_url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(**_launch_options(executable_path))
@@ -1032,6 +1174,7 @@ def run_byom_transition(
             )
             page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
             _install_privacy_probe(page, sentinels)
+            _assert_empty_disabled_result_state(page)
             page.locator("#demoDetectBtn").click()
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'success'"
@@ -1055,8 +1198,7 @@ def run_byom_transition(
                 raise RuntimeError("old session released before the valid candidate was ready")
             if not page.locator("#detectBtn").is_disabled():
                 raise RuntimeError("BYOM model selection reused the demo image as local input")
-            if not page.locator("#resultControls").is_hidden():
-                raise RuntimeError("BYOM selection retained demo result filters")
+            _assert_empty_disabled_result_state(page)
 
             page.locator("#fileInput").set_input_files(
                 {
@@ -1070,9 +1212,10 @@ def run_byom_transition(
             )
             _assert_failure_cleanup(page)
 
+            valid_image_name = sentinels[-1]
             page.locator("#fileInput").set_input_files(
                 {
-                    "name": "boats.jpg",
+                    "name": valid_image_name,
                     "mimeType": "image/jpeg",
                     "buffer": (DEMO / DEMO_IMAGE_PATH.lstrip("/")).read_bytes(),
                 }
@@ -1080,6 +1223,14 @@ def run_byom_transition(
             page.wait_for_function(
                 "document.querySelector('#detectBtn').disabled === false"
             )
+            byom_original = page.locator("#viewportByomImage")
+            if not byom_original.is_visible():
+                raise RuntimeError("selected BYOM image is not the visible original layer")
+            _assert_box_matches_viewport(page, "#viewportByomImage", "BYOM original layer")
+            if valid_image_name in (byom_original.get_attribute("alt") or ""):
+                raise RuntimeError("BYOM original alt text exposes the local filename")
+            if valid_image_name in page.locator("body").inner_text():
+                raise RuntimeError("BYOM selection exposes the local filename")
             page.locator("#detectBtn").click()
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'success'"
@@ -1334,6 +1485,23 @@ def run_workbench_layout(
     with server as served_url, sync_playwright() as playwright:
         browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
+            loading_page = browser.new_page(viewport={"width": 1280, "height": 720})
+            held_image_routes = []
+            loading_page.route(
+                f"**{DEMO_IMAGE_PATH}", lambda route: held_image_routes.append(route)
+            )
+            loading_page.goto(
+                f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded"
+            )
+            try:
+                if loading_page.evaluate("demoOriginalImage.complete"):
+                    raise RuntimeError("preload empty-state test did not hold the demo image open")
+                _assert_empty_disabled_result_state(loading_page)
+            finally:
+                for route in held_image_routes:
+                    route.abort()
+                loading_page.close()
+
             page = browser.new_page(viewport={"width": 1280, "height": 720})
             requests: list[str] = []
             messages: list[str] = []
@@ -1378,7 +1546,7 @@ def run_real_demo_success(
             assert_real_demo_initial(page, requests, messages)
             run_counter = exercise_real_demo_success(page, requests, messages)
             assert_original_result_toggle(page, requests, run_counter)
-            assert_demo_cached_filters(page, run_counter)
+            assert_demo_cached_filters(page, requests, run_counter)
             if screenshot is not None:
                 screenshot.parent.mkdir(parents=True, exist_ok=True)
                 page.screenshot(path=str(screenshot), full_page=True)
@@ -1407,6 +1575,7 @@ def run_stubbed_cache(
             requests: list[str] = []
             messages: list[str] = []
             page.add_init_script(SRI_STUB_SHIM)
+            page.add_init_script(CANVAS_INSTRUMENTATION)
             _record_errors(page, requests, messages)
 
             def stub_ort(route: Route) -> None:
@@ -1433,7 +1602,7 @@ def run_stubbed_cache(
             page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
             if page.evaluate("globalThis.__ortCreateCount") != 1:
                 raise RuntimeError("repeated Detect did not reuse the valid demo session")
-            assert_demo_cached_filters(page, 2)
+            assert_demo_cached_filters(page, requests, 2)
             if requests.count(ORT_CDN_URL) != 1:
                 raise RuntimeError("stubbed repeated Detect requested the runtime again")
             if _request_paths(requests).count(DEMO_MODEL_PATH) != 1:
