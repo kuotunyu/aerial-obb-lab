@@ -1,10 +1,4 @@
-"""Headless BYOM demo smoke using synthetic model bytes, image, and ONNX output.
-
-This script tests local model selection, lazy runtime loading, browser wiring,
-preprocessing, strict output selection, OBB decoding, drawing, and result rendering
-without model inference or an external network request. The pinned CDN request is
-fulfilled directly with the synthetic runtime stub.
-"""
+"""Headless browser smoke for the real demo and its reusable local session."""
 
 from __future__ import annotations
 
@@ -12,56 +6,47 @@ import argparse
 from contextlib import contextmanager, nullcontext
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import json
+import math
 from pathlib import Path
 import re
 import sys
 from threading import Thread
 from typing import Iterator
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "demo" / "web"
-FIXTURE = DEMO / "fixtures" / "showcase.svg"
-EXPECTED_ROW = ["ship", "0.900", "100.0", "50.0", "90.0"]
-CANVAS_RESET_DESCRIPTION = "尚無 detection result。"
-EXPECTED_CANVAS_DESCRIPTION = (
-    "class=ship; confidence=0.900; center-x=200.0 px; center-y=100.0 px; "
-    "width=100.0 px; height=50.0 px; angle=90.0°."
-)
 ORT_CDN_URL = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"
 ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
 ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
-SENSITIVE_IMAGE_NAME = "customer-alpha-private-aerial-image.svg"
-ERROR_COPY = {
-    "SHOWCASE_ASSET": "Synthetic fixture 無法載入。請重新整理頁面，或改用 BYOM。",
-    "RUNTIME_LOAD": "Browser runtime 無法載入。請檢查網路或 content blocker 後重試；Synthetic Showcase 仍可使用。",
-    "MODEL_CONTRACT": "請選擇使用 images [1,3,1024,1024] 與 output0 [1,N,7] 的相容 ONNX。",
-    "IMAGE_DECODE": "Browser 無法解碼影像。請改選 PNG、JPEG 或 WebP。",
-    "INFERENCE_RUN": "推論未完成。請確認模型 contract、重新選擇影像後再試。",
-    "OUTPUT_SCHEMA": "模型輸出不符合 output0 [1,N,7]。請改用相容的 end-to-end OBB export。",
-    "RENDER_RESULT": "結果無法呈現。請重新載入 Synthetic Showcase，或重新執行 Detect。",
-}
-SENSITIVE_TOKENS = (
-    "C:\\Users\\alice\\private-model.onnx",
-    SENSITIVE_IMAGE_NAME,
-    "tenant=omega",
-    "raw create failure",
-    "flight=classified",
-    "raw inference failure",
-    "expected output0 shape [1,N,7]",
-    "tile=restricted",
-    "raw renderer failure",
+DEMO_MANIFEST_PATH = "/demo-model.json"
+DEMO_MODEL_PATH = "/models/yolo26n-obb-privacy-sanitized.onnx"
+DEMO_IMAGE_PATH = "/samples/harbor.jpg"
+DEMO_PROVENANCE = "Ultralytics YOLO26n-OBB · privacy-sanitized AGPL derivative"
+FIXED_CONSOLE_DIAGNOSTICS = frozenset(
+    f"[AERIAL_OBB:{code}]"
+    for code in (
+        "DEMO_MANIFEST",
+        "DEMO_MODEL_FETCH",
+        "DEMO_MODEL_SIZE",
+        "DEMO_MODEL_DIGEST",
+        "DEMO_MODEL_URL",
+        "DEMO_IMAGE_DECODE",
+        "RUNTIME_LOAD",
+        "MODEL_CONTRACT",
+        "IMAGE_DECODE",
+        "INFERENCE_RUN",
+        "OUTPUT_SCHEMA",
+        "RENDER_RESULT",
+    )
 )
+
 ORT_STUB = r"""
 globalThis.__ortCreateCount = 0;
-globalThis.__ortReleaseCount = 0;
-globalThis.__failInferenceRun = false;
-globalThis.__invalidInferenceOutput = false;
-globalThis.__ortActiveSessionIdsAtRelease = [];
-globalThis.__ortReleasedSessionIds = [];
-globalThis.__ortRunSessionIds = [];
-globalThis.__ortCreatedSessionIds = [];
-globalThis.__ortDelayedCreateResolvers = [];
+globalThis.__demoRunCount = 0;
+globalThis.__aerialObbTest = {sessionRunCount: 0};
 globalThis.ort = {
   env: { wasm: {} },
   Tensor: class Tensor {
@@ -73,50 +58,16 @@ globalThis.ort = {
   },
   InferenceSession: {
     create: async (modelBytes) => {
-      const sessionId = ++globalThis.__ortCreateCount;
-      globalThis.__ortCreatedSessionIds.push(sessionId);
+      globalThis.__ortCreateCount += 1;
       if (!(modelBytes instanceof Uint8Array) || modelBytes.length === 0) {
-        throw new Error("expected non-empty local model bytes");
+        throw new Error("invalid model bytes");
       }
-      if (modelBytes[0] === 0) {
-        throw new Error(
-          "C:\\Users\\alice\\private-model.onnx | tenant=omega | raw create failure"
-        );
-      }
-      if (modelBytes[0] === 1) {
-        await new Promise((resolve) => {
-          globalThis.__ortDelayedCreateResolvers.push(resolve);
-        });
-      }
-      const behavior = modelBytes[0];
-      let released = false;
       return {
-        __sessionId: sessionId,
         inputNames: ["images"],
-        outputNames: behavior === 3 ? ["unexpected"] : ["output0"],
-        release: async () => {
-          if (released) throw new Error("session released twice");
-          released = true;
-          globalThis.__ortReleaseCount += 1;
-          globalThis.__ortReleasedSessionIds.push(sessionId);
-          globalThis.__ortActiveSessionIdsAtRelease.push(
-            state.session?.__sessionId ?? null
-          );
-        },
+        outputNames: ["output0"],
+        release: async () => {},
         run: async () => {
-          if (released) throw new Error("released session was used");
-          globalThis.__ortRunSessionIds.push(sessionId);
-          if (behavior === 4 || globalThis.__failInferenceRun) {
-            throw new Error("flight=classified | raw inference failure");
-          }
-          if (behavior === 2 || globalThis.__invalidInferenceOutput) {
-            return {
-              output0: {
-                dims: [1, 2, 6],
-                data: new Float32Array(12)
-              }
-            };
-          }
+          globalThis.__demoRunCount += 1;
           return {
             output0: {
               dims: [1, 2, 7],
@@ -133,9 +84,107 @@ globalThis.ort = {
 };
 """
 
-# The intercepted stub cannot share the production bundle's SRI digest. Bypass
-# hashing only when production already supplied the exact pinned attributes,
-# then restore the integrity value before the app can observe the script.
+
+def _scenario_ort_stub(
+    *,
+    input_names: tuple[str, ...] = ("images",),
+    output_names: tuple[str, ...] = ("output0",),
+    run_mode: str = "success",
+    create_mode: str = "immediate",
+    lifecycle: bool = False,
+) -> str:
+    output = """
+      return {
+        output0: {
+          dims: [1, 2, 7],
+          data: new Float32Array([
+            512, 512, 256, 128, 0.9, 1, Math.PI / 2,
+            100, 100, 50, 40, 0.2, 2, 0
+          ])
+        }
+      };
+    """
+    if run_mode == "failure":
+        run_body = "throw new Error(globalThis.__privacyProbe.rawException);"
+    elif run_mode == "output":
+        run_body = """
+          return {output0: {dims: [1, 1, 6], data: new Float32Array(6)}};
+        """
+    elif run_mode == "delayed":
+        run_body = f"""
+          return new Promise((resolve) => {{
+            globalThis.__delayedRunSettled = false;
+            globalThis.__resolveDemoRun = () => {{
+              resolve((() => {{ {output} }})());
+              queueMicrotask(() => {{ globalThis.__delayedRunSettled = true; }});
+            }};
+          }});
+        """
+    else:
+        run_body = output
+    lifecycle_setup = "globalThis.__sessionLifecycle = [];" if lifecycle else ""
+    lifecycle_create = (
+        "globalThis.__sessionLifecycle.push(`candidate:${id}`);"
+        if lifecycle
+        else ""
+    )
+    lifecycle_release = (
+        "globalThis.__sessionLifecycle.push(`release:${id}`);"
+        if lifecycle
+        else ""
+    )
+    candidate_names = json.dumps(list(input_names))
+    candidate_outputs = json.dumps(list(output_names))
+    delayed_create = ""
+    if create_mode == "delayed-first":
+        delayed_create = """
+      if (id === 1) {
+        await new Promise((resolve) => {
+          globalThis.__resolveCandidateCreate = resolve;
+        });
+      }
+        """
+    return f"""
+globalThis.__ortCreateCount = 0;
+globalThis.__demoRunCount = 0;
+globalThis.__releaseCount = 0;
+{lifecycle_setup}
+globalThis.ort = {{
+  env: {{ wasm: {{}} }},
+  Tensor: class Tensor {{
+    constructor(type, data, dims) {{
+      this.type = type;
+      this.data = data;
+      this.dims = dims;
+    }}
+  }},
+  InferenceSession: {{
+    create: async (modelBytes) => {{
+      const id = ++globalThis.__ortCreateCount;
+      if (!(modelBytes instanceof Uint8Array) || modelBytes.length === 0) {{
+        throw new Error(globalThis.__privacyProbe.rawException);
+      }}
+      {delayed_create}
+      {lifecycle_create}
+      const badCandidate = Boolean(globalThis.__failNextCandidate);
+      globalThis.__failNextCandidate = false;
+      return {{
+        inputNames: badCandidate ? ["wrong-input"] : {candidate_names},
+        outputNames: {candidate_outputs},
+        release: async () => {{
+          globalThis.__releaseCount += 1;
+          {lifecycle_release}
+        }},
+        run: async () => {{
+          globalThis.__demoRunCount += 1;
+          {run_body}
+        }}
+      }};
+    }}
+  }}
+}};
+"""
+
 SRI_STUB_SHIM = f"""
 (() => {{
   const appendChild = Node.prototype.appendChild;
@@ -153,54 +202,77 @@ SRI_STUB_SHIM = f"""
 }})();
 """
 
+CANVAS_INSTRUMENTATION = """
+globalThis.__obbStrokedPolygons = [];
+let currentPath = [];
+const originalBeginPath = CanvasRenderingContext2D.prototype.beginPath;
+const originalMoveTo = CanvasRenderingContext2D.prototype.moveTo;
+const originalLineTo = CanvasRenderingContext2D.prototype.lineTo;
+const originalStroke = CanvasRenderingContext2D.prototype.stroke;
+CanvasRenderingContext2D.prototype.beginPath = function (...args) {
+  currentPath = [];
+  return originalBeginPath.apply(this, args);
+};
+CanvasRenderingContext2D.prototype.moveTo = function (x, y, ...args) {
+  currentPath.push([x, y]);
+  return originalMoveTo.call(this, x, y, ...args);
+};
+CanvasRenderingContext2D.prototype.lineTo = function (x, y, ...args) {
+  currentPath.push([x, y]);
+  return originalLineTo.call(this, x, y, ...args);
+};
+CanvasRenderingContext2D.prototype.stroke = function (...args) {
+  if (currentPath.length) {
+    globalThis.__obbStrokedPolygons.push({
+      points: [...currentPath],
+      strokeStyle: this.strokeStyle,
+    });
+  }
+  return originalStroke.apply(this, args);
+};
+"""
+
+REAL_INSTRUMENTATION = CANVAS_INSTRUMENTATION + """
+globalThis.__demoRunCount = 0;
+globalThis.__ortCreateCount = 0;
+globalThis.__aerialObbTest = {sessionRunCount: 0};
+let runtime;
+Object.defineProperty(globalThis, "ort", {
+  configurable: true,
+  get() { return runtime; },
+  set(value) {
+    runtime = value;
+    const create = value.InferenceSession.create.bind(value.InferenceSession);
+    value.InferenceSession.create = async (...args) => {
+      globalThis.__ortCreateCount += 1;
+      const session = await create(...args);
+      const run = session.run.bind(session);
+      session.run = (...feeds) => {
+        globalThis.__demoRunCount += 1;
+        globalThis.__aerialObbTest.sessionRunCount += 1;
+        return run(...feeds);
+      };
+      return session;
+    };
+  },
+});
+"""
+
 
 class QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         pass
 
 
-def assert_fixed_failure(page: object, messages: list[str], code: str) -> None:
-    status = page.locator("#status").inner_text()
-    if status != ERROR_COPY[code]:
-        raise RuntimeError(f"wrong {code} copy: {status!r}")
-    if page.locator("#status").get_attribute("data-kind") != "error":
-        raise RuntimeError(f"{code} has no semantic error state")
-    if f"[AERIAL_OBB:{code}]" not in messages:
-        raise RuntimeError(f"{code} did not emit its fixed diagnostic code")
-    retry = page.locator("#runtimeRetryBtn")
-    if retry.count() != 1:
-        raise RuntimeError("runtime retry control is missing")
-    if retry.is_hidden() != (code != "RUNTIME_LOAD"):
-        raise RuntimeError(f"runtime retry visibility is wrong for {code}")
-    canvas_description = page.locator("#canvasDescription")
-    if canvas_description.count() != 1 or canvas_description.inner_text() != CANVAS_RESET_DESCRIPTION:
-        raise RuntimeError(f"{code} left a stale canvas description")
-    rendered_and_console = " | ".join([page.locator("body").inner_text(), *messages])
-    leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
-    if leaked:
-        raise RuntimeError(f"{code} leaked sensitive exception data: {leaked!r}")
-
-
-def assert_result_cleared(page: object, base_canvas: str, code: str) -> None:
-    if page.locator("#resultsBody tr").count() != 0:
-        raise RuntimeError(f"{code} left a stale result row visible")
-    summary = page.evaluate(
-        "[summaryCount.textContent, summaryTop.textContent, runtimeValue.textContent, "
-        "modeBadge.textContent, provenanceValue.textContent]"
-    )
-    if summary != ["0", "—", "—", "NO RESULT", "—"]:
-        raise RuntimeError(f"{code} left stale result metadata visible: {summary!r}")
-    if page.locator("#canvasFrame").evaluate("el => el.classList.contains('has-results')"):
-        raise RuntimeError(f"{code} left the completed-result state visible")
-    current_canvas = page.locator("#canvas").evaluate("canvas => canvas.toDataURL()")
-    if current_canvas != base_canvas:
-        raise RuntimeError(f"{code} left a stale polygon painted on the canvas")
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+    def handle_error(self, request: object, client_address: object) -> None:
+        pass
 
 
 @contextmanager
 def static_server() -> Iterator[str]:
     handler = partial(QuietHandler, directory=str(DEMO))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server = QuietThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -211,907 +283,2074 @@ def static_server() -> Iterator[str]:
         thread.join(timeout=5)
 
 
-def run_smoke(
+def _request_paths(requests: list[str]) -> list[str]:
+    return [urlparse(request).path for request in requests]
+
+
+def _assert_box_matches_viewport(page: object, selector: str, label: str) -> None:
+    viewport = page.locator("#resultViewport").bounding_box()
+    layer = page.locator(selector).bounding_box()
+    if viewport is None or layer is None:
+        raise RuntimeError(f"{label} lacks measurable viewport bounds")
+    for edge in ("x", "y", "width", "height"):
+        if abs(viewport[edge] - layer[edge]) > 1:
+            raise RuntimeError(
+                f"{label} does not share the result viewport bounds: "
+                f"viewport={viewport!r}, layer={layer!r}"
+            )
+
+
+def _assert_no_page_overflow_or_obscured_action(page: object, label: str) -> None:
+    overflow = page.evaluate(
+        "Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth"
+    )
+    action = page.locator("#demoDetectBtn")
+    box = action.bounding_box()
+    if overflow > 1 or not action.is_visible() or box is None:
+        raise RuntimeError(f"{label} obscures the primary action or overflows the page")
+    viewport = page.evaluate("[innerWidth, innerHeight]")
+    if box["x"] < -1 or box["x"] + box["width"] > viewport[0] + 1:
+        raise RuntimeError(f"{label} clips the primary action horizontally")
+
+
+def _assert_empty_disabled_result_state(page: object) -> None:
+    controls = page.locator("#resultControls")
+    if not controls.is_visible():
+        raise RuntimeError("result filters are not visible before Detect")
+    if not page.locator("#confSlider").is_disabled():
+        raise RuntimeError("confidence filter is enabled without cached output")
+    if page.locator(".class-cb:not(:disabled)").count() != 0:
+        raise RuntimeError("class filters are enabled without cached output")
+    disabled_label_style = page.locator(".class-list label").first.evaluate(
+        "label => [getComputedStyle(label).cursor, getComputedStyle(label).opacity]"
+    )
+    if disabled_label_style[0] != "not-allowed" or float(disabled_label_style[1]) > 0.62:
+        raise RuntimeError("disabled class filter labels still look interactive")
+    if page.locator("#resultsBody tr[data-empty='true']").count() != 1:
+        raise RuntimeError("initial table lacks one explicit empty state")
+
+
+def assert_real_demo_initial(page: object, requests: list[str], messages: list[str]) -> None:
+    """Assert the first paint is the official original and has no lazy assets."""
+    if "Synthetic" in page.locator("body").inner_text():
+        raise RuntimeError("real demo initial state still exposes Synthetic-first UI")
+    original = page.locator("#demoOriginalImage")
+    if original.count() != 1 or not original.is_visible():
+        raise RuntimeError("official original image is not visible before Detect")
+    if urlparse(original.get_attribute("src") or "").path != DEMO_IMAGE_PATH.lstrip("/"):
+        raise RuntimeError("official original image path is not exact")
+    if page.locator("#demoFigureLabel").inner_text() != "原圖 · 尚未 Detect":
+        raise RuntimeError("original image label is not exact")
+    summary = page.evaluate(
+        "[summaryCount.textContent, summaryTop.textContent, runtimeValue.textContent, "
+        "modeBadge.textContent, provenanceValue.textContent]"
+    )
+    if summary != ["0", "—", "—", "尚未 Detect", "USGS／USDA NAIP · 尚未執行"]:
+        raise RuntimeError(f"real demo initial summary is wrong: {summary!r}")
+    if page.locator("#demoDetectBtn").inner_text() != "開始 Detect":
+        raise RuntimeError("real demo primary action is not exact")
+    if page.locator("#sampleState").inner_text() != "Original · ready":
+        raise RuntimeError("official sample initial state is not exact")
+    if not page.locator("#viewToggleBtn").is_hidden():
+        raise RuntimeError("original/result toggle is visible before a completed result")
+    _assert_empty_disabled_result_state(page)
+    byom = page.locator("#byomPanel")
+    if byom.count() != 1 or byom.get_attribute("open") is not None:
+        raise RuntimeError("advanced BYOM controls are not collapsed initially")
+    paths = _request_paths(requests)
+    if DEMO_MANIFEST_PATH in paths or DEMO_MODEL_PATH in paths or ORT_CDN_URL in requests:
+        raise RuntimeError("initial page requested a lazy manifest/runtime/model asset")
+    if any(request.startswith(ORT_WASM_BASE) for request in requests):
+        raise RuntimeError("initial page requested a lazy WASM asset")
+    if messages:
+        raise RuntimeError("initial page emitted console or page errors")
+
+
+def assert_single_harbor_initial(page: object, requests: list[str], messages: list[str]) -> None:
+    """The one published harbor image is static and has no eager model work."""
+    if page.locator("#sampleSelector, .sample-option").count() != 0:
+        raise RuntimeError("retired sample selector is still interactive")
+    expected_claim = (
+        "固定的 USGS／USDA NAIP 公領域港區航拍原圖會先顯示；只有按下 Detect 後，頁面才會載入 OBB "
+        "模型並在你的瀏覽器中執行推論，影像不會上傳。此固定範例僅供操作整合展示，不是 accuracy、evaluation "
+        "或 latency benchmark。"
+    )
+    if page.locator("#claimBoundary p").inner_text() != expected_claim:
+        raise RuntimeError("claim banner does not state the fixed-harbor integration journey")
+    title = page.locator("h3#demoSampleTitle")
+    if title.inner_text() != "低密度港區航拍範例" or page.locator("#demoSampleKind").inner_text() != "真實航拍原圖":
+        raise RuntimeError("fixed harbor identity is not exact")
+    if title.get_attribute("role") is not None or not page.locator("#demoSampleTitle, #demoSampleKind").evaluate_all("nodes => nodes.every(node => !node.matches('button,[aria-pressed],[aria-selected]'))"):
+        raise RuntimeError("fixed harbor identity is interactive")
+    if page.locator("#demoOriginalImage").get_attribute("src") != "samples/harbor.jpg" or page.locator("#demoOriginalImage").get_attribute("alt") != "低密度港區的真實航拍原圖":
+        raise RuntimeError("initial original is not the admitted harbor image")
+    if page.locator("#runtimeValue").inner_text() != "—":
+        raise RuntimeError("initial harbor runtime is not neutral")
+    if any(url == ORT_CDN_URL or url.startswith(ORT_WASM_BASE) for url in requests) or DEMO_MODEL_PATH in _request_paths(requests):
+        raise RuntimeError("single harbor initial state requested inference resources")
+    if messages:
+        raise RuntimeError("sample gallery initial state emitted console or page errors")
+
+
+def run_single_harbor(
     executable_path: Path | None = None,
-    screenshot: Path | None = None,
     base_url: str | None = None,
-    mobile_screenshot: Path | None = None,
+    screenshot: Path | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            page.add_init_script(REAL_INSTRUMENTATION)
+            _record_errors(page, requests, messages)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            assert_single_harbor_initial(page, requests, messages)
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'", timeout=120_000)
+            if page.locator("#modeBadge").inner_text() != "LOCAL BROWSER INFERENCE" or not re.fullmatch(r"[1-9]\d* ms", page.locator("#runtimeValue").inner_text()):
+                raise RuntimeError("single harbor Detect did not report genuine local runtime")
+            count = int(page.locator("#summaryCount").inner_text())
+            if not 16 <= count <= 26 or page.locator("#resultsBody tr:not([data-empty='true'])").count() != count or not page.locator("#canvasFrame").is_visible():
+                raise RuntimeError("single harbor result violates its count or canvas contract")
+            if "低密度港區航拍範例" not in page.locator("#provenanceValue").inner_text() or page.evaluate("globalThis.__aerialObbTest.sessionRunCount") != 1:
+                raise RuntimeError("single harbor provenance or session count is wrong")
+            detections = _assert_one_filtered_output_list(page)
+            sample = page.evaluate("DemoAssets.getDemoSample()")
+            class_ids = {
+                name: int(value)
+                for value, name in page.locator(".class-cb").evaluate_all(
+                    "items => items.map(item => [item.value, item.parentElement.textContent])"
+                )
+            }
+            ids = {class_ids[str(detection["class"])] for detection in detections}
+            if not ids.issubset(set(sample["guardrails"]["classIds"])) or not detections:
+                raise RuntimeError("single harbor result includes an unapproved class")
+            representative = sample["guardrails"]["representative"]
+            if not any(
+                class_ids[str(detection["class"])] == representative["classId"]
+                and all(
+                    abs(float(detection[key]) - float(representative[key]))
+                    <= float(representative["tolerance"])
+                    for key in ("cx", "cy", "w", "h")
+                )
+                for detection in detections
+            ):
+                raise RuntimeError("single harbor result lacks its representative detection")
+            if screenshot is not None:
+                capture_canonical_harbor_result(page, screenshot)
+            assert_original_result_toggle(page, requests, 1)
+            assert_demo_cached_filters(page, requests, 1)
+            if page.evaluate("globalThis.__aerialObbTest.sessionRunCount") != 1:
+                raise RuntimeError("cached single harbor interactions reran inference")
+            if messages:
+                raise RuntimeError("single harbor scenario emitted console or page errors")
+        finally:
+            browser.close()
+
+
+def run_single_harbor_failures(
+    executable_path: Path | None = None, base_url: str | None = None,
+) -> None:
+    """The first fixed-image response fails closed and reload recovers exactly."""
+    try:
+        from playwright.sync_api import Route, sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+    harbor_bytes = (DEMO / DEMO_IMAGE_PATH.lstrip("/")).read_bytes()
+    sentinels = _privacy_sentinels()
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
+            harbor_responses = 0
+            page.add_init_script(REAL_INSTRUMENTATION)
+            _record_evidence(page, requests, console_messages, page_errors)
+
+            def route_harbor(route: Route) -> None:
+                nonlocal harbor_responses
+                harbor_responses += 1
+                if harbor_responses == 1:
+                    route.abort("failed")
+                    return
+                route.fulfill(
+                    status=200,
+                    content_type="image/jpeg",
+                    body=harbor_bytes,
+                )
+
+            page.route("**/samples/harbor.jpg", route_harbor)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            try:
+                page.wait_for_function("document.querySelector('#status').dataset.kind === 'error'")
+            except Exception as exc:
+                state = page.evaluate(
+                    "[sampleState.textContent, demoDetectBtn.disabled, status.textContent, "
+                    "demoOriginalImage.complete, demoOriginalImage.naturalWidth]"
+                )
+                raise RuntimeError(
+                    f"first harbor failure did not settle: responses={harbor_responses}; "
+                    f"state={state!r}"
+                ) from exc
+            _install_privacy_probe(page, sentinels)
+            if harbor_responses != 1:
+                raise RuntimeError("fixed harbor image failure was not limited to the first response")
+            if page.locator("#status").inner_text() != "範例影像目前無法顯示。請重新整理後重試，或使用進階 BYOM。":
+                raise RuntimeError("fixed harbor image failure copy is not exact")
+            if page.locator("#sampleSelector, .sample-option").count() or not page.locator("#demoDetectBtn").is_disabled():
+                raise RuntimeError("fixed harbor image failure exposed an interactive demo path")
+            cleanup = page.evaluate(
+                "[runtimeValue.textContent, summaryCount.textContent, canvasFrame.hidden, "
+                "resultsBody.querySelectorAll(\"tr[data-empty='true']\").length, "
+                "canvasDescription.textContent]"
+            )
+            if cleanup != ["—", "0", True, 1, "尚無 detection result。"]:
+                raise RuntimeError(f"fixed harbor image failure retained result state: {cleanup!r}")
+            if any(url == ORT_CDN_URL or url.startswith(ORT_WASM_BASE) for url in requests):
+                raise RuntimeError("fixed harbor image failure requested the lazy runtime")
+            if DEMO_MODEL_PATH in _request_paths(requests):
+                raise RuntimeError("fixed harbor image failure requested the lazy model")
+            browser_route_failure = "Failed to load resource: net::ERR_FAILED"
+            if console_messages.count(browser_route_failure) != 1:
+                raise RuntimeError("fixed harbor route did not emit one closed browser failure")
+            product_messages = [
+                message for message in console_messages
+                if message != browser_route_failure
+            ]
+            _assert_privacy_surfaces(
+                page, requests, product_messages, page_errors, sentinels
+            )
+
+            request_checkpoint = len(requests)
+            console_checkpoint = len(console_messages)
+            error_checkpoint = len(page_errors)
+            page.reload(wait_until="networkidle")
+            try:
+                page.wait_for_function(
+                    "document.querySelector('#sampleState').textContent === 'Original · ready' && "
+                    "document.querySelector('#demoDetectBtn').disabled === false"
+                )
+            except Exception as exc:
+                state = page.evaluate(
+                    "[sampleState.textContent, demoDetectBtn.disabled, status.textContent, "
+                    "demoOriginalImage.complete, demoOriginalImage.naturalWidth]"
+                )
+                raise RuntimeError(
+                    f"reload did not restore the harbor original: responses={harbor_responses}; "
+                    f"state={state!r}"
+                ) from exc
+            if harbor_responses != 2:
+                raise RuntimeError("reload did not serve the committed harbor bytes exactly once")
+            recovery_messages = [
+                *console_messages[console_checkpoint:],
+                *page_errors[error_checkpoint:],
+            ]
+            assert_single_harbor_initial(
+                page, requests[request_checkpoint:], recovery_messages
+            )
+            if page.locator("#status").inner_text() != "原圖已載入 · 尚未 Detect。":
+                raise RuntimeError("reload retained stale fixed-image failure copy")
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'success'",
+                timeout=120_000,
+            )
+            runtime = page.locator("#runtimeValue").inner_text()
+            count = int(page.locator("#summaryCount").inner_text())
+            if not re.fullmatch(r"[1-9]\d* ms", runtime) or not 16 <= count <= 26:
+                raise RuntimeError("recovered harbor did not complete genuine accepted inference")
+            if page.evaluate("globalThis.__aerialObbTest.sessionRunCount") != 1:
+                raise RuntimeError("recovered harbor did not run exactly one inference")
+            if "範例影像目前無法顯示" in page.locator("body").inner_text():
+                raise RuntimeError("recovered harbor retained stale image failure text")
+            if page_errors[error_checkpoint:]:
+                raise RuntimeError("recovered harbor emitted a page error")
+        finally:
+            browser.close()
+
+
+def _assert_one_filtered_output_list(page: object) -> list[dict[str, float | int | str]]:
+    rows = [
+        row.locator("td").all_text_contents()
+        for row in page.locator("#resultsBody tr:not([data-empty='true'])").all()
+    ]
+    if not rows or any(len(row) != 5 for row in rows):
+        raise RuntimeError("gallery sample run did not render a filtered detection table")
+    description = page.locator("#canvasDescription").inner_text()
+    pattern = re.compile(
+        r"class=([^;]+); confidence=([0-9.]+); center-x=([0-9.]+) px; "
+        r"center-y=([0-9.]+) px; width=([0-9.]+) px; height=([0-9.]+) px; "
+        r"angle=(-?[0-9.]+)°\."
+    )
+    described = [
+        {
+            "class": match.group(1), "confidence": float(match.group(2)),
+            "cx": float(match.group(3)), "cy": float(match.group(4)),
+            "w": float(match.group(5)), "h": float(match.group(6)),
+            "angle": float(match.group(7)),
+        }
+        for match in pattern.finditer(description)
+    ]
+    if len(described) != len(rows):
+        raise RuntimeError("non-live description does not contain one ordered record per table row")
+    for row, detection in zip(rows, described):
+        if row[0] != detection["class"] or not math.isclose(float(row[1]), detection["confidence"], abs_tol=0.0005):
+            raise RuntimeError("table class/confidence differs from its ordered non-live description")
+        if any(
+            not math.isclose(float(actual), float(expected), abs_tol=0.11)
+            for actual, expected in zip(row[2:], (detection["w"], detection["h"], detection["angle"]))
+        ):
+            raise RuntimeError("table geometry differs from its ordered non-live description")
+    if page.locator("#summaryCount").inner_text() != str(len(described)):
+        raise RuntimeError("gallery summary count does not represent the filtered list")
+    if page.locator("#summaryTop").inner_text() != f"{max(item['confidence'] for item in described):.3f}":
+        raise RuntimeError("gallery summary top confidence does not represent the filtered list")
+    if any(
+        described[index]["confidence"] < described[index + 1]["confidence"]
+        for index in range(len(described) - 1)
+    ):
+        raise RuntimeError("table and description no longer retain the shared confidence order")
+    identities = {
+        (item["class"], item["confidence"], item["cx"], item["cy"], item["w"], item["h"], item["angle"])
+        for item in described
+    }
+    if len(identities) != len(described):
+        raise RuntimeError("filtered output contains duplicate detection identities")
+    polygons = page.evaluate("globalThis.__obbStrokedPolygons")
+    if len(polygons) != len(described) or any(len(polygon["points"]) != 4 for polygon in polygons):
+        raise RuntimeError("canvas polygons do not have one identity per filtered detection")
+    for detection, polygon in zip(described, polygons):
+        angle = math.radians(float(detection["angle"]))
+        cos_angle, sin_angle = math.cos(angle), math.sin(angle)
+        expected = [
+            (
+                float(detection["cx"]) + x * cos_angle - y * sin_angle,
+                float(detection["cy"]) + x * sin_angle + y * cos_angle,
+            )
+            for x, y in (
+                (-float(detection["w"]) / 2, -float(detection["h"]) / 2),
+                (float(detection["w"]) / 2, -float(detection["h"]) / 2),
+                (float(detection["w"]) / 2, float(detection["h"]) / 2),
+                (-float(detection["w"]) / 2, float(detection["h"]) / 2),
+            )
+        ]
+        if any(
+            abs(actual_axis - expected_axis) > 0.55
+            for actual, wanted in zip(polygon["points"], expected)
+            for actual_axis, expected_axis in zip(actual, wanted)
+        ):
+            raise RuntimeError("canvas polygon geometry differs from its filtered detection identity")
+    return described
+
+
+def run_manifest_matrix(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+    start: int = 0,
+    count: int | None = None,
+) -> None:
+    """Exercise every closed catalog layer through the real browser validator."""
+    from playwright.sync_api import sync_playwright
+    manifest = json.loads((DEMO / "demo-model.json").read_text(encoding="utf-8"))
+    mutations: list[dict[str, object]] = []
+    labels: set[str] = set()
+
+    def json_path(path: list[object]) -> str:
+        return "$" + "".join(
+            f"[{part}]" if isinstance(part, int) else f"[{part!r}]" for part in path
+        )
+
+    def add_case(
+        kind: str,
+        path: list[object],
+        value: object | None = None,
+        label_suffix: str = "",
+    ) -> None:
+        label = f"{kind}:{json_path(path)}{label_suffix}"
+        if label in labels:
+            return
+        labels.add(label)
+        mutation: dict[str, object] = {"label": label, "kind": kind, "path": path}
+        if kind == "replace":
+            mutation["value"] = value
+        mutations.append(mutation)
+
+    def replacement(path: list[object], value: object) -> object:
+        key = str(path[-1])
+        if isinstance(value, bool):
+            return not value
+        if isinstance(value, int):
+            return value + 1
+        if isinstance(value, float):
+            return value + 0.01
+        if isinstance(value, str):
+            if key in {"path", "notice", "publicDomainRecord", "source"}:
+                return "https://example.invalid/unreviewed"
+            return "unreviewed"
+        raise TypeError(f"unsupported manifest scalar at {json_path(path)}")
+
+    def audit(value: object, path: list[object]) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                child_path = [*path, key]
+                add_case("missing", child_path)
+                add_case("extra", child_path)
+                audit(child, child_path)
+            return
+        if isinstance(value, list):
+            if not value:
+                add_case("replace", path, ["unreviewed"])
+                return
+            if len(value) > 1:
+                add_case("replace", path, list(reversed(value)))
+            for index, child in enumerate(value):
+                audit(child, [*path, index])
+            return
+        add_case("replace", path, replacement(path, value))
+
+    # The JS validator is a closed exact-value contract.  Audit the checked-in
+    # manifest recursively so every scalar, array order/member, and object key
+    # has its own fresh-browser failing mutation.
+    audit(manifest, [])
+    add_case(
+        "replace",
+        ["samples"],
+        [manifest["samples"][0], manifest["samples"][0]],
+        ":duplicate-sample",
+    )
+    mutations = mutations[start:] if count is None else mutations[start : start + count]
+    if not mutations:
+        raise RuntimeError("manifest matrix selected no cases")
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            for mutation in mutations:
+                page = browser.new_page()
+                requests: list[str] = []; messages: list[str] = []; _record_errors(page, requests, messages)
+                page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
+                outcome = page.evaluate("""async (mutation) => { const manifest = await (await fetch('demo-model.json')).json(); let target = manifest; for (const key of mutation.path.slice(0, -1)) target = target[key]; const key = mutation.path[mutation.path.length - 1]; if (mutation.kind === 'missing') delete target[key]; else if (mutation.kind === 'extra') target[`${key}Unreviewed`] = true; else target[key] = mutation.value; try { DemoAssets.validateManifest(manifest); return 'accepted'; } catch (error) { return error.message; } }""", mutation)
+                if outcome != "DEMO_MANIFEST":
+                    raise RuntimeError(f"manifest matrix {mutation['label']} did not fail closed: {outcome!r}")
+                if DEMO_MODEL_PATH in _request_paths(requests) or ORT_CDN_URL in requests:
+                    raise RuntimeError(f"manifest matrix {mutation['label']} started inference resources")
+                page.close()
+        finally:
+            browser.close()
+
+
+def assert_workbench_initial_layout(page: object) -> None:
+    """Assert the initial desktop controls and viewport form a compact workbench."""
+    if page.locator("#demoDetectBtn").evaluate(
+        "node => node.closest('#controlRail')?.id || ''"
+    ) != "controlRail":
+        raise RuntimeError("demo action is not inside the compact control rail")
+    if page.locator("#sampleCard").count() != 1:
+        raise RuntimeError("official sample card is missing")
+    rail = page.locator("#controlRail").bounding_box()
+    viewport = page.locator("#resultViewport").bounding_box()
+    if rail is None or viewport is None or viewport["x"] <= rail["x"] + rail["width"]:
+        raise RuntimeError("desktop viewport is not to the right of the control rail")
+    ratio = rail["width"] / (rail["width"] + viewport["width"])
+    if not 0.27 <= ratio <= 0.35:
+        raise RuntimeError(f"desktop workbench is not approximately 31/69: {ratio!r}")
+    if page.locator(".demo-intro, .demo-action-zone").count() != 0:
+        raise RuntimeError("retired full-width demo layout is still present")
+
+
+def exercise_real_demo_success(page: object, requests: list[str], messages: list[str]) -> int:
+    """Run the committed derivative and assert the visible result contract."""
+    page.locator("#demoDetectBtn").click()
+    page.wait_for_function(
+        "document.querySelector('#status').dataset.kind === 'success'",
+        timeout=120_000,
+    )
+    if page.locator("#status").inner_text() != "完成 · 可調整 filters。":
+        raise RuntimeError("completed demo live status is not count-neutral")
+    if page.locator("#provenanceValue").inner_text() != f"{DEMO_PROVENANCE} · 低密度港區航拍範例":
+        raise RuntimeError("real demo provenance is not exact")
+    runtime = page.locator("#runtimeValue").inner_text()
+    if not re.fullmatch(r"\d+ ms", runtime):
+        raise RuntimeError(f"real demo runtime is not numeric: {runtime!r}")
+    if page.locator("#modeBadge").inner_text() != "LOCAL BROWSER INFERENCE":
+        raise RuntimeError("real demo mode badge is not exact")
+    rows = page.locator("#resultsBody tr")
+    if rows.count() < 1:
+        raise RuntimeError("real demo produced no accepted detection rows")
+    row_values = [row.locator("td").all_text_contents() for row in rows.all()]
+    accepted_rows = [row for row in row_values if row and row[0] and row[0] != "尚未執行 Detect。"]
+    if not accepted_rows:
+        raise RuntimeError("real demo produced no accepted result row")
+    polygons = page.evaluate("globalThis.__obbStrokedPolygons")
+    if not polygons or any(len(polygon["points"]) != 4 for polygon in polygons):
+        raise RuntimeError("real demo did not paint oriented polygon pixels")
+    description = page.locator("#canvasDescription")
+    if description.get_attribute("aria-live") is not None:
+        raise RuntimeError("canvas description must remain non-live")
+    visible_row = accepted_rows[0]
+    description_text = description.inner_text()
+    if f"class={visible_row[0]}" not in description_text or f"confidence={visible_row[1]}" not in description_text:
+        raise RuntimeError("visible table and canvas description are not synchronized")
+    if page.locator("#demoDetectBtn").inner_text() != "再次 Detect":
+        raise RuntimeError("completed demo primary action is not exact")
+    if page.locator("#sampleState").inner_text() != "Result · ready":
+        raise RuntimeError("official sample result state is not exact")
+    if page.locator("#viewToggleBtn").inner_text() != "查看原圖":
+        raise RuntimeError("completed demo toggle is not exact")
+    if page.locator("#resultControls").is_hidden():
+        raise RuntimeError("completed demo filters remain hidden")
+    if page.locator("#confSlider").is_disabled():
+        raise RuntimeError("completed confidence filter remains disabled")
+    if page.locator(".class-cb:not(:disabled)").count() == 0:
+        raise RuntimeError("completed class filters remain disabled")
+    if page.locator("#canvasFrame").is_hidden() or page.locator("#canvas").is_hidden():
+        raise RuntimeError("completed demo result canvas is not visible")
+    _assert_box_matches_viewport(page, "#canvas", "result canvas")
+    paths = _request_paths(requests)
+    if paths.count(DEMO_MANIFEST_PATH) != 1 or paths.count(DEMO_MODEL_PATH) != 1:
+        raise RuntimeError("real demo did not request the exact manifest/model once")
+    if requests.count(ORT_CDN_URL) != 1:
+        raise RuntimeError("real demo did not request the pinned runtime once")
+    if not any(request.startswith(ORT_WASM_BASE) for request in requests):
+        raise RuntimeError("real demo did not request pinned WASM")
+    if messages:
+        raise RuntimeError("real demo emitted console or page errors")
+    run_count = page.evaluate("globalThis.__demoRunCount")
+    if run_count != 1:
+        raise RuntimeError(f"real demo run count is not one: {run_count!r}")
+    return run_count
+
+
+def capture_canonical_harbor_result(page: object, screenshot: Path) -> None:
+    """Freeze the first, unfiltered genuine harbor result before cache exercises."""
+    if page.locator("#demoOriginalImage").get_attribute("src") != "samples/harbor.jpg":
+        raise RuntimeError("canonical capture does not retain the fixed harbor source")
+    if page.locator("#demoSampleTitle").inner_text() != "低密度港區航拍範例":
+        raise RuntimeError("canonical capture harbor identity is not exact")
+    if page.evaluate("globalThis.__demoRunCount") != 1:
+        raise RuntimeError("canonical capture is not the first genuine inference run")
+    if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
+        raise RuntimeError("canonical capture runtime is not numeric")
+    if page.locator("#modeBadge").inner_text() != "LOCAL BROWSER INFERENCE":
+        raise RuntimeError("canonical capture mode is not local browser inference")
+    if page.locator("#confSlider").input_value() != "0.25":
+        raise RuntimeError("canonical capture threshold is not the shared 0.25")
+    if page.locator(".class-cb:checked").count() != 0:
+        raise RuntimeError("canonical capture has a narrowed class filter")
+    if page.locator("#canvasFrame").is_hidden() or page.locator("#canvas").is_hidden():
+        raise RuntimeError("canonical capture result canvas is not visible")
+    rows = page.locator("#resultsBody tr:not([data-empty='true'])")
+    if rows.count() < 1 or int(page.locator("#summaryCount").inner_text()) != rows.count():
+        raise RuntimeError("canonical capture result table is not consistent")
+    description = page.locator("#canvasDescription").inner_text()
+    if not description or "class=" not in description:
+        raise RuntimeError("canonical capture description is not consistent with the result")
+    screenshot.parent.mkdir(parents=True, exist_ok=True)
+    page.screenshot(path=str(screenshot), full_page=True)
+
+
+def assert_original_result_toggle(
+    page: object, requests: list[str], run_counter: int
+) -> None:
+    """Switch views without fetching assets or running inference again."""
+    request_count = len(requests)
+    page.locator("#viewToggleBtn").click()
+    if page.locator("#viewToggleBtn").inner_text() != "查看結果":
+        raise RuntimeError("original view did not expose the result action")
+    if page.locator("#demoFigureLabel").inner_text() != "原圖":
+        raise RuntimeError("original view label is not exact")
+    visible_original = page.locator("#demoFigure img:visible")
+    if visible_original.count() != 1:
+        raise RuntimeError("original view does not expose exactly one original layer")
+    _assert_box_matches_viewport(page, "#demoFigure img:visible", "active original layer")
+    page.locator("#viewToggleBtn").click()
+    if page.locator("#viewToggleBtn").inner_text() != "查看原圖":
+        raise RuntimeError("result view did not restore the original action")
+    if page.locator("#demoFigureLabel").inner_text() != "Detect 結果":
+        raise RuntimeError("result view label is not exact")
+    for width, height in ((640, 360), (1280, 500)):
+        page.set_viewport_size({"width": width, "height": height})
+        _assert_box_matches_viewport(page, "#canvas", "short-viewport result canvas")
+        page.locator("#viewToggleBtn").click()
+        _assert_box_matches_viewport(
+            page, "#demoFigure img:visible", "short-viewport original layer"
+        )
+        page.locator("#viewToggleBtn").click()
+    page.set_viewport_size({"width": 1280, "height": 720})
+    if page.evaluate("globalThis.__demoRunCount") != run_counter:
+        raise RuntimeError("original/result switching ran inference again")
+    if len(requests) != request_count:
+        raise RuntimeError("original/result switching requested another asset")
+
+
+def assert_demo_cached_filters(
+    page: object, requests: list[str], run_counter: int
+) -> None:
+    """Re-filter the completed output without another session.run."""
+    runtime = page.locator("#runtimeValue").inner_text()
+    request_count = len(requests)
+    completion_status = page.locator("#status").inner_text()
+    initial_count = int(page.locator("#summaryCount").inner_text())
+    if completion_status != "完成 · 可調整 filters。" or initial_count <= 0:
+        raise RuntimeError("cached-filter baseline lacks count-neutral completed state")
+    page.locator("#confSlider").evaluate(
+        "slider => { slider.value = '0.90'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
+    )
+    plane = page.locator('.class-cb[value="0"]')
+    page.evaluate("globalThis.__obbStrokedPolygons = []")
+    plane.check()
+    if page.locator("#resultsBody tr[data-empty='true']").count() != 1:
+        raise RuntimeError("empty cached filter lacks one explicit empty state")
+    if page.locator("#canvasDescription").inner_text() != (
+        "目前篩選條件下沒有 detections；canvas 沒有 oriented polygons。"
+    ):
+        raise RuntimeError("empty cached table and canvas description are not synchronized")
+    if page.locator("#summaryCount").inner_text() != "0":
+        raise RuntimeError("empty cached filter did not synchronize the summary count")
+    if page.evaluate("globalThis.__obbStrokedPolygons") != []:
+        raise RuntimeError("empty cached filter retained rendered polygons")
+    if page.locator("#status").inner_text() != completion_status:
+        raise RuntimeError("cached empty filter changed the count-neutral live status")
+    plane.uncheck()
+    page.locator("#confSlider").evaluate(
+        "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
+    )
+    first_class = page.locator("#resultsBody tr:not([data-empty='true']) td").first.inner_text()
+    class_index = page.evaluate(
+        "([name]) => Array.from(document.querySelectorAll('.class-cb')).findIndex((box) => box.parentElement.textContent === name)",
+        arg=[first_class],
+    )
+    if not isinstance(class_index, int) or class_index < 0:
+        raise RuntimeError("cached filter could not locate the visible class")
+    ship = page.locator(f'.class-cb[value="{class_index}"]')
+    page.evaluate("globalThis.__obbStrokedPolygons = []")
+    ship.check()
+    rows = page.locator("#resultsBody tr:not([data-empty='true'])")
+    if rows.count() < 1:
+        raise RuntimeError("cached selected-class filter lost the admitted result")
+    row_values = [row.locator("td").all_text_contents() for row in rows.all()]
+    if any(not row or row[0] != first_class for row in row_values):
+        raise RuntimeError("cached class filter retained a different table row")
+    if int(page.locator("#summaryCount").inner_text()) != len(row_values):
+        raise RuntimeError("cached class filter did not synchronize the summary count")
+    description = page.locator("#canvasDescription").inner_text()
+    if any(
+        f"class={row[0]}" not in description or f"confidence={row[1]}" not in description
+        for row in row_values
+    ):
+        raise RuntimeError("cached table and canvas description are not synchronized")
+    polygons = page.evaluate("globalThis.__obbStrokedPolygons")
+    if len(polygons) != len(row_values) or any(
+        len(polygon["points"]) != 4 for polygon in polygons
+    ):
+        raise RuntimeError("cached table and rendered polygons are not synchronized")
+    described = re.findall(
+        r"class=[^;]+; confidence=[0-9.]+; center-x=([0-9.]+) px; "
+        r"center-y=([0-9.]+) px; width=([0-9.]+) px; height=([0-9.]+) px; "
+        r"angle=(-?[0-9.]+)°\.",
+        description,
+    )
+    if len(described) != len(polygons):
+        raise RuntimeError("cached polygon geometry lacks matching described detections")
+    for values, polygon in zip(described, polygons):
+        cx, cy, width, height, angle_degrees = map(float, values)
+        angle = math.radians(angle_degrees)
+        cos_angle = math.cos(angle)
+        sin_angle = math.sin(angle)
+        expected = [
+            (
+                cx + x * cos_angle - y * sin_angle,
+                cy + x * sin_angle + y * cos_angle,
+            )
+            for x, y in (
+                (-width / 2, -height / 2),
+                (width / 2, -height / 2),
+                (width / 2, height / 2),
+                (-width / 2, height / 2),
+            )
+        ]
+        if any(
+            abs(actual_axis - expected_axis) > 0.5
+            for actual, wanted in zip(polygon["points"], expected)
+            for actual_axis, expected_axis in zip(actual, wanted)
+        ):
+            raise RuntimeError("cached polygon geometry or class color is out of sync")
+    if page.evaluate("globalThis.__demoRunCount") != run_counter:
+        raise RuntimeError("cached filters ran inference again")
+    if len(requests) != request_count:
+        raise RuntimeError("cached filters requested another asset")
+    if page.locator("#runtimeValue").inner_text() != runtime:
+        raise RuntimeError("cached filters changed the completed runtime")
+    if page.locator("#status").inner_text() != completion_status:
+        raise RuntimeError("cached filters changed the count-neutral live status")
+    if page.locator("#viewToggleBtn").inner_text() != "查看原圖":
+        raise RuntimeError("cached filters changed the current result view")
+    if page.locator("#canvasFrame").is_hidden():
+        raise RuntimeError("cached filters hid the current result view")
+
+
+def assert_malformed_frozen_manifest_is_closed(page: object) -> None:
+    """Reject arbitrary frozen inputs with a fixed public error code."""
+    error = page.evaluate(
+        """
+        async () => {
+          const path = Object.freeze({
+            toString() { throw new Error("native-url-exception"); },
+          });
+          const malformed = Object.freeze({
+            model: Object.freeze({ path }),
+          });
+          try {
+            await DemoAssets.fetchVerifiedModel(malformed);
+            return "NO_ERROR";
+          } catch (failure) {
+            return failure.message;
+          }
+        }
+        """
+    )
+    if error not in {"DEMO_MANIFEST", "DEMO_MODEL_URL"}:
+        raise RuntimeError(f"malformed frozen manifest escaped fixed diagnostics: {error!r}")
+
+
+def _launch_options(executable_path: Path | None) -> dict[str, object]:
+    options: dict[str, object] = {"headless": True, "args": ["--disable-gpu"]}
+    if executable_path is not None:
+        options["executable_path"] = str(executable_path)
+    return options
+
+
+def _record_errors(page: object, requests: list[str], messages: list[str]) -> None:
+    page.on("request", lambda request: requests.append(request.url))
+    page.on(
+        "console",
+        lambda message: messages.append(message.text) if message.type == "error" else None,
+    )
+    page.on("pageerror", lambda error: messages.append(str(error)))
+
+
+def _privacy_sentinels() -> tuple[str, ...]:
+    drive_path = "C" + ":" + "\\" + "Users" + "\\" + "private-owner" + "\\" + "model.onnx"
+    return (
+        drive_path,
+        "private-" + "local-model.onnx",
+        "private-" + "response-body",
+        "private-" + "model-metadata",
+        "private-" + "native-exception",
+        "private-" + "stack-frame",
+        "private-" + "access-token",
+        "signature=" + "private-query",
+    )
+
+
+def _record_evidence(
+    page: object,
+    requests: list[str],
+    console_messages: list[str],
+    page_errors: list[str],
+) -> None:
+    page.on("request", lambda request: requests.append(request.url))
+    page.on("console", lambda message: console_messages.append(message.text))
+    page.on("pageerror", lambda error: page_errors.append(str(error)))
+
+
+def _assert_failure_cleanup(
+    page: object, expected_sample_state: str = "Retry · available"
+) -> None:
+    if not page.locator("#demoOriginalImage").is_visible():
+        raise RuntimeError("failure did not restore the official original image")
+    if page.locator("#demoFigureLabel").inner_text() != "原圖 · 尚未 Detect":
+        raise RuntimeError("failure did not restore the pre-Detect original label")
+    summary = page.evaluate(
+        "[summaryCount.textContent, summaryTop.textContent, runtimeValue.textContent]"
+    )
+    if summary != ["0", "—", "—"]:
+        raise RuntimeError("failure retained completed summary state")
+    if not page.locator("#canvasFrame").is_hidden():
+        raise RuntimeError("failure retained the result canvas")
+    _assert_empty_disabled_result_state(page)
+    if not page.locator("#viewToggleBtn").is_hidden():
+        raise RuntimeError("failure retained the original/result toggle")
+    if page.locator("#canvasDescription").inner_text() != "尚無 detection result。":
+        raise RuntimeError("failure retained the completed canvas description")
+    if "LOCAL BROWSER INFERENCE" in page.locator("#modeBadge").inner_text():
+        raise RuntimeError("failure retained the completed mode badge")
+    if page.locator("#sampleState").inner_text() != expected_sample_state:
+        raise RuntimeError(
+            "failure exposed the wrong official sample state: "
+            f"{page.locator('#sampleState').inner_text()!r}"
+        )
+    status = page.locator("#status").inner_text()
+    if not any(
+        action in status
+        for action in ("重試", "重新整理", "重新執行", "BYOM", "改選", "選擇", "改用")
+    ):
+        raise RuntimeError("failure did not provide an actionable recovery")
+
+
+def _assert_privacy_surfaces(
+    page: object,
+    requests: list[str],
+    console_messages: list[str],
+    page_errors: list[str],
+    sentinels: tuple[str, ...],
+) -> None:
+    if page_errors:
+        raise RuntimeError("failure evidence retained a page error or stack")
+    if any(message not in FIXED_CONSOLE_DIAGNOSTICS for message in console_messages):
+        raise RuntimeError("failure evidence retained a non-fixed console diagnostic")
+    text_surfaces = "\n".join([
+        page.locator("html").evaluate("node => node.outerHTML"),
+        page.locator("body").inner_text(),
+        page.evaluate("(globalThis.__privacyRenderedText || []).join('\\n')"),
+        *requests,
+        *console_messages,
+        *page_errors,
+    ])
+    screenshot_metadata_bytes = page.screenshot()
+    for sentinel in sentinels:
+        if sentinel in text_surfaces:
+            raise RuntimeError("failure evidence exposed a private sentinel")
+        if sentinel.encode("utf-8") in screenshot_metadata_bytes:
+            raise RuntimeError("screenshot metadata retained a private sentinel")
+    forbidden_patterns = (
+        r"(?i)\b[a-z]:[\\/](?:users|documents and settings)[\\/]",
+        r"(?i)/(?:home|users)/[^/\s]+/",
+        r"(?i)\bfile://",
+        r"(?i)(?:authorization|bearer|access[_-]?token|api[_-]?key)\s*[:=]",
+        r"(?i)[?&](?:sig|signature|token|key)=[^&\s]+",
+        r"(?i)(?:traceback \(most recent call last\)|\bat\s+\S+\s*\(|\.js:\d+:\d+)",
+    )
+    if any(re.search(pattern, text_surfaces) for pattern in forbidden_patterns):
+        raise RuntimeError("failure evidence matched a closed privacy diagnostic pattern")
+    if any(urlparse(request).query for request in requests):
+        raise RuntimeError("failure network report retained a signed query")
+
+
+def _assert_privacy_oracle_rejects_open_diagnostics(
+    page: object,
+    requests: list[str],
+    sentinels: tuple[str, ...],
+) -> None:
+    unsafe_cases = (
+        (["unexpected browser diagnostic"], []),
+        ([], ["Error: unexpected browser failure"]),
+        (["at render (app.js:1:1)"], []),
+        (["authorization=" + "unexpected-value"], []),
+    )
+    for console_messages, page_errors in unsafe_cases:
+        try:
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, sentinels
+            )
+        except RuntimeError:
+            continue
+        raise RuntimeError("privacy oracle accepted an open browser diagnostic")
+    page.evaluate(
+        "value => canvas.getContext('2d').fillText(value, 1, 12)", sentinels[1]
+    )
+    try:
+        _assert_privacy_surfaces(page, requests, [], [], sentinels)
+    except RuntimeError:
+        page.evaluate("globalThis.__privacyRenderedText = []")
+    else:
+        raise RuntimeError("privacy oracle accepted user-visible canvas text")
+
+
+def run_manifest_failure(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
 ) -> None:
     try:
         from playwright.sync_api import Route, sync_playwright
     except ImportError as exc:
         raise RuntimeError("Playwright is required; run the locked development environment") from exc
 
-    browser_errors: list[str] = []
-    browser_messages: list[str] = []
-    requested_urls: list[str] = []
+    sentinels = _privacy_sentinels()
+    manifest = json.loads((DEMO / "demo-model.json").read_text(encoding="utf-8"))
     server = nullcontext(base_url) if base_url else static_server()
     with server as served_url, sync_playwright() as playwright:
-        launch_options: dict[str, object] = {"headless": True, "args": ["--disable-gpu"]}
-        if executable_path is not None:
-            launch_options["executable_path"] = str(executable_path)
-        browser = playwright.chromium.launch(**launch_options)
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
         try:
-            page = browser.new_page(viewport={"width": 1600, "height": 1000})
+            for variant in ("fetch", "status", "schema"):
+                page = browser.new_page(viewport={"width": 1280, "height": 720})
+                requests: list[str] = []
+                console_messages: list[str] = []
+                page_errors: list[str] = []
+                _record_evidence(page, requests, console_messages, page_errors)
+
+                def fail_manifest(route: Route, selected: str = variant) -> None:
+                    if selected == "fetch":
+                        route.abort("failed")
+                    elif selected == "status":
+                        route.fulfill(status=503, body=sentinels[2])
+                    else:
+                        malformed = dict(manifest)
+                        malformed["privateProbe"] = sentinels[3]
+                        route.fulfill(
+                            status=200,
+                            content_type="application/json",
+                            body=json.dumps(malformed),
+                        )
+
+                page.route(f"**{DEMO_MANIFEST_PATH}", fail_manifest)
+                page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+                _install_privacy_probe(page, sentinels)
+                page.locator("#demoDetectBtn").click()
+                page.wait_for_function(
+                    "document.querySelector('#status').dataset.kind === 'error'",
+                    timeout=30_000,
+                )
+                _assert_failure_cleanup(page)
+                _assert_privacy_surfaces(
+                    page, requests, console_messages, page_errors, sentinels
+                )
+                _assert_privacy_oracle_rejects_open_diagnostics(
+                    page, requests, sentinels
+                )
+                page.close()
+        finally:
+            browser.close()
+
+
+def _install_privacy_probe(page: object, sentinels: tuple[str, ...]) -> None:
+    page.evaluate(
+        """
+        values => {
+          globalThis.__privacyProbe = {
+            localPath: values[0],
+            localFilename: values[1],
+            responseBody: values[2],
+            modelMetadata: values[3],
+            rawException: values[4],
+            stackFrame: values[5],
+            token: values[6],
+            signedQuery: values[7],
+          };
+          globalThis.__privacyRenderedText = [];
+          for (const method of ['fillText', 'strokeText']) {
+            const original = CanvasRenderingContext2D.prototype[method];
+            CanvasRenderingContext2D.prototype[method] = function (text, ...args) {
+              globalThis.__privacyRenderedText.push(String(text));
+              return original.call(this, text, ...args);
+            };
+          }
+        }
+        """,
+        list(sentinels),
+    )
+
+
+def _fulfill_runtime(route: object, body: str) -> None:
+    route.fulfill(
+        status=200,
+        content_type="application/javascript",
+        headers={"Access-Control-Allow-Origin": "*"},
+        body=body,
+    )
+
+
+def run_model_digest_failure(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import Route, sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    sentinels = _privacy_sentinels()
+    admitted = (DEMO / DEMO_MODEL_PATH.lstrip("/")).read_bytes()
+    variants = (
+        ("truncated", admitted[:-1], "大小驗證失敗"),
+        ("changed", bytes([admitted[0] ^ 1]) + admitted[1:], "完整性驗證失敗"),
+    )
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            for _variant, model_bytes, expected_copy in variants:
+                page = browser.new_page(viewport={"width": 1280, "height": 720})
+                requests: list[str] = []
+                console_messages: list[str] = []
+                page_errors: list[str] = []
+                page.add_init_script(SRI_STUB_SHIM)
+                _record_evidence(page, requests, console_messages, page_errors)
+                page.route(ORT_CDN_URL, lambda route: _fulfill_runtime(route, ORT_STUB))
+                def serve_model(route: Route) -> None:
+                    route.fulfill(
+                        status=200,
+                        content_type="application/onnx",
+                        body=model_bytes,
+                    )
+
+                page.route(f"**{DEMO_MODEL_PATH}", serve_model)
+                page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+                _install_privacy_probe(page, sentinels)
+                page.locator("#demoDetectBtn").click()
+                page.wait_for_function(
+                    "document.querySelector('#status').dataset.kind === 'error'",
+                    timeout=30_000,
+                )
+                if expected_copy not in page.locator("#status").inner_text():
+                    raise RuntimeError("model integrity failure used the wrong fixed recovery")
+                _assert_failure_cleanup(page)
+                _assert_privacy_surfaces(
+                    page, requests, console_messages, page_errors, sentinels
+                )
+                page.close()
+        finally:
+            browser.close()
+
+
+def run_runtime_failure(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import Route, sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    sentinels = _privacy_sentinels()
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
+            attempts = {"count": 0}
             page.add_init_script(SRI_STUB_SHIM)
-            page.add_init_script(
+            _record_evidence(page, requests, console_messages, page_errors)
+
+            def runtime_route(route: Route) -> None:
+                attempts["count"] += 1
+                if attempts["count"] == 1:
+                    _fulfill_runtime(route, "/* runtime unavailable */")
+                else:
+                    _fulfill_runtime(route, ORT_STUB)
+
+            page.route(ORT_CDN_URL, runtime_route)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            _install_privacy_probe(page, sentinels)
+            page.locator("#demoDetectBtn").click()
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("runtime attempt did not mark the official sample loading")
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'",
+                timeout=30_000,
+            )
+            _assert_failure_cleanup(page)
+            if page.locator("#runtimeRetryBtn").is_hidden():
+                raise RuntimeError("runtime failure did not expose the focused retry action")
+            if requests.count(ORT_CDN_URL) != 1:
+                raise RuntimeError("runtime failure made an unexpected pinned request count")
+            page.locator("#runtimeRetryBtn").click()
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("runtime retry did not restore the official sample loading state")
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'success'",
+                timeout=30_000,
+            )
+            if requests.count(ORT_CDN_URL) != 2:
+                raise RuntimeError("runtime retry did not make one new pinned request")
+            if page.evaluate("globalThis.__demoRunCount") != 1:
+                raise RuntimeError("runtime retry did not complete one genuine pipeline run")
+            if page.locator("#sampleState").inner_text() != "Result · ready":
+                raise RuntimeError("runtime retry did not restore the official sample result state")
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, sentinels
+            )
+
+        finally:
+            browser.close()
+
+
+def _run_stubbed_failure(
+    scenario: str,
+    stub: str,
+    *,
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    sentinels = _privacy_sentinels()
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
+            page.add_init_script(SRI_STUB_SHIM)
+            _record_evidence(page, requests, console_messages, page_errors)
+            page.route(ORT_CDN_URL, lambda route: _fulfill_runtime(route, stub))
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            _install_privacy_probe(page, sentinels)
+            if scenario == "render":
+                page.evaluate(
+                    """
+                    () => {
+                      OBB.rotatedCorners = () => {
+                        throw new Error(globalThis.__privacyProbe.stackFrame);
+                      };
+                    }
+                    """
+                )
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "['error', 'success'].includes(document.querySelector('#status').dataset.kind)",
+                timeout=30_000,
+            )
+            if page.locator("#status").get_attribute("data-kind") != "error":
+                raise RuntimeError(f"{scenario} failure was overwritten by completed status")
+            _assert_failure_cleanup(page)
+            if scenario == "session" and page.evaluate("globalThis.__releaseCount") != 1:
+                raise RuntimeError("invalid candidate session was not released")
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, sentinels
+            )
+
+        finally:
+            browser.close()
+
+
+def run_session_failure(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    _run_stubbed_failure(
+        "session",
+        _scenario_ort_stub(input_names=("wrong-input",)),
+        executable_path=executable_path,
+        base_url=base_url,
+    )
+
+
+def run_run_failure(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    _run_stubbed_failure(
+        "run",
+        _scenario_ort_stub(run_mode="failure"),
+        executable_path=executable_path,
+        base_url=base_url,
+    )
+
+
+def run_output_failure(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    _run_stubbed_failure(
+        "output",
+        _scenario_ort_stub(run_mode="output"),
+        executable_path=executable_path,
+        base_url=base_url,
+    )
+
+
+def run_render_failure(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    _run_stubbed_failure(
+        "render",
+        _scenario_ort_stub(),
+        executable_path=executable_path,
+        base_url=base_url,
+    )
+
+
+def _set_model_file(page: object, name: str = "candidate.onnx") -> None:
+    page.locator("#byomPanel").evaluate("panel => { panel.open = true; }")
+    page.locator("#modelInput").set_input_files(
+        {"name": name, "mimeType": "application/octet-stream", "buffer": b"candidate"}
+    )
+
+
+def run_stale_generation(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    sentinels = _privacy_sentinels()
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
+            page.add_init_script(SRI_STUB_SHIM)
+            _record_evidence(page, requests, console_messages, page_errors)
+            page.route(
+                ORT_CDN_URL,
+                lambda route: _fulfill_runtime(route, _scenario_ort_stub()),
+            )
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            _install_privacy_probe(page, sentinels)
+            page.evaluate(
                 """
-                globalThis.__obbFillTextCalls = 0;
-                globalThis.__obbStrokedPolygons = [];
-                let currentPath = [];
-                const originalFillText = CanvasRenderingContext2D.prototype.fillText;
-                const originalBeginPath = CanvasRenderingContext2D.prototype.beginPath;
-                const originalMoveTo = CanvasRenderingContext2D.prototype.moveTo;
-                const originalLineTo = CanvasRenderingContext2D.prototype.lineTo;
-                const originalStroke = CanvasRenderingContext2D.prototype.stroke;
-                CanvasRenderingContext2D.prototype.fillText = function (...args) {
-                  globalThis.__obbFillTextCalls += 1;
-                  return originalFillText.apply(this, args);
-                };
-                CanvasRenderingContext2D.prototype.beginPath = function (...args) {
-                  currentPath = [];
-                  return originalBeginPath.apply(this, args);
-                };
-                CanvasRenderingContext2D.prototype.moveTo = function (x, y, ...args) {
-                  currentPath.push([x, y]);
-                  return originalMoveTo.call(this, x, y, ...args);
-                };
-                CanvasRenderingContext2D.prototype.lineTo = function (x, y, ...args) {
-                  currentPath.push([x, y]);
-                  return originalLineTo.call(this, x, y, ...args);
-                };
-                CanvasRenderingContext2D.prototype.stroke = function (...args) {
-                  if (globalThis.__failResultRender) {
-                    throw new Error("tile=restricted | raw renderer failure");
-                  }
-                  if (currentPath.length) globalThis.__obbStrokedPolygons.push([...currentPath]);
-                  return originalStroke.apply(this, args);
-                };
+                () => {
+                  const actualFetch = globalThis.fetch.bind(globalThis);
+                  globalThis.__modelFetchStarted = false;
+                  globalThis.__modelFetchAborted = false;
+                  globalThis.fetch = (input, init = {}) => {
+                    const url = String(input instanceof Request ? input.url : input);
+                    if (!url.endsWith('/models/yolo26n-obb-privacy-sanitized.onnx')) {
+                      return actualFetch(input, init);
+                    }
+                    globalThis.__modelFetchStarted = true;
+                    return new Promise((_resolve, reject) => {
+                      init.signal?.addEventListener('abort', () => {
+                        globalThis.__modelFetchAborted = true;
+                        reject(new DOMException('aborted', 'AbortError'));
+                      }, {once: true});
+                    });
+                  };
+                }
                 """
             )
-            page.on("request", lambda request: requested_urls.append(request.url))
-            page.on("pageerror", lambda error: browser_errors.append(str(error)))
-            page.on("console", lambda message: browser_messages.append(message.text))
-            page.on(
-                "console",
-                lambda message: browser_errors.append(message.text)
-                if message.type == "error"
-                else None,
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("globalThis.__modelFetchStarted === true")
+            _set_model_file(page)
+            page.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
             )
+            page.wait_for_timeout(100)
+            if not page.evaluate("globalThis.__modelFetchAborted"):
+                raise RuntimeError("BYOM transition did not abort the stale demo model fetch")
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, sentinels
+            )
+            page.close()
+
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests = []
+            console_messages = []
+            page_errors = []
+            page.add_init_script(SRI_STUB_SHIM)
+            _record_evidence(page, requests, console_messages, page_errors)
+            page.route(
+                ORT_CDN_URL,
+                lambda route: _fulfill_runtime(
+                    route, _scenario_ort_stub(run_mode="delayed")
+                ),
+            )
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            _install_privacy_probe(page, sentinels)
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("typeof globalThis.__resolveDemoRun === 'function'")
+            _set_model_file(page)
+            page.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
+            )
+            page.evaluate("globalThis.__resolveDemoRun()")
+            page.wait_for_timeout(100)
+            if page.locator("#provenanceValue").inner_text() == DEMO_PROVENANCE:
+                raise RuntimeError("stale demo completion replaced the BYOM selection")
+            _assert_empty_disabled_result_state(page)
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, sentinels
+            )
+            page.close()
+
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests = []
+            console_messages = []
+            page_errors = []
+            page.add_init_script(SRI_STUB_SHIM)
+            _record_evidence(page, requests, console_messages, page_errors)
+            page.route(
+                ORT_CDN_URL,
+                lambda route: _fulfill_runtime(
+                    route,
+                    _scenario_ort_stub(
+                        create_mode="delayed-first", lifecycle=True
+                    ),
+                ),
+            )
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            _install_privacy_probe(page, sentinels)
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "typeof globalThis.__resolveCandidateCreate === 'function'"
+            )
+            _set_model_file(page)
+            page.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
+            )
+            if page.evaluate("globalThis.__releaseCount") != 0:
+                raise RuntimeError("active work was released before the stale candidate resolved")
+            page.evaluate("globalThis.__resolveCandidateCreate()")
+            page.wait_for_timeout(100)
+            lifecycle = page.evaluate("globalThis.__sessionLifecycle")
+            if "release:1" not in lifecycle:
+                raise RuntimeError("stale delayed candidate was not released")
+            if lifecycle[-1] != "release:1":
+                raise RuntimeError("stale delayed candidate was installed instead of released")
+            if page.locator("#provenanceValue").inner_text() == DEMO_PROVENANCE:
+                raise RuntimeError("stale delayed candidate replaced the BYOM selection")
+            _assert_empty_disabled_result_state(page)
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, sentinels
+            )
+        finally:
+            browser.close()
+
+
+def run_byom_transition(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    sentinels = (*_privacy_sentinels(), "private-selected-image.jpg")
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
+            page.add_init_script(SRI_STUB_SHIM)
+            _record_evidence(page, requests, console_messages, page_errors)
+            page.route(
+                ORT_CDN_URL,
+                lambda route: _fulfill_runtime(
+                    route, _scenario_ort_stub(lifecycle=True)
+                ),
+            )
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            _install_privacy_probe(page, sentinels)
+            _assert_empty_disabled_result_state(page)
+            initial_requests = list(requests)
+            page.locator("#byomPanel summary").click()
+            if requests != initial_requests:
+                raise RuntimeError("opening advanced BYOM requested a network asset")
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'success'"
+            )
+            page.evaluate("globalThis.__failNextCandidate = true")
+            _set_model_file(page, sentinels[1])
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("BYOM model selection retained harbor runtime")
+            _assert_empty_disabled_result_state(page)
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'"
+            )
+            lifecycle = page.evaluate("globalThis.__sessionLifecycle")
+            if "release:1" in lifecycle or "release:2" not in lifecycle:
+                raise RuntimeError("invalid candidate did not preserve the active demo session")
+            _assert_failure_cleanup(page, "Original · ready")
+
+            _set_model_file(page, "candidate-valid.onnx")
+            page.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
+            )
+            lifecycle = page.evaluate("globalThis.__sessionLifecycle")
+            if lifecycle.index("candidate:3") > lifecycle.index("release:1"):
+                raise RuntimeError("old session released before the valid candidate was ready")
+            if not page.locator("#detectBtn").is_disabled():
+                raise RuntimeError("BYOM model selection reused the demo image as local input")
+            _assert_empty_disabled_result_state(page)
+
+            page.locator("#fileInput").set_input_files(
+                {
+                    "name": sentinels[1],
+                    "mimeType": "image/png",
+                    "buffer": ("invalid-" + sentinels[2]).encode("utf-8"),
+                }
+            )
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("BYOM image selection retained harbor runtime")
+            _assert_empty_disabled_result_state(page)
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'error'"
+            )
+            _assert_failure_cleanup(page, "Original · ready")
+
+            valid_image_name = sentinels[-1]
+            page.locator("#fileInput").set_input_files(
+                {
+                    "name": valid_image_name,
+                    "mimeType": "image/jpeg",
+                    "buffer": (DEMO / DEMO_IMAGE_PATH.lstrip("/")).read_bytes(),
+                }
+            )
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("valid BYOM image selection retained a completed runtime")
+            _assert_empty_disabled_result_state(page)
+            page.wait_for_function(
+                "document.querySelector('#detectBtn').disabled === false"
+            )
+            byom_original = page.locator("#viewportByomImage")
+            if not byom_original.is_visible():
+                raise RuntimeError("selected BYOM image is not the visible original layer")
+            _assert_box_matches_viewport(page, "#viewportByomImage", "BYOM original layer")
+            if valid_image_name in (byom_original.get_attribute("alt") or ""):
+                raise RuntimeError("BYOM original alt text exposes the local filename")
+            if valid_image_name in page.locator("body").inner_text():
+                raise RuntimeError("BYOM selection exposes the local filename")
+            page.locator("#detectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'success'"
+            )
+            if page.locator("#provenanceValue").inner_text() != "Local files":
+                raise RuntimeError("BYOM run did not use local-file provenance")
+            if page.locator("#demoDetectBtn").is_disabled():
+                raise RuntimeError("BYOM completion left return-to-demo disabled")
+            before_return_requests = list(requests)
+            before_return_runs = page.evaluate("globalThis.__demoRunCount")
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#sampleState').textContent === 'Original · ready'"
+            )
+            returned = page.evaluate(
+                "[demoOriginalImage.getAttribute('src'), demoOriginalImage.alt, "
+                "runtimeValue.textContent, summaryCount.textContent, modeBadge.textContent, "
+                "document.querySelector('#status').dataset.kind, demoDetectBtn.textContent]"
+            )
+            if returned != [
+                "samples/harbor.jpg", "低密度港區的真實航拍原圖", "—", "0",
+                "尚未 Detect", "neutral", "開始 Detect",
+            ]:
+                raise RuntimeError(f"BYOM return did not restore the neutral harbor original: {returned!r}")
+            if not page.locator("#detectBtn").is_disabled():
+                raise RuntimeError("BYOM return left stale BYOM Detect enabled for the harbor original")
+            if page.locator("#canvasDescription").inner_text() != "尚無 detection result。":
+                raise RuntimeError("BYOM return retained the completed canvas description")
+            if requests != before_return_requests or page.evaluate("globalThis.__demoRunCount") != before_return_runs:
+                raise RuntimeError("BYOM return requested assets or ran inference")
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            if page.locator("#provenanceValue").inner_text() != f"{DEMO_PROVENANCE} · 低密度港區航拍範例":
+                raise RuntimeError("explicit Detect after BYOM return lost harbor provenance")
+            _assert_privacy_surfaces(
+                page, requests, console_messages, page_errors, sentinels
+            )
+
+            uncached = browser.new_page(viewport={"width": 1280, "height": 720})
+            uncached_requests: list[str] = []
+            uncached_messages: list[str] = []
+            uncached.add_init_script(SRI_STUB_SHIM)
+            _record_errors(uncached, uncached_requests, uncached_messages)
+            uncached.route(
+                ORT_CDN_URL,
+                lambda route: _fulfill_runtime(route, ORT_STUB),
+            )
+            uncached.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            initial_uncached_requests = list(uncached_requests)
+            uncached.locator("#byomPanel summary").click()
+            if uncached_requests != initial_uncached_requests:
+                raise RuntimeError("opening uncached BYOM requested a network asset")
+            _set_model_file(uncached, "candidate-valid.onnx")
+            uncached.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
+            )
+            runtime_tuple = uncached.evaluate(
+                """
+                () => {
+                  const script = [...document.scripts].find(item => item.src === %s);
+                  return script && [script.src, script.integrity, script.crossOrigin];
+                }
+                """ % json.dumps(ORT_CDN_URL)
+            )
+            if runtime_tuple != [ORT_CDN_URL, ORT_INTEGRITY, "anonymous"]:
+                raise RuntimeError("uncached BYOM model selection lost the pinned ORT tuple")
+            if uncached_requests.count(ORT_CDN_URL) != 1:
+                raise RuntimeError("uncached BYOM model selection did not request ORT exactly once")
+            if DEMO_MODEL_PATH in _request_paths(uncached_requests) or uncached_messages:
+                raise RuntimeError("uncached BYOM model selection requested demo bytes or logged errors")
+            uncached.close()
+        finally:
+            browser.close()
+
+
+def run_accessibility(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.add_init_script(SRI_STUB_SHIM)
+            page.route(ORT_CDN_URL, lambda route: _fulfill_runtime(route, ORT_STUB))
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            page.evaluate("document.activeElement.blur()")
+            page.keyboard.press("Tab")
+            if page.evaluate("document.activeElement?.className") != "skip-link":
+                raise RuntimeError("skip link is not the first keyboard focus target")
+            page.keyboard.press("Enter")
+            if page.evaluate("document.activeElement?.id") != "mainContent":
+                raise RuntimeError("skip link did not focus main#mainContent")
+            if not page.evaluate(
+                """
+                () => Boolean(
+                  claimBoundary.compareDocumentPosition(demoDetectBtn) &
+                  Node.DOCUMENT_POSITION_FOLLOWING
+                )
+                """
+            ):
+                raise RuntimeError("claim notice does not precede the first primary control")
+            claim_box = page.locator("#claimBoundary").bounding_box()
+            action_box = page.locator("#demoDetectBtn").bounding_box()
+            if claim_box is None or action_box is None or claim_box["y"] >= action_box["y"]:
+                raise RuntimeError("claim notice lost visual priority over the first primary control")
+            if page.locator("#sampleSelector, .sample-option").count() != 0:
+                raise RuntimeError("accessibility contract still exposes a sample selector")
+            identity = page.locator("#demoSampleTitle, #demoSampleKind")
+            if identity.count() != 2 or not identity.evaluate_all(
+                "nodes => nodes.every(node => !node.matches('button,[aria-pressed],[aria-selected]'))"
+            ):
+                raise RuntimeError("fixed harbor identity is not static accessible content")
+            page.locator("#demoDetectBtn").focus()
+            if page.evaluate("document.activeElement?.id") != "demoDetectBtn":
+                raise RuntimeError("fixed harbor Detect control is not focusable")
+            names = page.evaluate(
+                """
+                () => ({
+                  model: [modelInput.name, modelInput.labels.length],
+                  image: [fileInput.name, fileInput.labels.length],
+                  confidence: [confSlider.name, confSlider.labels.length],
+                  classes: [...document.querySelectorAll('.class-cb')].map(
+                    item => [item.name, item.labels.length]
+                  ),
+                })
+                """
+            )
+            if names["model"] != ["model", 1] or names["image"] != ["image", 1]:
+                raise RuntimeError("file inputs lost stable names or labels")
+            if names["confidence"] != ["confidence", 1]:
+                raise RuntimeError("confidence input lost its stable name or label")
+            if any(item != ["class-filter", 1] for item in names["classes"]):
+                raise RuntimeError("class inputs lost stable names or labels")
+            headings = page.evaluate(
+                """
+                () => ({
+                  page: document.querySelector('h1')?.tagName,
+                  controls: controlsTitle.tagName,
+                  sample: demoSampleTitle.tagName,
+                  result: resultTitle.tagName,
+                  table: tableTitle.tagName,
+                  byom: byomPanel.querySelector('summary')?.tagName,
+                })
+                """
+            )
+            if headings != {
+                "page": "H1",
+                "controls": "H2",
+                "sample": "H3",
+                "result": "H2",
+                "table": "H3",
+                "byom": "SUMMARY",
+            }:
+                raise RuntimeError(f"workbench heading hierarchy is wrong: {headings!r}")
+            description = page.locator("#canvasDescription")
+            if (
+                page.locator("#canvas").get_attribute("aria-describedby")
+                != "canvasDescription"
+                or page.locator("#canvasDescription").count() != 1
+            ):
+                raise RuntimeError("canvas lost its single textual-description target")
+            if description.get_attribute("aria-live") is not None:
+                raise RuntimeError("canvas description unexpectedly became live")
+            if description.inner_text() != "尚無 detection result。":
+                raise RuntimeError("empty canvas description is stale")
+            status = page.locator("#status")
+            polite_regions = page.locator('[aria-live="polite"]')
+            if (
+                status.get_attribute("aria-live") != "polite"
+                or polite_regions.count() != 1
+                or polite_regions.first.get_attribute("id") != "status"
+            ):
+                raise RuntimeError("status is not the only deliberate polite live region")
+
+            page.locator("main#mainContent").focus()
+            initial_focus_order = []
+            for _ in range(20):
+                page.keyboard.press("Tab")
+                focused = page.evaluate(
+                    """
+                    () => {
+                      const active = document.activeElement;
+                      if (!active) return '';
+                      if (active.id) return `#${active.id}`;
+                      if (active.matches('#byomPanel summary')) return '#byomPanel summary';
+                      if (active.matches('.source-links a')) return '.source-links a';
+                      return active.tagName.toLowerCase();
+                    }
+                    """
+                )
+                initial_focus_order.append(focused)
+                if focused == ".source-links a":
+                    break
+            try:
+                detect_index = initial_focus_order.index("#demoDetectBtn")
+                byom_index = initial_focus_order.index("#byomPanel summary")
+                source_index = initial_focus_order.index(".source-links a")
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"initial keyboard order misses a required stop: {initial_focus_order!r}"
+                ) from exc
+            if not detect_index < byom_index < source_index:
+                raise RuntimeError(
+                    f"initial keyboard order leaves the workbench sequence: {initial_focus_order!r}"
+                )
+            if not page.evaluate(
+                """
+                () => Boolean(
+                  resultControls.compareDocumentPosition(byomPanel) &
+                  Node.DOCUMENT_POSITION_FOLLOWING
+                )
+                """
+            ):
+                raise RuntimeError("BYOM disclosure no longer follows the filters")
+
+            _assert_no_page_overflow_or_obscured_action(page, "desktop accessibility")
+            page.emulate_media(forced_colors="active")
+            _assert_no_page_overflow_or_obscured_action(page, "forced colors")
+            page.emulate_media(forced_colors="none")
+
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'success'"
+            )
+            row = page.locator("#resultsBody tr").first.locator("td").all_text_contents()
+            description_text = description.inner_text()
+            if f"class={row[0]}" not in description_text or f"confidence={row[1]}" not in description_text:
+                raise RuntimeError("accessible description diverged from the sorted visible table")
+            if "confidence=" in status.inner_text() or "center-x=" in status.inner_text():
+                raise RuntimeError("live status duplicates the full detection announcement")
+
+            if page.locator("#confSlider").is_disabled():
+                raise RuntimeError("successful Detect left confidence outside keyboard workflow")
+            if page.locator(".class-cb:not(:disabled)").count() == 0:
+                raise RuntimeError("successful Detect left class filters outside keyboard workflow")
+            if page.evaluate("document.activeElement?.id") != "demoDetectBtn":
+                raise RuntimeError("successful Detect moved focus away from the demo action")
+            success_focus_order = ["#demoDetectBtn"]
+            for _ in range(64):
+                page.keyboard.press("Tab")
+                focused = page.evaluate(
+                    """
+                    () => {
+                      const active = document.activeElement;
+                      if (!active) return '';
+                      if (active.matches('.class-cb')) return '.class-cb';
+                      if (active.matches('#byomPanel summary')) return '#byomPanel summary';
+                      if (active.matches('.table-scroll')) return '.table-scroll';
+                      if (active.matches('.source-links a')) return '.source-links a';
+                      if (active.id) return `#${active.id}`;
+                      return active.tagName.toLowerCase();
+                    }
+                    """
+                )
+                success_focus_order.append(focused)
+                if focused == ".source-links a":
+                    break
+            required_success_stops = [
+                "#demoDetectBtn",
+                "#confSlider",
+                ".class-cb",
+                "#byomPanel summary",
+                ".table-scroll",
+                ".source-links a",
+            ]
+            try:
+                success_indices = [
+                    success_focus_order.index(stop) for stop in required_success_stops
+                ]
+            except ValueError as exc:
+                raise RuntimeError(
+                    "successful keyboard order misses an enabled workbench stop: "
+                    f"{success_focus_order!r}"
+                ) from exc
+            if success_indices != sorted(success_indices):
+                raise RuntimeError(
+                    "successful keyboard order leaves the workbench sequence: "
+                    f"{success_focus_order!r}"
+                )
+            if not page.locator("#viewToggleBtn").is_hidden():
+                try:
+                    view_index = success_focus_order.index("#viewToggleBtn")
+                except ValueError as exc:
+                    raise RuntimeError(
+                        "successful keyboard order misses the visible original/result action"
+                    ) from exc
+                if not success_indices[0] < view_index < success_indices[1]:
+                    raise RuntimeError(
+                        "original/result action is outside the successful keyboard sequence"
+                    )
+
+            for selector in (
+                "#demoDetectBtn",
+                "#byomPanel summary",
+                ".table-scroll",
+                ".source-links a",
+            ):
+                target = page.locator(selector).first
+                target.focus()
+                page.keyboard.press("Tab")
+                page.keyboard.press("Shift+Tab")
+                focus = target.evaluate(
+                    """
+                    element => {
+                      const style = getComputedStyle(element);
+                      return [style.outlineStyle, parseFloat(style.outlineWidth) || 0];
+                    }
+                    """
+                )
+                if focus[0] == "none" or focus[1] < 3:
+                    raise RuntimeError(f"keyboard focus indicator is not visible for {selector}")
+            normal_motion = page.evaluate(
+                """
+                () => ({
+                  animation: getComputedStyle(canvas).animationName,
+                  transition: getComputedStyle(
+                    document.querySelector('.file-control')
+                  ).transitionDuration,
+                })
+                """
+            )
+            if normal_motion["animation"] != "result-reveal":
+                raise RuntimeError("reduced-motion test lacks the normal result animation")
+            page.emulate_media(reduced_motion="reduce")
+            reduced_motion = page.evaluate(
+                """
+                () => ({
+                  animation: getComputedStyle(canvas).animationName,
+                  transition: getComputedStyle(
+                    document.querySelector('.file-control')
+                  ).transitionDuration,
+                })
+                """
+            )
+            durations = [
+                float(value.removesuffix("ms")) if value.endswith("ms") else float(value.removesuffix("s")) * 1000
+                for value in reduced_motion["transition"].split(", ")
+            ]
+            if reduced_motion["animation"] != "none":
+                raise RuntimeError("reduced-motion preference retains the result animation")
+            if any(value > 20 for value in durations):
+                raise RuntimeError("reduced-motion preference retains a visible transition")
+            _assert_no_page_overflow_or_obscured_action(page, "reduced motion")
+            source_links = {
+                text.strip(): href
+                for text, href in page.locator(".source-links a").evaluate_all(
+                    "items => items.map(item => [item.textContent, item.getAttribute('href')])"
+                )
+            }
+            if "Source" not in source_links or "AGPL-3.0-or-later" not in source_links:
+                raise RuntimeError("source or code-license link is not readable")
+            if not any(
+                href == "third_party/yolo26n-obb-privacy-sanitization.json"
+                for href in source_links.values()
+            ):
+                raise RuntimeError("privacy-sanitization record lacks a readable direct link")
+            byom = page.locator("#byomPanel")
+            if byom.get_attribute("open") is not None or "進階" not in byom.locator("summary").inner_text():
+                raise RuntimeError("advanced BYOM is no longer secondary")
+            if byom.evaluate("panel => panel.closest('#controlRail')?.id || ''") != "controlRail":
+                raise RuntimeError("advanced BYOM is not inside the compact control rail")
+        finally:
+            browser.close()
+
+
+def _assert_responsive_layout(page: object, label: str) -> None:
+    overflow = page.evaluate(
+        "Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth"
+    )
+    if overflow > 1:
+        offenders = page.evaluate(
+            """
+            () => [...document.querySelectorAll('body *')]
+              .filter(element => {
+                const rect = element.getBoundingClientRect();
+                return rect.left < -1 || rect.right > innerWidth + 1;
+              })
+              .slice(0, 8)
+              .map(element => {
+                const rect = element.getBoundingClientRect();
+                const name = element.id
+                  ? `#${element.id}`
+                  : `${element.tagName.toLowerCase()}.${element.className || ''}`;
+                return `${name}:${Math.round(rect.left)}..${Math.round(rect.right)}`;
+              })
+            """
+        )
+        raise RuntimeError(f"{label} layout has horizontal overflow: {offenders!r}")
+    for selector in (
+        "#demoOriginalImage",
+        "#demoDetectBtn",
+        "#status",
+        '.source-links a[href*="github.com/kuotunyu/aerial-obb-lab"]',
+        '.source-links a[href*="LICENSE"]',
+        '.source-links a[href*="sanitization"]',
+    ):
+        target = page.locator(selector).first
+        if target.count() != 1 or not target.is_visible():
+            raise RuntimeError(
+                f"{label} layout hides required demo or source element {selector}"
+            )
+        box = target.bounding_box()
+        if box is None or box["x"] < -1 or box["x"] + box["width"] > page.evaluate("innerWidth") + 1:
+            raise RuntimeError(
+                f"{label} layout clips required demo or source element {selector}"
+            )
+    rail_box = page.locator("#controlRail").bounding_box()
+    viewport_box = page.locator("#resultViewport").bounding_box()
+    if label == "desktop":
+        if (
+            rail_box is None
+            or viewport_box is None
+            or viewport_box["x"] <= rail_box["x"] + rail_box["width"]
+        ):
+            raise RuntimeError("desktop result viewport is not right of the control rail")
+        return
+
+    ordered = [
+        "#claimBoundary",
+        "#sampleCard",
+        "#demoDetectBtn",
+        "#resultViewport",
+        ".result-summary",
+        "#resultControls",
+        ".detections",
+        "#byomPanel",
+    ]
+    boxes = [page.locator(selector).bounding_box() for selector in ordered]
+    if any(box is None for box in boxes):
+        raise RuntimeError(f"{label} layout hides an ordered workbench section")
+    tops = [box["y"] for box in boxes if box is not None]
+    if tops != sorted(tops):
+        raise RuntimeError(f"{label} workbench visual order is wrong: {tops!r}")
+
+
+def run_responsive(
+    width: int,
+    height: int,
+    label: str,
+    *,
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": width, "height": height})
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            _assert_responsive_layout(page, label)
+            if label == "desktop":
+                page.set_viewport_size({"width": width // 2, "height": height // 2})
+                _assert_responsive_layout(page, "desktop 200% zoom")
+        finally:
+            browser.close()
+
+
+def run_desktop(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    run_responsive(
+        1280, 720, "desktop", executable_path=executable_path, base_url=base_url
+    )
+
+
+def run_workbench_layout(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            loading_page = browser.new_page(viewport={"width": 1280, "height": 720})
+            held_image_routes = []
+            loading_page.route(
+                f"**{DEMO_IMAGE_PATH}", lambda route: held_image_routes.append(route)
+            )
+            loading_page.goto(
+                f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded"
+            )
+            try:
+                if loading_page.evaluate("demoOriginalImage.complete"):
+                    raise RuntimeError("preload empty-state test did not hold the demo image open")
+                _assert_empty_disabled_result_state(loading_page)
+            finally:
+                for route in held_image_routes:
+                    route.abort()
+                loading_page.close()
+
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            _record_errors(page, requests, messages)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            assert_real_demo_initial(page, requests, messages)
+            assert_workbench_initial_layout(page)
+        finally:
+            browser.close()
+
+
+def run_mobile(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    run_responsive(
+        390, 844, "mobile", executable_path=executable_path, base_url=base_url
+    )
+
+
+def run_real_demo_success(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+    screenshot: Path | None = None,
+    mobile_screenshot: Path | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            page.add_init_script(REAL_INSTRUMENTATION)
+            _record_errors(page, requests, messages)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            assert_real_demo_initial(page, requests, messages)
+            run_counter = exercise_real_demo_success(page, requests, messages)
+            if screenshot is not None:
+                capture_canonical_harbor_result(page, screenshot)
+            assert_original_result_toggle(page, requests, run_counter)
+            assert_demo_cached_filters(page, requests, run_counter)
+            if mobile_screenshot is not None:
+                page.set_viewport_size({"width": 390, "height": 844})
+                mobile_screenshot.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(mobile_screenshot), full_page=True)
+        finally:
+            browser.close()
+
+
+def run_stubbed_cache(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    try:
+        from playwright.sync_api import Route, sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            page.add_init_script(SRI_STUB_SHIM)
+            page.add_init_script(CANVAS_INSTRUMENTATION)
+            _record_errors(page, requests, messages)
 
             def stub_ort(route: Route) -> None:
                 route.fulfill(
                     status=200,
                     content_type="application/javascript",
                     headers={"Access-Control-Allow-Origin": "*"},
-                    body=ORT_STUB,
+                    body=_scenario_ort_stub(run_mode="delayed"),
                 )
 
-            entry_url = f"{str(served_url).rstrip('/')}/"
             page.route(ORT_CDN_URL, stub_ort)
-            page.goto(entry_url, wait_until="networkidle")
-            if requested_urls.count(ORT_CDN_URL) != 0:
-                raise RuntimeError("ORT must not be requested during initial page load")
-            if page.locator("html").get_attribute("lang") != "zh-Hant-TW":
-                raise RuntimeError("browser workbench must declare zh-Hant-TW")
-            header = page.locator("header").inner_text()
-            for token in ("Aerial OBB Lab", "Browser", "WASM", "Local files"):
-                if token not in header:
-                    raise RuntimeError(f"browser workbench header is missing {token!r}")
-            body_text = page.locator("body").inner_text()
-            if "模型與影像不會上傳" not in body_text:
-                raise RuntimeError("browser workbench must disclose local-only file handling")
-            if "output0 [1,N,7]" not in page.locator("footer").inner_text():
-                raise RuntimeError("browser workbench footer is missing the output contract")
-            if page.locator("h1").count() != 1:
-                raise RuntimeError("browser workbench must contain exactly one h1")
-
-            page.keyboard.press("Tab")
-            skip_link = page.locator("a.skip-link")
-            if (
-                skip_link.count() != 1
-                or page.evaluate(
-                    "document.activeElement === document.querySelector('a.skip-link')"
-                )
-                is not True
-            ):
-                raise RuntimeError("first keyboard focus must be the main-workspace skip link")
-            if (
-                skip_link.inner_text() != "跳至主要工作區"
-                or skip_link.get_attribute("href") != "#mainContent"
-            ):
-                raise RuntimeError("skip link text or target is wrong")
-            page.keyboard.press("Enter")
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            assert_real_demo_initial(page, requests, messages)
+            assert_malformed_frozen_manifest_is_closed(page)
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("typeof globalThis.__resolveDemoRun === 'function'")
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("held demo work did not keep the official sample loading")
+            page.evaluate("globalThis.__resolveDemoRun()")
             page.wait_for_function(
-                "document.activeElement === document.querySelector('#mainContent')"
+                "document.querySelector('#status').dataset.kind === 'success'",
+                timeout=30_000,
             )
-
-            if page.locator('meta[name="theme-color"]').get_attribute("content") != "#edf1f4":
-                raise RuntimeError("theme-color metadata is not exact")
-            expected_names = {
-                "#modelInput": "model",
-                "#fileInput": "image",
-                "#confSlider": "confidence",
-            }
-            for selector, expected_name in expected_names.items():
-                if page.locator(selector).get_attribute("name") != expected_name:
-                    raise RuntimeError(f"stable control name is wrong for {selector}")
-            if any(
-                name != "class-filter"
-                for name in page.locator(".class-cb").evaluate_all(
-                    "els => els.map(el => el.name)"
-                )
-            ):
-                raise RuntimeError("class checkboxes do not share the semantic filter name")
-
-            initial_result_presentation = page.evaluate(
-                "[modeBadge.textContent, provenanceValue.textContent]"
-            )
-
-            notice = page.locator("#claimBoundary")
-            control = page.locator("#showcaseBtn")
-            assert notice.count() == 1 and control.count() == 1
-            assert "沒有執行模型推論" in notice.inner_text()
-            assert notice.evaluate(
-                "(notice, control) => Boolean(notice.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING)",
-                control.element_handle(),
-            )
-            notice_box, control_box = notice.bounding_box(), control.bounding_box()
-            assert notice_box and control_box and notice_box["y"] < control_box["y"]
-
-            body_size = page.locator("body").evaluate("el => getComputedStyle(el).fontSize")
-            title_size = page.locator("h1").evaluate("el => getComputedStyle(el).fontSize")
-            title_family = page.locator("h1").evaluate(
-                "el => getComputedStyle(el).fontFamily"
-            )
-            button_height = page.locator("#detectBtn").evaluate(
-                "el => el.getBoundingClientRect().height"
-            )
-            if body_size != "19px":
-                raise RuntimeError(f"unexpected body font size: {body_size}")
-            if float(str(title_size).removesuffix("px")) < 38:
-                raise RuntimeError(f"unexpected title font size: {title_size}")
-            if "IBM Plex Sans Condensed" not in str(title_family):
-                raise RuntimeError(f"unexpected display font: {title_family}")
-            if float(button_height) < 44:
-                raise RuntimeError(f"Detect control is too short: {button_height}")
-
-            compact_metrics = page.evaluate(
-                """
-                () => {
-                  const box = (selector) => document.querySelector(selector).getBoundingClientRect();
-                  const font = (selector) => parseFloat(
-                    getComputedStyle(document.querySelector(selector)).fontSize
-                  );
-                  const radius = (selector) => getComputedStyle(
-                    document.querySelector(selector)
-                  ).borderRadius;
-                  return {
-                    headerHeight: box('.product-header').height,
-                    fileControlHeight: box('.file-control').height,
-                    detectBottom: box('#detectBtn').bottom,
-                    viewportHeight: window.innerHeight,
-                    smallType: {
-                      fileKind: font('.file-kind'),
-                      fileHelp: font('.file-control small'),
-                      rangeScale: font('.range-scale'),
-                      filterHelp: font('.class-filter > p'),
-                      filterChoice: font('.class-list label'),
-                      metricLabel: font('.result-summary dt'),
-                      tableMeta: font('.table-heading span'),
-                      tableHeader: font('th'),
-                      footer: font('footer')
-                    },
-                    radii: {
-                      trustSignal: radius('.trust-signals li'),
-                      controlRail: radius('.control-rail'),
-                      fileControl: radius('.file-control'),
-                      thresholdValue: radius('#confVal'),
-                      classFilter: radius('.class-filter'),
-                      filterChoice: radius('.class-list label'),
-                      status: radius('.status'),
-                      detect: radius('#detectBtn'),
-                      viewport: radius('.canvas-frame'),
-                      detections: radius('.detections')
-                    }
-                  };
-                }
-                """
-            )
-            if compact_metrics["headerHeight"] > 80:
-                raise RuntimeError(f"header wastes vertical space: {compact_metrics!r}")
-            if compact_metrics["fileControlHeight"] > 90:
-                raise RuntimeError(f"file controls are too tall: {compact_metrics!r}")
-            if compact_metrics["detectBottom"] > compact_metrics["viewportHeight"]:
-                raise RuntimeError(f"primary action is below the first viewport: {compact_metrics!r}")
-            undersized = {
-                name: size
-                for name, size in compact_metrics["smallType"].items()
-                if size < 15
-            }
-            if undersized:
-                raise RuntimeError(f"secondary UI text is too small: {undersized!r}")
-            rounded = {
-                name: value
-                for name, value in compact_metrics["radii"].items()
-                if value != "0px"
-            }
-            if rounded:
-                raise RuntimeError(f"nonessential rounded borders remain: {rounded!r}")
-
-            controls = page.locator("#controlRail").bounding_box()
-            results = page.locator("#resultWorkspace").bounding_box()
-            if controls is None or results is None:
-                raise RuntimeError("canonical workbench regions are missing")
-            if abs(controls["y"] - results["y"]) > 2:
-                raise RuntimeError("desktop workbench regions do not align")
-            if results["width"] <= controls["width"]:
-                raise RuntimeError("desktop result workspace must dominate the control rail")
-            if results["height"] < controls["height"] - 2:
-                raise RuntimeError(
-                    "desktop result workspace leaves ineffective lower whitespace; "
-                    f"controls={controls!r}; results={results!r}"
-                )
-
-            page.locator("#modelInput").focus()
-            focus_width = page.locator("#modelDrop").evaluate(
-                "el => parseFloat(getComputedStyle(el).outlineWidth)"
-            )
-            if float(focus_width) < 2:
-                raise RuntimeError("model picker has no visible keyboard focus")
-            if not page.locator("#detectBtn").is_disabled():
-                raise RuntimeError("Detect must be disabled before model and image selection")
-            page.locator("#confSlider").evaluate(
-                "slider => slider.dispatchEvent(new Event('input', { bubbles: true }))"
-            )
-            if page.locator("#status").get_attribute("data-kind") == "error":
-                raise RuntimeError("filtering before a result must remain a no-op")
-
-            page.locator("#showcaseBtn").click()
+            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__demoRunCount]") != [1, 1]:
+                raise RuntimeError("first stubbed demo run did not create and run one session")
+            if page.locator("#sampleState").inner_text() != "Result · ready":
+                raise RuntimeError("held demo work did not finish in the official sample result state")
+            page.evaluate("globalThis.__resolveDemoRun = null")
+            page.locator("#demoDetectBtn").click()
             page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('Synthetic fixture')",
-                timeout=5_000,
+                "globalThis.__demoRunCount === 2 && "
+                "typeof globalThis.__resolveDemoRun === 'function'",
+                timeout=30_000,
             )
-            if requested_urls.count(ORT_CDN_URL) != 0:
-                raise RuntimeError("synthetic showcase must not request ORT")
-            if page.locator("#modeBadge").inner_text() != "SYNTHETIC FIXTURE · NO INFERENCE":
-                raise RuntimeError("showcase mode badge is not exact")
-            if page.locator("#provenanceValue").inner_text() != "Committed synthetic fixture":
-                raise RuntimeError("showcase provenance is not exact")
-            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
-                raise RuntimeError("showcase runtime must disclose that inference did not run")
-            showcase_row = page.locator("#resultsBody tr").first.locator("td").all_text_contents()
-            if showcase_row != EXPECTED_ROW:
-                raise RuntimeError(f"unexpected synthetic showcase row: {showcase_row!r}")
-            if page.locator("#resultTitle").evaluate("el => document.activeElement === el") is not True:
-                raise RuntimeError("showcase activation must move focus to the result title")
-            polygon = page.evaluate("globalThis.__obbStrokedPolygons.at(-1)")
-            expected_polygon = [[225, 50], [225, 150], [175, 150], [175, 50]]
-            if polygon is None or len(polygon) != len(expected_polygon) or any(
-                abs(actual - expected) > 0.01
-                for actual_corner, expected_corner in zip(polygon, expected_polygon, strict=True)
-                for actual, expected in zip(actual_corner, expected_corner, strict=True)
-            ):
-                raise RuntimeError(f"synthetic showcase did not draw expected polygon: {polygon!r}")
-            canvas = page.locator("#canvas")
-            description_id = canvas.get_attribute("aria-describedby")
-            if description_id != "canvasDescription":
-                raise RuntimeError("canvas must reference canvasDescription")
-            description = page.locator("#canvasDescription")
-            if description.get_attribute("aria-live") is not None:
-                raise RuntimeError("canvas description must not be aria-live")
-            expected_fields = {
-                "class": "ship",
-                "confidence": "0.900",
-                "center-x": "200.0 px",
-                "center-y": "100.0 px",
-                "width": "100.0 px",
-                "height": "50.0 px",
-                "angle": "90.0°",
-            }
-            for label, value in expected_fields.items():
-                if f"{label}={value}" not in description.inner_text():
-                    raise RuntimeError(
-                        f"canvas description lacks structured field {label}={value}"
-                    )
-            page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.95'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
-            if page.locator("#resultsBody tr").count() != 0:
-                raise RuntimeError("confidence changes must re-filter cached showcase output")
-            if page.locator("#summaryCount").inner_text() != "0":
-                raise RuntimeError("cached showcase re-filter must update the summary")
-            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
-                raise RuntimeError("synthetic confidence refilter lost no-inference runtime")
-            page.locator("#confSlider").evaluate("(slider) => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }")
-            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
-                raise RuntimeError("synthetic confidence restore lost no-inference runtime")
-            plane = page.locator('.class-cb[value="0"]')
-            plane.check()
-            if page.locator("#resultsBody tr").count() != 0:
-                raise RuntimeError("synthetic class refilter did not hide the fixture row")
-            if "沒有 detections" not in description.inner_text():
-                raise RuntimeError("filtered-empty canvas description is not explicit")
-            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
-                raise RuntimeError("synthetic class refilter lost no-inference runtime")
-            plane.uncheck()
-            if page.locator("#runtimeValue").inner_text() != "N/A · no inference":
-                raise RuntimeError("synthetic class restore lost no-inference runtime")
-
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "customer-alpha-private-model.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"synthetic-not-a-real-model",
-                    }
-                ]
-            )
-            try:
-                page.wait_for_function(
-                    "document.querySelector('#status').dataset.kind === 'success'",
-                    timeout=5_000,
-                )
-            except Exception as exc:
-                current_status = page.locator("#status").inner_text()
-                raise RuntimeError(
-                    "model selection did not reach success state; "
-                    f"status={current_status!r}; browser_errors={browser_errors!r}"
-                ) from exc
-            sensitive_model_name = "customer-alpha-private-model.onnx"
-            visible_and_console = " | ".join(
-                [page.locator("body").inner_text(), *browser_messages]
-            )
-            if sensitive_model_name in visible_and_console:
-                raise RuntimeError("successful model selection exposed a local filename")
-            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
-                raise RuntimeError("successful model selection must use fixed neutral copy")
-            if requested_urls.count(ORT_CDN_URL) != 1:
-                raise RuntimeError(
-                    "first BYOM model selection must request ORT exactly once; "
-                    f"requests={requested_urls.count(ORT_CDN_URL)}"
-                )
-            runtime_scripts = page.locator(f'script[src="{ORT_CDN_URL}"]')
-            if runtime_scripts.count() != 1:
-                raise RuntimeError("lazy ORT loader must append exactly one runtime script")
-            runtime_attributes = runtime_scripts.evaluate(
-                "script => ({ integrity: script.integrity, crossOrigin: script.crossOrigin })"
-            )
-            if runtime_attributes != {
-                "integrity": ORT_INTEGRITY,
-                "crossOrigin": "anonymous",
-            }:
-                raise RuntimeError(
-                    f"lazy ORT script security attributes are wrong: {runtime_attributes!r}"
-                )
-            if page.evaluate("globalThis.ort.env.wasm.wasmPaths") != ORT_WASM_BASE:
-                raise RuntimeError("lazy ORT loader did not pin the WASM asset base")
-            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [1, 0]:
-                raise RuntimeError("first validated model must become active without a release")
-            if page.locator("#modeBadge").inner_text() != "NO RESULT":
-                raise RuntimeError("BYOM selection must clear synthetic mode state")
-            if page.locator("#provenanceValue").inner_text() != "—":
-                raise RuntimeError("BYOM selection must clear synthetic provenance")
-            canvas_is_clear = page.locator("#canvas").evaluate(
-                "canvas => canvas.getContext('2d').getImageData(200, 100, 1, 1).data[3] === 0"
-            )
-            if not canvas_is_clear or page.locator("#canvasFrame").evaluate(
-                "el => el.classList.contains('has-results')"
-            ):
-                raise RuntimeError("BYOM selection must clear the synthetic canvas result")
-            if not page.locator("#detectBtn").is_disabled():
-                raise RuntimeError("Detect must remain disabled until an image is selected")
-            page.locator("#fileInput").set_input_files(
-                files=[
-                    {
-                        "name": SENSITIVE_IMAGE_NAME,
-                        "mimeType": "image/svg+xml",
-                        "buffer": FIXTURE.read_bytes(),
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('影像已載入')"
-            )
-            visible_and_console = " | ".join(
-                [page.locator("body").inner_text(), *browser_messages]
-            )
-            if SENSITIVE_IMAGE_NAME in visible_and_console:
-                raise RuntimeError("successful image selection exposed a local filename")
-            if page.locator("#fileLabel").inner_text() != "Local image ready":
-                raise RuntimeError("successful image selection must use fixed neutral copy")
-            if page.locator("#detectBtn").is_disabled():
-                raise RuntimeError("Detect must be enabled after local model and image selection")
-            base_canvas = page.locator("#canvas").evaluate("canvas => canvas.toDataURL()")
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('完成')"
-            )
-
-            completed_byom_presentation = page.evaluate(
-                "[modeBadge.textContent, provenanceValue.textContent]"
-            )
-            presentation_failures = []
-            if initial_result_presentation != ["NO RESULT", "—"]:
-                presentation_failures.append(
-                    "initial result presentation must be exact "
-                    f"['NO RESULT', '—']; got {initial_result_presentation!r}"
-                )
-            if completed_byom_presentation != [
-                "BYOM · LOCAL BROWSER INFERENCE",
-                "Local files",
-            ]:
-                presentation_failures.append(
-                    "successful BYOM result presentation must be exact "
-                    "['BYOM · LOCAL BROWSER INFERENCE', 'Local files']; "
-                    f"got {completed_byom_presentation!r}"
-                )
-            if presentation_failures:
-                raise RuntimeError("; ".join(presentation_failures))
-            row = page.locator("#resultsBody tr").first.locator("td").all_text_contents()
-            if row != EXPECTED_ROW:
-                raise RuntimeError(f"unexpected browser result row: {row!r}")
-            canvas_size = page.locator("#canvas").evaluate(
-                "element => [element.width, element.height]"
-            )
-            if canvas_size != [400, 200]:
-                raise RuntimeError(f"unexpected canvas size: {canvas_size!r}")
-            status = page.locator("#status").inner_text()
-            if "完成" not in status:
-                raise RuntimeError(f"unexpected browser status: {status!r}")
-            if page.locator("#status").get_attribute("data-kind") != "success":
-                raise RuntimeError("successful inference has no semantic success state")
-            if page.locator("#summaryCount").inner_text() != "1":
-                raise RuntimeError("detection count summary was not updated")
-            if page.locator("#summaryTop").inner_text() != "0.900":
-                raise RuntimeError("top-confidence summary was not updated")
-            if page.locator("#resultsBody tr").count() != 1:
-                raise RuntimeError("result table must contain the decoded row")
-            if not page.locator("#canvasFrame").evaluate(
-                "el => el.classList.contains('has-results')"
-            ):
-                raise RuntimeError("result viewport has no authored completion reveal state")
-            if page.evaluate("globalThis.__obbFillTextCalls") != 0:
-                raise RuntimeError("dense result labels must not be drawn on the canvas")
-            byom_runtime = page.locator("#runtimeValue").inner_text()
-            if not re.fullmatch(r"\d+ ms", byom_runtime):
-                raise RuntimeError(f"BYOM runtime is not numeric: {byom_runtime!r}")
-            page.locator("#confSlider").evaluate(
-                "slider => { slider.value = '0.95'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
-            )
-            if page.locator("#runtimeValue").inner_text() != byom_runtime:
-                raise RuntimeError("BYOM confidence refilter changed measured runtime")
-            page.locator("#confSlider").evaluate(
-                "slider => { slider.value = '0.25'; slider.dispatchEvent(new Event('input', { bubbles: true })); }"
-            )
-
-            page.evaluate(
-                """
-                () => {
-                  const originalRun = state.session.run;
-                  globalThis.__resolvePendingByomRun = null;
-                  state.session.run = (...args) => new Promise((resolve) => {
-                    globalThis.__resolvePendingByomRun = () => {
-                      state.session.run = originalRun;
-                      resolve(originalRun(...args));
-                    };
-                  });
-                }
-                """
-            )
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('正在本機 browser 執行 inference…')"
-            )
-            if page.locator("#canvasDescription").inner_text() != CANVAS_RESET_DESCRIPTION:
-                raise RuntimeError("pending BYOM detect left a stale canvas description")
-            if page.locator("#runtimeValue").inner_text() != "—":
-                raise RuntimeError("pending BYOM detect retained a numeric runtime")
-            if page.evaluate("state.phase") != "loading" or page.evaluate("state.cached !== null"):
-                raise RuntimeError("pending BYOM detect retained a current result identity")
-            assert_result_cleared(page, base_canvas, "pending BYOM detect")
-            rendered_and_console = " | ".join([page.locator("body").inner_text(), *browser_messages])
-            leaked = [token for token in SENSITIVE_TOKENS if token in rendered_and_console]
-            if leaked:
-                raise RuntimeError(f"pending BYOM detect leaked sensitive data: {leaked!r}")
-            page.evaluate("globalThis.__resolvePendingByomRun()")
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('完成')"
-            )
-            if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
-                raise RuntimeError("resolved pending BYOM detect did not restore a numeric runtime")
-
-            for failure_flag, failure_code in (
-                ("__failInferenceRun", "INFERENCE_RUN"),
-                ("__invalidInferenceOutput", "OUTPUT_SCHEMA"),
-                ("__failResultRender", "RENDER_RESULT"),
-            ):
-                page.evaluate(f"globalThis.{failure_flag} = true")
-                page.locator("#detectBtn").click()
-                page.wait_for_function(
-                    "document.querySelector('#status').dataset.kind === 'error'"
-                )
-                assert_fixed_failure(page, browser_messages, failure_code)
-                assert_result_cleared(page, base_canvas, failure_code)
-                page.evaluate(f"globalThis.{failure_flag} = false")
-                page.locator("#detectBtn").click()
-                page.wait_for_function(
-                    "document.querySelector('#status').textContent.includes('完成')"
-                )
-
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "replacement.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"replacement-model",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "globalThis.__ortCreateCount === 2 && globalThis.__ortReleaseCount === 1"
-            )
-            if requested_urls.count(ORT_CDN_URL) != 1:
-                raise RuntimeError("cached ORT loader must not request the runtime twice")
-            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [2, 1]:
-                raise RuntimeError("validated replacement must release exactly the previous session")
-            if page.evaluate("globalThis.__ortActiveSessionIdsAtRelease") != [2]:
-                raise RuntimeError("previous session was released before replacement assignment")
-
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "invalid-contract.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"\x03invalid-contract",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "document.querySelector('#status').dataset.kind === 'error'"
-            )
-            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
-                raise RuntimeError("invalid candidate changed the neutral active-model label")
-            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__ortReleaseCount]") != [3, 2]:
-                raise RuntimeError("invalid candidate was not released while preserving the active session")
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('完成')"
-            )
-            if page.evaluate("globalThis.__ortRunSessionIds.at(-1)") != 2:
-                raise RuntimeError("invalid candidate replaced the last validated session")
-
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "delayed-model-a.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"\x01delayed-candidate",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "globalThis.__ortCreateCount === 4 && globalThis.__ortDelayedCreateResolvers.length === 1"
-            )
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "model-b.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"model-b",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "globalThis.__ortCreateCount === 5 && globalThis.__ortReleaseCount === 3 && state.session?.__sessionId === 5"
-            )
-            page.evaluate("globalThis.__ortDelayedCreateResolvers.shift()()")
-            page.wait_for_function(
-                "globalThis.__ortReleaseCount === 4 && globalThis.__ortReleasedSessionIds.includes(4)"
-            )
-            if page.locator("#modelLabel").inner_text() != "Local ONNX model ready":
-                raise RuntimeError("stale candidate changed the neutral active-model label")
-            if page.evaluate("state.session?.__sessionId") != 5:
-                raise RuntimeError("delayed model A replaced newer model B")
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('完成')"
-            )
-            if page.evaluate("globalThis.__ortRunSessionIds.at(-1)") != 5:
-                raise RuntimeError("Detect did not keep newer model B active")
-
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "inference-failure.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"\x04inference-failure",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "globalThis.__ortCreateCount === 6 && document.querySelector('#status').dataset.kind === 'success'"
-            )
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').dataset.kind === 'error'"
-            )
-            assert_fixed_failure(page, browser_messages, "INFERENCE_RUN")
-
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "invalid-output.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"\x02invalid-output",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "globalThis.__ortCreateCount === 7 && document.querySelector('#status').dataset.kind === 'success'"
-            )
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').dataset.kind === 'error'"
-            )
-            assert_fixed_failure(page, browser_messages, "OUTPUT_SCHEMA")
-
-            page.locator("#modelInput").set_input_files(
-                files=[
-                    {
-                        "name": "render-recovery.onnx",
-                        "mimeType": "application/octet-stream",
-                        "buffer": b"render-recovery",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "globalThis.__ortCreateCount === 8 && document.querySelector('#status').dataset.kind === 'success'"
-            )
-            page.evaluate("globalThis.__failResultRender = true")
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').dataset.kind === 'error'"
-            )
-            assert_fixed_failure(page, browser_messages, "RENDER_RESULT")
-            page.evaluate("globalThis.__failResultRender = false")
-            page.locator("#detectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('完成')"
-            )
-
-            page.locator("#fileInput").set_input_files(
-                files=[
-                    {
-                        "name": "broken-image.png",
-                        "mimeType": "image/png",
-                        "buffer": b"not-an-image",
-                    }
-                ]
-            )
-            page.wait_for_function(
-                "document.querySelector('#status').dataset.kind === 'error'"
-            )
-            assert_fixed_failure(page, browser_messages, "IMAGE_DECODE")
-            page.locator("#fileInput").set_input_files(str(FIXTURE))
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('影像已載入')"
-            )
-
-            page.locator("#showcaseBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#status').textContent.includes('Synthetic fixture')"
-            )
-            if not page.locator("#detectBtn").is_disabled():
-                raise RuntimeError("showcase activation must disable BYOM Detect")
-            if page.locator("#modelLabel").inner_text() != "選擇相容的 .onnx model":
-                raise RuntimeError("showcase activation left the BYOM model label ready")
-            if page.locator("#fileLabel").inner_text() != "選擇或拖放一張影像":
-                raise RuntimeError("showcase activation left the BYOM image label ready")
-            if page.locator("#modelInput").input_value() or page.locator("#fileInput").input_value():
-                raise RuntimeError("showcase activation retained stale BYOM file selections")
-            if requested_urls.count(ORT_CDN_URL) != 1:
-                raise RuntimeError("session lifecycle changes must reuse the cached ORT runtime")
-            if page.locator("#canvasDescription").inner_text() != EXPECTED_CANVAS_DESCRIPTION:
-                raise RuntimeError("switching from BYOM did not restore the synthetic canvas description")
-            if screenshot is not None:
-                screenshot.parent.mkdir(parents=True, exist_ok=True)
-                page.wait_for_timeout(350)
-                page.screenshot(path=str(screenshot), full_page=True)
-
-            page.set_viewport_size({"width": 820, "height": 1100})
-            page.wait_for_timeout(100)
-            controls = page.locator("#controlRail").bounding_box()
-            results = page.locator("#resultWorkspace").bounding_box()
-            button = page.locator("#detectBtn").bounding_box()
-            if controls is None or results is None or button is None:
-                raise RuntimeError("mobile workbench regions are missing")
-            if results["y"] < controls["y"] + controls["height"]:
-                raise RuntimeError("mobile result workspace does not stack below controls")
-            if button["width"] < controls["width"] * 0.95:
-                raise RuntimeError("mobile Detect action is not full width")
-            if mobile_screenshot is not None:
-                mobile_screenshot.parent.mkdir(parents=True, exist_ok=True)
-                page.screenshot(path=str(mobile_screenshot), full_page=True)
-
-            invalid_page = browser.new_page(viewport={"width": 1200, "height": 800})
-            invalid_messages: list[str] = []
-            try:
-                invalid_page.add_init_script(SRI_STUB_SHIM)
-                invalid_page.on(
-                    "console", lambda message: invalid_messages.append(message.text)
-                )
-                invalid_page.on(
-                    "pageerror", lambda error: invalid_messages.append(str(error))
-                )
-                invalid_page.route(ORT_CDN_URL, stub_ort)
-                invalid_page.goto(entry_url, wait_until="networkidle")
-                invalid_page.locator("#modelInput").set_input_files(
-                    files=[
-                        {
-                            "name": "invalid.onnx",
-                            "mimeType": "application/octet-stream",
-                            "buffer": b"\x00invalid-model",
-                        }
-                    ]
-                )
-                invalid_page.wait_for_function(
-                    "document.querySelector('#status').dataset.kind === 'error'"
-                )
-                assert_fixed_failure(invalid_page, invalid_messages, "MODEL_CONTRACT")
-                invalid_page.locator("#modelInput").set_input_files(
-                    files=[
-                        {
-                            "name": "recovered.onnx",
-                            "mimeType": "application/octet-stream",
-                            "buffer": b"recovered-model",
-                        }
-                    ]
-                )
-                invalid_page.wait_for_function(
-                    "document.querySelector('#status').dataset.kind === 'success'"
-                )
-            finally:
-                invalid_page.close()
-
-            runtime_page = browser.new_page(viewport={"width": 1200, "height": 800})
-            runtime_messages: list[str] = []
-            runtime_request_count = 0
-            try:
-                runtime_page.add_init_script(SRI_STUB_SHIM)
-                runtime_page.on(
-                    "console", lambda message: runtime_messages.append(message.text)
-                )
-                runtime_page.on(
-                    "pageerror", lambda error: runtime_messages.append(str(error))
-                )
-
-                def flaky_ort(route: Route) -> None:
-                    nonlocal runtime_request_count
-                    runtime_request_count += 1
-                    if runtime_request_count == 1:
-                        route.abort("failed")
-                    else:
-                        stub_ort(route)
-
-                runtime_page.route(ORT_CDN_URL, flaky_ort)
-                runtime_page.goto(entry_url, wait_until="networkidle")
-                runtime_page.locator("#modelInput").set_input_files(
-                    files=[
-                        {
-                            "name": "runtime-retry.onnx",
-                            "mimeType": "application/octet-stream",
-                            "buffer": b"runtime-retry",
-                        }
-                    ]
-                )
-                runtime_page.wait_for_function(
-                    "document.querySelector('#status').dataset.kind === 'error'"
-                )
-                assert_fixed_failure(runtime_page, runtime_messages, "RUNTIME_LOAD")
-                runtime_page.locator("#runtimeRetryBtn").click()
-                runtime_page.wait_for_function(
-                    "document.querySelector('#status').dataset.kind === 'success'"
-                )
-                if runtime_page.locator("#runtimeRetryBtn").is_visible():
-                    raise RuntimeError("runtime retry remained visible after recovery")
-                if runtime_request_count != 2:
-                    raise RuntimeError("runtime retry did not perform exactly one fresh request")
-            finally:
-                runtime_page.close()
-
-            showcase_page = browser.new_page(viewport={"width": 1200, "height": 800})
-            showcase_messages: list[str] = []
-            showcase_request_count = 0
-            showcase_ort_request_count = 0
-            try:
-                showcase_page.add_init_script(
-                    """
-                    (() => {
-                      const source = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
-                      let fixtureLoad = 0;
-                      Object.defineProperty(HTMLImageElement.prototype, "src", {
-                        configurable: true,
-                        enumerable: source.enumerable,
-                        get() { return source.get.call(this); },
-                        set(value) {
-                          const url = new URL(value, location.href);
-                          if (url.pathname.endsWith("/fixtures/showcase.svg")) {
-                            url.searchParams.set("smoke-showcase-load", String(++fixtureLoad));
-                            source.set.call(this, url.href);
-                            return;
-                          }
-                          source.set.call(this, value);
-                        },
-                      });
-                    })();
-                    """
-                )
-                showcase_page.on(
-                    "console", lambda message: showcase_messages.append(message.text)
-                )
-                showcase_page.on(
-                    "pageerror", lambda error: showcase_messages.append(str(error))
-                )
-
-                def flaky_showcase(route: Route) -> None:
-                    nonlocal showcase_request_count
-                    showcase_request_count += 1
-                    if showcase_request_count == 2:
-                        route.abort("failed")
-                    else:
-                        route.continue_()
-
-                def count_showcase_ort(route: Route) -> None:
-                    nonlocal showcase_ort_request_count
-                    showcase_ort_request_count += 1
-                    route.abort("failed")
-
-                showcase_page.route("**/fixtures/showcase.svg*", flaky_showcase)
-                showcase_page.route(ORT_CDN_URL, count_showcase_ort)
-                showcase_page.goto(entry_url, wait_until="networkidle")
-                showcase_page.locator("#showcaseBtn").click()
-                showcase_page.wait_for_function(
-                    "document.querySelector('#status').textContent.includes('Synthetic fixture')"
-                )
-                if showcase_page.locator("#runtimeValue").inner_text() != "N/A · no inference":
-                    raise RuntimeError("initial flaky showcase result lost no-inference runtime")
-                showcase_page.locator("#showcaseBtn").click()
-                showcase_page.wait_for_function(
-                    "document.querySelector('#status').dataset.kind === 'error'"
-                )
-                assert_fixed_failure(showcase_page, showcase_messages, "SHOWCASE_ASSET")
-                if showcase_page.locator("#runtimeValue").inner_text() != "—":
-                    raise RuntimeError("synthetic asset failure did not clear runtime before retry")
-                if showcase_page.locator("#resultsBody tr").count() != 0:
-                    raise RuntimeError("synthetic asset failure left stale result rows")
-                if not showcase_page.locator("#canvas").evaluate(
-                    "canvas => canvas.getContext('2d').getImageData(200, 100, 1, 1).data[3] === 0"
-                ):
-                    raise RuntimeError("synthetic asset failure left stale canvas pixels")
-                if showcase_ort_request_count != 0:
-                    raise RuntimeError("synthetic retry requested ORT")
-                showcase_page.locator("#showcaseBtn").click()
-                showcase_page.wait_for_function(
-                    "document.querySelector('#status').textContent.includes('Synthetic fixture')"
-                )
-                if showcase_page.locator("#runtimeValue").inner_text() != "N/A · no inference":
-                    raise RuntimeError("synthetic retry did not restore no-inference runtime")
-                if showcase_page.locator("#canvasDescription").inner_text() != EXPECTED_CANVAS_DESCRIPTION:
-                    raise RuntimeError("synthetic retry did not restore the ship canvas description")
-                if showcase_request_count != 3:
-                    raise RuntimeError("showcase retry did not issue exactly three fixture requests")
-            finally:
-                showcase_page.close()
+            if page.locator("#sampleState").inner_text() != "Loading · local browser":
+                raise RuntimeError("repeated held demo work did not restore the loading state")
+            page.evaluate("globalThis.__resolveDemoRun()")
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            if page.evaluate("globalThis.__ortCreateCount") != 1:
+                raise RuntimeError("repeated Detect did not reuse the valid demo session")
+            assert_demo_cached_filters(page, requests, 2)
+            if requests.count(ORT_CDN_URL) != 1:
+                raise RuntimeError("stubbed repeated Detect requested the runtime again")
+            if _request_paths(requests).count(DEMO_MODEL_PATH) != 1:
+                raise RuntimeError("stubbed repeated Detect requested the model again")
+            if messages:
+                raise RuntimeError("stubbed cache scenario emitted console or page errors")
         finally:
             browser.close()
-    if browser_errors:
-        raise RuntimeError("browser console/page errors: " + " | ".join(browser_errors))
-    unexpected = [
-        url
-        for url in requested_urls
-        if url != ORT_CDN_URL and not url.startswith(str(served_url))
-    ]
-    if unexpected:
-        raise RuntimeError("unexpected external browser requests: " + " | ".join(unexpected))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1120,18 +2359,144 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--screenshot", type=Path)
     parser.add_argument("--mobile-screenshot", type=Path)
     parser.add_argument("--base-url", help="use an already-running static server")
+    parser.add_argument("--matrix-start", type=int, default=0)
+    parser.add_argument("--matrix-count", type=int)
+    parser.add_argument(
+        "--scenario",
+        choices=(
+            "single-harbor",
+            "single-harbor-failures",
+            "manifest-matrix",
+            "real-demo-success",
+            "stubbed-cache",
+            "manifest-failure",
+            "model-digest-failure",
+            "runtime-failure",
+            "session-failure",
+            "run-failure",
+            "output-failure",
+            "render-failure",
+            "stale-generation",
+            "byom-transition",
+            "accessibility",
+            "desktop",
+            "workbench-layout",
+            "mobile",
+        ),
+    )
     args = parser.parse_args(argv)
     try:
-        run_smoke(
-            args.executable_path,
-            args.screenshot,
-            args.base_url,
-            args.mobile_screenshot,
-        )
+        if args.scenario == "single-harbor":
+            run_single_harbor(args.executable_path, args.base_url, args.screenshot)
+        elif args.scenario == "single-harbor-failures":
+            run_single_harbor_failures(args.executable_path, args.base_url)
+        elif args.scenario == "manifest-matrix":
+            run_manifest_matrix(
+                args.executable_path,
+                args.base_url,
+                args.matrix_start,
+                args.matrix_count,
+            )
+        elif args.scenario == "real-demo-success":
+            run_real_demo_success(
+                args.executable_path,
+                args.base_url,
+                args.screenshot,
+                args.mobile_screenshot,
+            )
+        elif args.scenario == "stubbed-cache":
+            run_stubbed_cache(args.executable_path, args.base_url)
+        elif args.scenario == "manifest-failure":
+            run_manifest_failure(args.executable_path, args.base_url)
+        elif args.scenario == "model-digest-failure":
+            run_model_digest_failure(args.executable_path, args.base_url)
+        elif args.scenario == "runtime-failure":
+            run_runtime_failure(args.executable_path, args.base_url)
+        elif args.scenario == "session-failure":
+            run_session_failure(args.executable_path, args.base_url)
+        elif args.scenario == "run-failure":
+            run_run_failure(args.executable_path, args.base_url)
+        elif args.scenario == "output-failure":
+            run_output_failure(args.executable_path, args.base_url)
+        elif args.scenario == "render-failure":
+            run_render_failure(args.executable_path, args.base_url)
+        elif args.scenario == "stale-generation":
+            run_stale_generation(args.executable_path, args.base_url)
+        elif args.scenario == "byom-transition":
+            run_byom_transition(args.executable_path, args.base_url)
+        elif args.scenario == "accessibility":
+            run_accessibility(args.executable_path, args.base_url)
+        elif args.scenario == "desktop":
+            run_desktop(args.executable_path, args.base_url)
+        elif args.scenario == "workbench-layout":
+            run_workbench_layout(args.executable_path, args.base_url)
+        elif args.scenario == "mobile":
+            run_mobile(args.executable_path, args.base_url)
+        else:
+            run_single_harbor(args.executable_path, args.base_url, args.screenshot)
+            run_single_harbor_failures(args.executable_path, args.base_url)
+            run_manifest_matrix(args.executable_path, args.base_url)
+            run_real_demo_success(
+                args.executable_path,
+                args.base_url,
+                args.screenshot,
+                args.mobile_screenshot,
+            )
+            run_stubbed_cache(args.executable_path, args.base_url)
+            run_manifest_failure(args.executable_path, args.base_url)
+            run_model_digest_failure(args.executable_path, args.base_url)
+            run_runtime_failure(args.executable_path, args.base_url)
+            run_session_failure(args.executable_path, args.base_url)
+            run_run_failure(args.executable_path, args.base_url)
+            run_output_failure(args.executable_path, args.base_url)
+            run_render_failure(args.executable_path, args.base_url)
+            run_stale_generation(args.executable_path, args.base_url)
+            run_byom_transition(args.executable_path, args.base_url)
+            run_accessibility(args.executable_path, args.base_url)
+            run_desktop(args.executable_path, args.base_url)
+            run_workbench_layout(args.executable_path, args.base_url)
+            run_mobile(args.executable_path, args.base_url)
     except Exception as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1
-    print("[OK] Headless BYOM UI smoke: local synthetic model bytes, stubbed [1,N,7], no inference")
+    if args.scenario == "single-harbor":
+        print("[OK] Single harbor real inference and cached filtering")
+    elif args.scenario == "single-harbor-failures":
+        print("[OK] Fixed harbor image failures are safe and recoverable")
+    elif args.scenario == "manifest-matrix":
+        print("[OK] Browser manifest catalog matrix fails closed")
+    elif args.scenario == "real-demo-success":
+        print("[OK] Real demo browser smoke: genuine local derivative inference")
+    elif args.scenario == "stubbed-cache":
+        print("[OK] Real demo cache smoke: one verified model and reusable session")
+    elif args.scenario == "manifest-failure":
+        print("[OK] Real demo manifest failures are closed and recoverable")
+    elif args.scenario == "model-digest-failure":
+        print("[OK] Real demo model integrity failures are closed and recoverable")
+    elif args.scenario == "runtime-failure":
+        print("[OK] Real demo runtime retry is pinned and recoverable")
+    elif args.scenario == "session-failure":
+        print("[OK] Real demo candidate-session failure is atomic")
+    elif args.scenario == "run-failure":
+        print("[OK] Real demo run failure is closed and recoverable")
+    elif args.scenario == "output-failure":
+        print("[OK] Real demo output failure is closed and recoverable")
+    elif args.scenario == "render-failure":
+        print("[OK] Real demo render failure is closed and recoverable")
+    elif args.scenario == "stale-generation":
+        print("[OK] Real demo stale work is aborted or ignored")
+    elif args.scenario == "byom-transition":
+        print("[OK] Real demo and BYOM transitions preserve session safety")
+    elif args.scenario == "accessibility":
+        print("[OK] Real demo accessibility contract")
+    elif args.scenario == "desktop":
+        print("[OK] Real demo desktop and 200% zoom layout")
+    elif args.scenario == "workbench-layout":
+        print("[OK] Real demo compact semantic workbench layout")
+    elif args.scenario == "mobile":
+        print("[OK] Real demo mobile layout")
+    else:
+        print("[OK] Real demo browser smoke: genuine inference and cached session behavior")
     return 0
 
 

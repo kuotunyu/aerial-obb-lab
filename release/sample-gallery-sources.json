@@ -1,0 +1,56 @@
+{
+  "samples": [
+    {
+      "alt": "低密度港區的真實航拍原圖",
+      "bytes": 241046,
+      "derivation": {
+        "bboxWgs84": [
+          -119.216719,
+          34.14417,
+          -119.200719,
+          34.15417
+        ],
+        "color": "sRGB",
+        "jpegQuality": 90,
+        "metadata": "stripped",
+        "outputSize": [
+          1280,
+          800
+        ]
+      },
+      "guardrails": {
+        "classIds": [
+          1,
+          2,
+          7
+        ],
+        "countMax": 26,
+        "countMin": 16,
+        "representative": {
+          "classId": 1,
+          "cx": 951.1,
+          "cy": 443.1,
+          "h": 26.4,
+          "tolerance": 32.9,
+          "w": 164.4
+        }
+      },
+      "height": 800,
+      "id": "harbor",
+      "mediaType": "image/jpeg",
+      "path": "samples/harbor.jpg",
+      "sha256": "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
+      "source": {
+        "acquisitionDate": 1652486400000,
+        "agency": "USDA",
+        "productId": "m_3411955_sw_11_060_20220514",
+        "publicDomainRecord": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+        "service": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
+        "year": 2022
+      },
+      "title": "低密度港區航拍範例",
+      "width": 1280
+    }
+  ],
+  "schemaVersion": 1
+}

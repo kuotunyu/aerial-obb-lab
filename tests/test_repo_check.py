@@ -65,3 +65,27 @@ def test_static_demo_http_gate_uses_current_product_identity(
     (demo / "style.css").write_text("/* workbench */\n" * 40, encoding="utf-8")
 
     repo_check.check_static_demo()
+
+
+def test_static_demo_rejects_app_embedded_demo_model_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(repo_check, "ROOT", tmp_path)
+    demo = tmp_path / "demo" / "web"
+    demo.mkdir(parents=True)
+    (demo / "index.html").write_text(
+        '<h1>Aerial OBB Lab</h1><link href="style.css">'
+        '<input id="modelInput"><input id="fileInput"><button id="detectBtn"></button>'
+        '<script src="obb.js"></script><script src="app.js"></script>'
+        + "<!-- padding -->" * 30,
+        encoding="utf-8",
+    )
+    (demo / "app.js").write_text(
+        'const model = "models/yolo26n-obb-privacy-sanitized.onnx";\n' * 40,
+        encoding="utf-8",
+    )
+    (demo / "obb.js").write_text("// geometry\n" * 100, encoding="utf-8")
+    (demo / "style.css").write_text("/* workbench */\n" * 40, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="must not embed or fetch a model"):
+        repo_check.check_static_demo()

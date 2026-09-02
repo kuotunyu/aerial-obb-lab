@@ -24,106 +24,91 @@
   </header>
 
   <section id="claimBoundary" class="claim-boundary" aria-labelledby="claimTitle">
-    <h2 id="claimTitle">Synthetic Showcase — 沒有執行模型推論</h2>
-    <p>此展示使用本 repository 提交的 synthetic SVG 與固定 output，僅驗證 UI、decode、filter、rotated-corner 計算與 rendering。它不是 accuracy、evaluation 或 latency evidence。實際推論請使用 BYOM，自行提供相容 ONNX model 與影像。</p>
+    <strong id="claimTitle">真實航拍範例 · 實際瀏覽器推論</strong>
+    <p>固定的 USGS／USDA NAIP 公領域港區航拍原圖會先顯示；只有按下 Detect 後，頁面才會載入 OBB 模型並在你的瀏覽器中執行推論，影像不會上傳。此固定範例僅供操作整合展示，不是 accuracy、evaluation 或 latency benchmark。</p>
   </section>
 
   <main id="mainContent" tabindex="-1">
-    <section id="workbench" class="workbench" aria-label="OBB inference workbench">
+    <div id="workbench" class="workbench">
       <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
         <div class="rail-heading">
-          <h2 id="controlsTitle">輸入與設定</h2>
-          <p>選好 ONNX model 與航拍影像後，再明確執行 Detect。</p>
+          <h2 id="controlsTitle">範例與設定</h2>
+          <p>先查看真實航拍原圖，再由目前的 browser 執行 Detect。</p>
         </div>
-
-        <button id="showcaseBtn" type="button" aria-describedby="claimTitle">載入 Synthetic Showcase</button>
-
-        <div class="file-stack">
-          <label class="file-control model-picker" id="modelDrop" for="modelInput">
-            <input type="file" id="modelInput" name="model" accept=".onnx,application/octet-stream" />
-            <span class="file-kind">ONNX model</span>
-            <strong id="modelLabel">選擇相容的 <code>.onnx</code> model</strong>
-            <small>檔案只會由目前的 browser session 讀取</small>
-          </label>
-
-          <label class="file-control image-picker" id="fileDrop" for="fileInput">
-            <input type="file" id="fileInput" name="image" accept="image/*" />
-            <span class="file-kind">Aerial image</span>
-            <strong id="fileLabel">選擇或拖放一張影像</strong>
-            <small>支援 browser 可解碼的常見 image formats</small>
-          </label>
-        </div>
-
-        <div class="control-block threshold-control">
-          <div class="control-label-row">
-            <label for="confSlider">Confidence threshold</label>
-            <output id="confVal" for="confSlider">0.25</output>
+        <article id="sampleCard" class="sample-card" aria-labelledby="demoSampleTitle">
+          <div class="demo-sample-identity">
+            <h3 id="demoSampleTitle">低密度港區航拍範例</h3>
+            <p id="demoSampleKind">真實航拍原圖</p>
           </div>
-          <input
-            type="range"
-            id="confSlider"
-            name="confidence"
-            min="0.05"
-            max="0.9"
-            step="0.05"
-            value="0.25"
-          />
-          <div class="range-scale" aria-hidden="true"><span>0.05</span><span>0.90</span></div>
+          <p id="sampleState">Original · ready</p>
+          <button id="demoDetectBtn" type="button" aria-describedby="claimTitle">開始 Detect</button>
+          <button id="viewToggleBtn" class="secondary-action" type="button" hidden>查看原圖</button>
+        </article>
+        <p id="status" class="status" role="status" aria-live="polite">原圖已載入 · 尚未 Detect。</p>
+        <button id="runtimeRetryBtn" class="runtime-retry" type="button" hidden>重試載入 Browser runtime</button>
+        <div id="resultControls" class="result-controls" data-ready="false" aria-disabled="true">
+          <div class="control-block threshold-control">
+            <div class="control-label-row">
+              <label for="confSlider">Confidence threshold</label>
+              <output id="confVal" for="confSlider">0.25</output>
+            </div>
+            <input id="confSlider" name="confidence" type="range" min="0.05" max="0.9" step="0.05" value="0.25" disabled />
+            <div class="range-scale" aria-hidden="true"><span>0.05</span><span>0.90</span></div>
+          </div>
+          <fieldset id="classFilter" class="class-filter">
+            <legend>Class filter</legend>
+            <p>未選擇時顯示全部 classes</p>
+            <div id="classList" class="class-list"></div>
+          </fieldset>
+          <p id="filterAvailability">Detect 完成後即可調整 filters。</p>
         </div>
-
-        <fieldset id="classFilter" class="class-filter">
-          <legend>Class filter</legend>
-          <p>未選擇時顯示全部 classes</p>
-          <div id="classList" class="class-list"></div>
-        </fieldset>
-
-        <div class="action-zone">
-          <p id="status" class="status" role="status" aria-live="polite">
-            等待 local ONNX model 與影像。
-          </p>
-          <button id="runtimeRetryBtn" class="runtime-retry" type="button" hidden>
-            重試載入 Browser runtime
-          </button>
-          <button id="detectBtn" type="button" disabled>開始 Detect</button>
-        </div>
+        <details id="byomPanel" class="byom-panel">
+          <summary>使用自己的模型與圖片（進階）</summary>
+          <div id="byomControls">
+            <div class="file-stack">
+              <label class="file-control model-picker" id="modelDrop" for="modelInput">
+                <input type="file" id="modelInput" name="model" accept=".onnx,application/octet-stream" />
+                <span class="file-kind">ONNX model</span>
+                <strong id="modelLabel">選擇相容的 <code>.onnx</code> model</strong>
+                <small>檔案只會由目前的 browser session 讀取</small>
+              </label>
+              <label class="file-control image-picker" id="fileDrop" for="fileInput">
+                <input type="file" id="fileInput" name="image" accept="image/*" />
+                <span class="file-kind">Aerial image</span>
+                <strong id="fileLabel">選擇或拖放一張影像</strong>
+                <small>支援 browser 可解碼的常見 image formats</small>
+              </label>
+            </div>
+            <button id="detectBtn" type="button" disabled>執行 BYOM Detect</button>
+          </div>
+        </details>
       </aside>
-
       <section id="resultWorkspace" class="result-workspace" aria-labelledby="resultTitle">
         <div class="result-heading">
-          <div>
+          <div class="result-heading-copy">
             <h2 id="resultTitle" tabindex="-1">Detection result</h2>
             <p>Rotated polygons 保留在影像上，完整數值列於下方。</p>
           </div>
           <dl class="result-summary" aria-label="Detection summary">
-            <div>
-              <dt>Detections</dt>
-              <dd id="summaryCount">0</dd>
-            </div>
-            <div>
-              <dt>Top confidence</dt>
-              <dd id="summaryTop">—</dd>
-            </div>
-            <div>
-              <dt>本次 browser 執行</dt>
-              <dd id="runtimeValue">—</dd>
-            </div>
-            <div class="mode-entry">
-              <dt>Mode</dt>
-              <dd id="modeBadge">NO RESULT</dd>
-            </div>
-            <div class="mode-entry">
-              <dt>Provenance</dt>
-              <dd id="provenanceValue">—</dd>
-            </div>
+            <div><dt>Detections</dt><dd id="summaryCount">0</dd></div>
+            <div><dt>Top confidence</dt><dd id="summaryTop">—</dd></div>
+            <div><dt>本次 browser 執行</dt><dd id="runtimeValue">—</dd></div>
+            <div class="mode-entry"><dt>Mode</dt><dd id="modeBadge">尚未 Detect</dd></div>
+            <div class="mode-entry"><dt>Provenance</dt><dd id="provenanceValue">USGS／USDA NAIP · 尚未執行</dd></div>
           </dl>
         </div>
-
-        <div class="canvas-frame" id="canvasFrame">
-          <canvas id="canvas" aria-label="Oriented detection result" aria-describedby="canvasDescription"></canvas>
-          <p id="canvasDescription" class="visually-hidden">尚無 detection result。</p>
-          <p class="canvas-empty" aria-hidden="true">RESULT VIEWPORT</p>
+        <div id="resultViewport" class="result-viewport">
+          <figure id="demoFigure" class="viewport-original">
+            <figcaption id="demoFigureLabel">原圖 · 尚未 Detect</figcaption>
+            <img id="demoOriginalImage" src="samples/harbor.jpg" width="1280" height="800"
+                 alt="低密度港區的真實航拍原圖" />
+            <img id="viewportByomImage" hidden alt="使用者選擇的航拍影像" />
+          </figure>
+          <div class="canvas-frame" id="canvasFrame" hidden>
+            <canvas id="canvas" aria-label="Oriented detection result" aria-describedby="canvasDescription"></canvas>
+            <p id="canvasDescription" class="visually-hidden">尚無 detection result。</p>
+          </div>
         </div>
-
         <section class="detections" aria-labelledby="tableTitle">
           <div class="table-heading">
             <h3 id="tableTitle">Detection list</h3>
@@ -133,34 +118,36 @@
             <table id="resultsTable">
               <thead>
                 <tr>
-                  <th scope="col">class</th>
-                  <th scope="col">conf</th>
-                  <th scope="col">w(px)</th>
-                  <th scope="col">h(px)</th>
-                  <th scope="col">angle(°)</th>
+                  <th scope="col">class</th><th scope="col">conf</th><th scope="col">w(px)</th>
+                  <th scope="col">h(px)</th><th scope="col">angle(°)</th>
                 </tr>
               </thead>
-              <tbody id="resultsBody"></tbody>
+              <tbody id="resultsBody">
+                <tr data-empty="true"><td colspan="5">尚未執行 Detect。</td></tr>
+              </tbody>
             </table>
           </div>
         </section>
       </section>
-    </section>
+    </div>
   </main>
 
   <nav class="source-links" aria-label="Project links">
     <a href="https://github.com/kuotunyu/aerial-obb-lab">Source</a>
     <a href="https://github.com/kuotunyu/aerial-obb-lab/blob/main/LICENSE">AGPL-3.0-or-later</a>
+    <a href="THIRD_PARTY_NOTICES.md">模型與素材來源</a>
+    <a href="third_party/ULTRALYTICS-AGPL-3.0.txt">Model AGPL</a>
+    <a href="third_party/yolo26n-obb-privacy-sanitization.json">Sanitization record</a>
   </nav>
 
   <footer>
-    <span>BYOM · <code>output0 [1,N,7]</code></span>
+    <span>Demo + BYOM · <code>output0 [1,N,7]</code></span>
     <span>Local browser processing</span>
     <span>Code AGPL-3.0-or-later</span>
   </footer>
 </div>
 <script src="obb.js"></script>
-<script src="showcase-fixture.js"></script>
+<script src="demo-assets.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

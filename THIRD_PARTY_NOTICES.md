@@ -1,34 +1,46 @@
 # Third-Party Notices and Use Boundaries
 
-This public candidate distributes original project code, documentation, aggregate evidence, and
-synthetic fixtures. It deliberately distributes no model binary, trained weight, DOTA image or
+This public candidate distributes original project code, documentation, aggregate evidence, one
+public-domain NAIP harbor aerial sample derivative, and one privacy-sanitized AGPL model derivative. It distributes no DOTA image,
 annotation, or DOTA-derived raster render. Project code is declared `AGPL-3.0-or-later` in
 `pyproject.toml`; that declaration does not replace independent upstream or user-supplied-artifact
 terms. This document is a release inventory, not legal advice or a warranty against liability.
 
 ## Bundled artifacts
 
-There are no bundled third-party model or dataset artifacts. The distributable inventory contains
-only one self-hosted OFL display font; its hash and the checksums of six excluded historical
-artifacts are recorded in [`release/artifact-manifest.json`](release/artifact-manifest.json). Those
-records are audit metadata, not permission or distribution of the files.
+The exact bundled inventory and hashes are recorded in
+[`release/artifact-manifest.json`](release/artifact-manifest.json): the one public-domain NAIP harbor
+derivative, the privacy-sanitized YOLO26n-OBB derivative, its complete unmodified
+AGPL-3.0-only license, and the self-hosted OFL display font. The derivative was modified on
+2026-08-31 by removing one non-inference metadata entry; the committed sanitization receipt records
+that its graph and weights remain structurally unchanged. Its training provenance is DOTAv1.
 
-The committed Synthetic Showcase SVG and its fixed result data are authored, first-party test and
-presentation fixtures, not third-party artifacts. They contain no DOTA pixels and do not change the
-one-entry bundled third-party inventory. The code-only exclusions still cover model binaries,
-trained weights, DOTA images and annotations, DOTA-derived renders, and owner-private artifacts.
-
-The browser demo is a bring-your-own-model tool. A model selected by a user is not part
-of this repository and remains subject to its own provenance, software license, dataset terms, and
-weight terms. Ultralytics offers separate
+The modification record is
+[`demo/web/third_party/yolo26n-obb-privacy-sanitization.json`](demo/web/third_party/yolo26n-obb-privacy-sanitization.json),
+and the sanitizer source is [`scripts/sanitize_demo_model.py`](scripts/sanitize_demo_model.py).
+The public demo and screenshot are integration evidence, not ground truth, accuracy, evaluation, or
+latency evidence. This project is not endorsed by Ultralytics and makes no commercial-use clearance
+claim. Ultralytics offers separate
 [AGPL-3.0 and Enterprise routes](https://www.ultralytics.com/license); this repository grants no
 Enterprise license. DOTA images and annotations are academic-use-only and may also carry underlying
 image-source restrictions. AGPL compliance and data/image rights are separate obligations.
 
-BYOM inference is not a zero-network mode: selecting a model lazy-loads pinned ONNX Runtime Web
+### Public-domain NAIP aerial derivatives
+
+Each listed derivative is a curated integration example selected for visual clarity at the shared
+0.25 threshold. It is a drift check only, never accuracy, evaluation, model-quality, or latency
+evidence; it carries no USGS or USDA endorsement. Source facts are frozen in
+[`release/sample-gallery-sources.json`](release/sample-gallery-sources.json).
+
+- **低密度港區航拍範例** — `demo/web/samples/harbor.jpg`; USGS/USDA NAIP product
+  `m_3411955_sw_11_060_20220514` (2022; acquired 2022-05-14), USDA, [USGS NAIP Plus ImageServer](https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer), [USGS public-domain record](https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39).
+  Public Domain; bbox `[-119.216719, 34.14417, -119.200719, 34.15417]`; crop/resample/metadata removal; 241046 bytes; SHA-256 `916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0`. It is integration evidence only—not ground truth, accuracy/evaluation, a benchmark, a representative dataset, model-quality evidence, or USGS/USDA endorsement.
+
+Demo and BYOM inference are not zero-network modes: first Detect or selecting a BYOM model lazy-loads pinned ONNX Runtime Web
 JavaScript and WASM assets from jsDelivr on a cache miss. SHA-384 SRI covers `ort.min.js` only, not
-the WASM assets subsequently fetched by that runtime. Model and image bytes remain local to the
-browser. The Synthetic Showcase neither loads this external runtime nor performs model inference.
+the WASM assets subsequently fetched by that runtime. The official derivative is fetched only from
+the same origin after Detect; model and image processing remains local to the browser. User-supplied
+models and images remain subject to their own provenance, software, dataset, weight, and image-rights terms.
 
 ## Runtime and development dependencies
 
@@ -47,7 +59,7 @@ own licenses and notices continue to apply.
 | Pillow | Image support | [HPND](https://github.com/python-pillow/Pillow/blob/main/LICENSE) |
 | Shapely | Polygon geometry | [BSD-3-Clause](https://github.com/shapely/shapely/blob/main/LICENSE.txt) |
 | Jupytext / pytest / Hatchling | Notebook sync, tests, package build | [MIT](https://github.com/mwouts/jupytext/blob/main/LICENSE), [MIT](https://github.com/pytest-dev/pytest/blob/main/LICENSE), [MIT](https://github.com/pypa/hatch/blob/master/LICENSE.txt) |
-| Playwright | Headless synthetic browser smoke | [Apache-2.0](https://github.com/microsoft/playwright-python/blob/main/LICENSE) |
+| Playwright | Headless real-demo and BYOM browser smoke | [Apache-2.0](https://github.com/microsoft/playwright-python/blob/main/LICENSE) |
 | IBM Plex Sans Condensed 2.0.0 | Self-hosted display type for the browser workbench | [SIL Open Font License 1.1](demo/web/fonts/IBM-Plex-OFL.txt) |
 
 Package-specific transitive notices are available in each installed distribution and lockfile.

@@ -239,7 +239,9 @@ def check_static_demo() -> None:
         if control not in html:
             raise RuntimeError(f"index.html lacks BYOM control {control}")
     js = (folder / "app.js").read_text(encoding="utf-8")
-    if "MODEL_URL" in js or "yolo26n-obb.onnx" in js:
+    if re.search(r"\b(?:const|let|var)\s+MODEL_URL\b", js) or re.search(
+        r'''["']models/[^"']+\.onnx["']''', js
+    ):
         raise RuntimeError("app.js must not embed or fetch a model")
 
     class QuietHandler(SimpleHTTPRequestHandler):
@@ -293,7 +295,7 @@ def check_javascript() -> None:
         check=True,
         stdout=subprocess.DEVNULL,
     )
-    print("[OK] JavaScript syntax + synthetic browser parity")
+    print("[OK] JavaScript syntax + browser parity")
 
 
 def main() -> int:

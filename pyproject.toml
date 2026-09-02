@@ -19,6 +19,7 @@ Release = "https://github.com/kuotunyu/aerial-obb-lab/releases/tag/v1.0.0"
 [dependency-groups]
 dev = [
     "jupytext>=1.19.4",
+    "onnx==1.22.0",
     "playwright>=1.55,<2",
     "pytest>=8.0",
 ]

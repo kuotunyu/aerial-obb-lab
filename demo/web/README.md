@@ -1,17 +1,19 @@
 # Aerial OBB Lab Browser Demo
 
-這是一個純 HTML／CSS／JavaScript 的 Browser-native OBB workbench，提供兩種界線清楚的模式：
+這是一個純 HTML／CSS／JavaScript 的 Browser-native OBB workbench。頁面開啟後會先顯示
+固定的 public-domain NAIP 港區真實航拍原圖，沒有 selector 或自動 inference；按下「開始 Detect」才會 lazy-load
+固定版本 `onnxruntime-web@1.20.1` 的 JavaScript／WASM 與 repository 內的
+privacy-sanitized YOLO26n-OBB derivative，並在目前的 browser session 執行 inference。
+影像與模型不會上傳。
 
-- **Synthetic Showcase：**按一次按鈕就載入 repository 內 authored SVG 與 fixed output，顯示
-  rotated polygon、provenance 與 `N/A · no inference`。它不載入 ONNX Runtime、不執行 inference，
-  也不是 accuracy、evaluation 或 latency evidence；fixture 不含 DOTA pixels。
-- **BYOM inference：**使用者自行選擇相容的 YOLO26 OBB ONNX model 與影像。兩個檔案都只在 local
-  browser session 中處理；repo 不發布 model binary，也不會自動下載、export 或 fallback 到具名模型。
+範例模型必須符合 `demo-model.json` 的固定 manifest。Browser 會限制 same-origin model URL、
+下載大小與精確 byte length，並用 Web Crypto 驗證 SHA-256 digest 後才建立 ONNX session。
+完成後可以在原圖與 detection result 之間切換、調整 confidence／class filter，並查看 rotated
+polygons、provenance 與依 confidence 排序的完整數值表格；filter 與畫面切換不會重新執行模型。
 
-ONNX Runtime Web 直到使用者選擇 BYOM model 才 lazy-load。首次載入或 browser cache miss 時會從
-jsDelivr 取得固定版本 `onnxruntime-web@1.20.1` 的 JavaScript 與 WASM assets，因此 BYOM 是
-non-zero-network。`ort.min.js` 使用 SHA-384 SRI 與 anonymous CORS；這個 SRI 只涵蓋該 JavaScript，
-不涵蓋 runtime 後續取得的 WASM assets。這個 network boundary 不會上傳 model 或影像。
+BYOM 是預設收合的進階入口。使用者可自行選擇相容的 local YOLO26 OBB ONNX model 與影像；
+兩個檔案都只在 browser session 中處理，並與固定港區範例共用 preprocessing、inference、decode、
+filter 與 rendering pipeline。選入無效的新 model 不會取代最後一個已驗證的 session。
 
 ## 執行
 
@@ -21,32 +23,42 @@ non-zero-network。`ort.min.js` 使用 SHA-384 SRI 與 anonymous CORS；這個 S
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-開啟 `http://localhost:8765`。可直接按「載入 Synthetic Showcase」取得 deterministic evidence；
-若要執行 inference，再依序選擇 model、影像，調整 confidence／class filter，按下「開始 Detect」。
-直接用 `file://` 開啟可能被 browser 的 WASM／resource policy 阻擋。
+開啟 `http://localhost:8765`，確認原圖後按「開始 Detect」。首次載入或 browser cache miss 時，
+固定版本的 runtime assets 會從 jsDelivr 取得，因此 Detect 是 non-zero-network；repository 內的
+範例 model 與 image 則由同一 origin 提供。`ort.min.js` 使用 SHA-384 SRI 與 anonymous CORS；
+這個 SRI 只涵蓋 JavaScript，不涵蓋 runtime 後續取得的 WASM assets。直接用 `file://` 開啟可能
+被 browser 的 WASM／resource policy 阻擋。
 
 ## Model contract 與限制
 
 <!-- claim:browser-scope -->
-- Model：user-supplied local ONNX，input 必須是 `images [1,3,1024,1024]` float32 RGB CHW，
-  output 必須符合 end-to-end `output0 [1,N,7]`。
+- Demo 與 BYOM model 的 input 必須是 `images [1,3,1024,1024]` float32 RGB CHW，output 必須符合
+  end-to-end `output0 [1,N,7]`。
+- BYOM 接受 user-supplied compatible model 與 image，兩者只在目前的 browser session 內處理。
 - 這個 browser integration demo **does not represent** fine-tuned `yolo26m-obb` checkpoint 的
-  accuracy 或歷史 T4 latency。
+  accuracy、evaluation 或歷史 T4 latency；UI result 與 screenshot 也不是這些指標的 evidence。
 <!-- /claim:browser-scope -->
 
-- 支援 confidence threshold、15 類 class filter、rotated polygon rendering，以及依 confidence
-  排序的完整數值表格。
-- UI screenshot 與 browser smoke 使用 committed synthetic SVG 及 authored output，不執行模型
-  inference；它們也不是 accuracy、evaluation 或 latency evidence。
-- Showcase asset、runtime、model contract、inference、output schema、render 或 image decode 失敗時，
-  UI 會清除 stale results，顯示固定且不洩漏 local filename 的錯誤，並保留安全的 retry／重新選擇路徑。
-  無效或過期的新 model candidate 不會取代最後一個已驗證 session。Inference／output／render failure
-  會保留目前的 base image，但清除 stale polygon、result table 與 summary。
-- 切換到 Synthetic Showcase 會釋放 BYOM session、清除先前的 model／image file selections，並把兩個
-  picker labels 還原成未選擇狀態，避免 synthetic mode 顯示錯誤的 BYOM ready 訊號。
+- 支援 confidence threshold、15 類 class filter、rotated polygon rendering，以及完整數值表格。
+- Manifest、runtime、model integrity、model contract、inference、output schema、render 或 image decode
+  失敗時，UI 會清除 stale results、顯示固定且不洩漏 local filename 的錯誤，並保留安全的 retry／
+  重新選擇路徑。Inference／output／render failure 會保留目前的 base image。
 - 本路徑不需要 Python ML runtime、Torch、CUDA、DOTA、weights、HF token 或 secrets。
 
-## 授權
+## 來源與授權
 
-Repository code 為 **AGPL-3.0-or-later**。使用者自行提供的 model 與影像仍受各自的 upstream
-software、dataset、weight 與 image rights 約束；DOTA images／annotations 不包含在本 release。
+固定的 public-domain USGS/USDA NAIP 港區原圖會立即顯示，再按 Detect 進行 genuine local inference；
+原圖／結果切換與 confidence／class filter 都重用 cached output。範例為共用 0.25 threshold 下的
+視覺清楚 curated integration examples，不是 accuracy、evaluation 或 T4 latency 證據；guardrails 僅作
+結果 drift checks，且不代表 ground truth、benchmark、representative dataset、model quality 或 USGS／USDA endorsement。來源、crop/resample/metadata removal、bytes 與 digest 見
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
+- Model 與素材 provenance：[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+- Privacy transformation record：
+  [`third_party/yolo26n-obb-privacy-sanitization.json`](third_party/yolo26n-obb-privacy-sanitization.json)
+- Ultralytics model license：
+  [`third_party/ULTRALYTICS-AGPL-3.0.txt`](third_party/ULTRALYTICS-AGPL-3.0.txt)
+
+Repository code 為 **AGPL-3.0-or-later**。Bundled model 是 Ultralytics YOLO26n-OBB 的
+privacy-sanitized AGPL derivative；使用者自行提供的 model 與影像仍受各自的 upstream software、
+dataset、weight 與 image rights 約束。DOTA images／annotations 不包含在本 release。

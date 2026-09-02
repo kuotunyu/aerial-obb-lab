@@ -44,6 +44,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   background: var(--page);
 }
@@ -197,9 +201,9 @@ td,
 
 .workbench {
   display: grid;
-  grid-template-columns: minmax(340px, 34fr) minmax(0, 66fr);
-  align-items: stretch;
-  gap: 14px;
+  grid-template-columns: minmax(320px, 31fr) minmax(0, 69fr);
+  gap: 16px;
+  align-items: start;
   margin-top: 12px;
 }
 
@@ -209,6 +213,83 @@ td,
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.sample-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sample-card button,
+.sample-card .secondary-action {
+  grid-column: 1 / -1;
+}
+
+.sample-card p {
+  margin: 0;
+}
+
+.demo-sample-identity {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.demo-sample-identity h3 { margin: 0; font-size: 1rem; }
+.demo-sample-identity p { color: var(--muted); }
+
+.result-viewport {
+  position: relative;
+  display: grid;
+  aspect-ratio: 16 / 9;
+  min-height: min(410px, 68vh);
+  max-height: 68vh;
+  overflow: hidden;
+  outline: 1px solid var(--canvas-line);
+  outline-offset: -1px;
+  background: var(--canvas);
+}
+
+.viewport-original,
+.canvas-frame {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+.viewport-original {
+  position: relative;
+}
+
+.viewport-original figcaption {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 8px 12px;
+  background: rgba(8, 21, 38, 0.88);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 760;
+  letter-spacing: 0.025em;
+}
+
+.viewport-original img,
+.canvas-frame canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
 }
 
 .rail-heading,
@@ -266,25 +347,40 @@ h3 {
   margin-top: 6px;
 }
 
-#showcaseBtn {
+#demoDetectBtn,
+.secondary-action {
   width: 100%;
-  min-height: 44px;
-  margin-top: 12px;
+  min-height: 52px;
   border: 2px solid var(--ink);
   border-radius: 0;
-  background: var(--surface-muted);
-  color: var(--ink);
+  background: var(--ink);
+  color: #ffffff;
   font-weight: 780;
   cursor: pointer;
 }
 
-#showcaseBtn:hover {
-  background: var(--accent-soft);
+.secondary-action {
+  background: var(--surface-muted);
+  color: var(--ink);
 }
 
-#showcaseBtn:focus-visible {
+#demoDetectBtn:hover:not(:disabled),
+.secondary-action:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+#demoDetectBtn:focus-visible,
+.secondary-action:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
+}
+
+#demoDetectBtn:disabled {
+  border-color: var(--disabled);
+  background: var(--disabled);
+  cursor: wait;
 }
 
 .file-control {
@@ -561,6 +657,72 @@ input[type="range"]:focus-visible {
   min-width: 0;
 }
 
+.class-list label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.result-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.result-controls[data-ready="false"] {
+  background: var(--surface-muted);
+}
+
+.result-controls :disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+#filterAvailability {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.result-controls .control-block,
+.result-controls .class-filter {
+  margin-top: 0;
+}
+
+.byom-panel {
+  margin-top: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.byom-panel summary {
+  min-height: 48px;
+  padding: 10px 14px;
+  color: var(--ink);
+  font-weight: 780;
+  cursor: pointer;
+}
+
+.byom-panel summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+#byomControls {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+
+#byomControls .file-stack {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .result-heading {
   min-height: 64px;
   align-items: flex-start;
@@ -604,12 +766,7 @@ input[type="range"]:focus-visible {
 .canvas-frame {
   position: relative;
   display: grid;
-  flex: 1 1 auto;
-  min-height: 410px;
   overflow: hidden;
-  border: 1px solid var(--canvas-line);
-  border-radius: var(--radius);
-  background: var(--canvas);
   place-items: center;
 }
 
@@ -630,10 +787,6 @@ input[type="range"]:focus-visible {
 canvas {
   position: relative;
   z-index: 1;
-  display: block;
-  width: 100%;
-  height: auto;
-  min-height: 410px;
   background: transparent;
 }
 
@@ -775,7 +928,7 @@ footer code {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 959px) {
   .page-shell {
     width: calc(100% - 20px);
     padding-top: 10px;
@@ -803,27 +956,81 @@ footer code {
   }
 
   .workbench {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     gap: 14px;
     margin-top: 12px;
   }
 
-  .result-workspace {
-    display: block;
-  }
-
-  .control-rail {
-    width: 100%;
-    padding: 14px;
-  }
-
+  #controlRail,
+  #resultWorkspace,
   .result-heading {
-    min-height: 0;
+    display: contents;
   }
 
-  .canvas-frame,
-  canvas {
-    min-height: 320px;
+  .rail-heading {
+    order: 1;
+    padding: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .sample-card {
+    order: 2;
+    margin-top: 0;
+    padding: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  #status {
+    order: 3;
+    margin: 0;
+  }
+
+  #runtimeRetryBtn {
+    order: 4;
+    margin: 0;
+  }
+
+  .result-heading-copy {
+    order: 5;
+    padding: 14px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  #resultViewport {
+    order: 6;
+  }
+
+  .result-summary {
+    order: 7;
+    width: 100%;
+    margin-top: 0;
+    background: var(--surface);
+  }
+
+  #resultControls {
+    order: 8;
+    margin-top: 0;
+  }
+
+  .detections {
+    order: 9;
+    width: 100%;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  #byomPanel {
+    order: 10;
+    margin-top: 0;
+  }
+
+  .result-viewport {
+    min-height: min(320px, 68vh);
   }
 
   footer {
@@ -854,9 +1061,8 @@ footer code {
     justify-content: flex-start;
   }
 
-  .canvas-frame,
-  canvas {
-    min-height: 250px;
+  .result-viewport {
+    min-height: 0;
   }
 }
 

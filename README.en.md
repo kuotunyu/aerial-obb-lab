@@ -14,15 +14,15 @@ through OBB/HBB geometry analysis, ONNX/TensorRT benchmarking, and a browser-nat
 The result is reported as-is: matched fine-tuning was a near-tie/slight regression.
 
 **Demo:** [`demo/web/`](demo/web/) · **Model card:** [`docs/model_card.md`](docs/model_card.md) ·
-**Release scope:** code and evidence only; no weights.
+**Release scope:** code, evidence, one fixed public-domain NAIP harbor original, and one privacy-sanitized AGPL demo model.
 
 <!-- claim:browser-scope -->
-> The browser demo has two explicit modes. One click on **Load Synthetic Showcase** renders the
-> repository's authored SVG, fixed results, and rotated polygon without loading the runtime or
-> performing inference. BYOM is the only inference path; its user-supplied compatible ONNX model
-> and image are processed locally. Neither the showcase nor its screenshot is accuracy,
-> evaluation, or latency evidence: it **does not represent** the fine-tuned `yolo26m-obb`
-> checkpoint's accuracy or its recorded T4 latency.
+> The browser demo immediately shows the fixed public-domain NAIP harbor original. Only after **Start Detect** does it
+> load the same-origin privacy-sanitized AGPL derivative and pinned runtime, then perform genuine
+> inference in the current browser session. BYOM still accepts a user-supplied compatible ONNX model
+> and image; no model/image bytes are uploaded. This integration demo **does not represent** the
+> fine-tuned `yolo26m-obb` checkpoint's accuracy, evaluation, or recorded T4 latency; its screenshot
+> is subject to the same boundary.
 <!-- /claim:browser-scope -->
 
 ## Highlights
@@ -32,11 +32,11 @@ The result is reported as-is: matched fine-tuning was a near-tie/slight regressi
 | Matched evaluation | Fine-tuned vs. official baseline: Δ mAP50 **-0.05pt**, Δ mAP50-95 **-0.13pt** | Near-tie/slight regression, not an accuracy gain |
 | OBB geometry | 456 val images, 28,853 objects; overall weighted mean **1.76×**, bridge mean **2.43×** | Ground-truth geometry, not a detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms / 49.4 FPS** | Historical Tesla T4, batch=1, 1024px environment |
-| Browser-native dual-mode demo | One-action Synthetic Showcase (no inference) plus local BYOM inference | Runtime lazy-loads from jsDelivr on BYOM model selection; non-zero network, SRI-covered JavaScript, no model or DOTA pixels |
+| Browser-native real-image demo | Fixed harbor original → user presses Detect → genuine local inference; advanced BYOM remains available | Detect lazy-loads pinned jsDelivr runtime and the same-origin privacy-sanitized derivative; non-zero network, no DOTA pixels |
 
-![Synthetic UI fixture showing the browser-native BYOM workbench, not model-quality evidence](docs/assets/browser-workbench.png)
+![OBB workbench after genuine local-browser inference on the fixed harbor sample; not model-quality evidence](docs/assets/browser-workbench.png)
 
-*Synthetic UI fixture: one action loads a fixed SVG and authored `[1,N,7]` output to verify UI/UX, decoding, and rendering; `N/A · no inference`, not accuracy, evaluation, or latency evidence.*
+*After explicit Detect, the fixed public-domain NAIP harbor original is processed by genuine local-browser inference and shown with rotated polygons, numeric runtime, and the result table. It is integration evidence, not ground truth, accuracy, evaluation, benchmark, representative-dataset, model-quality, USGS/USDA endorsement, or historical T4 latency evidence; its guardrails are drift checks only.*
 
 ---
 
@@ -158,7 +158,7 @@ same-class objects with horizontal box IoU ≥ 0.3, the fraction where true orie
 **Limit:** This is a ground-truth geometry proxy, not a detector/NMS experiment. It identifies
 potential HBB overlap and suppression risk, not actual prediction loss for a specific detector.
 
-**3. Visual source:** Five DOTA-derived comparison crops are excluded from this code-only release;
+**3. Visual source:** Five DOTA-derived comparison crops are excluded from this public release;
 only reproducible aggregate data remains.
 <!-- /claim:analysis -->
 
@@ -201,7 +201,7 @@ in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
 
 ## Reproduction Steps
 
-### 1. Local Development (CPU-only, no training or model inference required)
+### 1. Local Development (CPU-only, no training or GPU required)
 
 Requirements: Python 3.11 and CPU. Do not copy `.venv` across machines.
 
@@ -215,7 +215,9 @@ uv sync --frozen --no-install-project
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-- Demo: open `http://localhost:8765`; model and image stay in the local browser.
+- Demo: open `http://localhost:8765`; the fixed public-domain NAIP harbor original is visible immediately. Press **Start Detect** to inspect the genuine local result.
+  The image and model are not uploaded; first Detect reads the same-origin privacy-sanitized derivative
+  and loads the pinned runtime through CDN + SRI.
 - Default env: no Torch, CUDA, Ultralytics, or Python ONNX Runtime.
 - Broken `.venv`: run `uv venv --clear --python 3.11`; use `.venv/bin/python` on Linux/macOS.
 - Windows non-ASCII path: keep `--no-install-project` and call Python directly; see
@@ -223,7 +225,7 @@ uv sync --frozen --no-install-project
 - `tool.uv.link-mode = "copy"`: avoids environment/cache contamination.
 
 The clean-export gate rebuilds a clean HEAD, checks tests/links/privacy/artifacts/browser, then
-builds and installs the wheel. Browser smoke uses synthetic fixtures and performs no inference:
+builds and installs the wheel. Browser smoke runs genuine sample inference and BYOM safety paths in Chromium:
 
 ```powershell
 .venv/Scripts/playwright.exe install chromium
@@ -248,22 +250,20 @@ frozen and must not be rerun merely to improve the numbers.
 **Accepted evidence:** [evidence.json](release/evidence.json) ·
 [per_class_metrics.json](docs/per_class_metrics.json) · [training results](docs/training_results.md)
 
-### 3. Browser BYOM Demo
+### 3. Browser Real-image Demo + BYOM
 
-- One click on **Load Synthetic Showcase** loads the committed authored SVG and fixed output, draws a
-  rotated polygon, and shows provenance plus `N/A · no inference`. It makes no external runtime
-  request, contains no DOTA pixels, and creates no accuracy, evaluation, or latency evidence.
-- BYOM is the only inference mode. Serve `demo/web/`, then choose a local ONNX model and image;
-  model/image bytes stay in the browser, with no named-model download, implicit export, or fallback.
-- ONNX Runtime Web lazy-loads only when a BYOM model is selected. A first load or cache miss fetches
-  pinned JavaScript and WASM assets from jsDelivr, so BYOM is not zero-network. SHA-384 SRI covers
-  `ort.min.js` only; WASM assets fetched afterward by the runtime are outside that script SRI scope.
-- Showcase-asset, runtime, model-contract, inference, output, render, and image-decode failures clear
-  stale results and expose fixed, filename-safe recovery paths. An invalid replacement model does not
-  displace the last validated session, and retry remains available where recovery is safe. Switching
-  to Synthetic Showcase releases the BYOM session, clears its file selections, and restores neutral
-  model/image labels. Inference/output/render failures retain the base image while removing the stale
-  polygon, table, and summary.
+- The shared viewport immediately shows one fixed public-domain NAIP harbor original, with no selector or automatic inference. **Start Detect** then
+  lazy-loads pinned ONNX Runtime Web and the same-origin privacy-sanitized YOLO26n-OBB derivative,
+  performs genuine inference in the current browser session, and replaces the original with rotated
+  polygons, numeric runtime, provenance, and the result table in that same viewport.
+- Original/result view switching and confidence/class filters redraw the same cached output without
+  another inference. BYOM remains a collapsed advanced path; user-supplied model/image bytes are also
+  processed only inside the browser and are never uploaded.
+- First Detect or a cache miss fetches pinned JavaScript and WASM assets from jsDelivr, so the demo is
+  not zero-network. SHA-384 SRI covers `ort.min.js` only; later WASM requests are outside that script SRI.
+- Asset, runtime, integrity, model-contract, inference, output, render, and image-decode failures clear
+  stale results, retain a safe original/retry path, and expose fixed recovery copy without local filenames.
+  An invalid replacement BYOM model does not displace the last validated session.
 
 ---
 
@@ -271,10 +271,11 @@ frozen and must not be rerun merely to improve the numbers.
 
 - Repository code: **AGPL-3.0-or-later** as declared in `pyproject.toml`; Ultralytics components
   remain subject to their respective AGPL / Enterprise licensing.
-- This code-only candidate does not contain DOTA images, annotations, derived renders, training
-  weights, or exported models. DOTA remains restricted to non-commercial academic use; user-supplied
-  models remain subject to their upstream dataset, software, and weight licenses, and this project
-  makes no claim of commercial rights.
+- This candidate includes one AGPL YOLO26n-OBB derivative whose private build metadata was removed
+  without changing graph or weights, plus one public-domain NAIP harbor aerial derivative. It contains no DOTA pixels,
+  annotations, or derived renders. DOTAv1 training provenance is disclosed; the project implies no
+  Ultralytics endorsement and makes no commercial-use clearance claim. User-supplied models/images
+  remain subject to their dataset, software, weight, and image-rights terms.
 - Artifact hashes, third-party notices, and release gates: see
   [artifact manifest](release/artifact-manifest.json), [third-party notices](THIRD_PARTY_NOTICES.md),
   and [release checklist](RELEASE_CHECKLIST.md).

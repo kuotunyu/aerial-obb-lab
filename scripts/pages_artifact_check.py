@@ -1,7 +1,7 @@
-"""Verify the exact, publishable ``demo/web`` privacy boundary.
+"""Verify the final real-demo-only ``demo/web`` privacy boundary.
 
 This checker is deliberately read-only and Python-standard-library-only so it can
-run in repository preflight and directly against a staged Pages tree.
+run in repository preflight and admit only the reviewed public asset inventory.
 """
 
 from __future__ import annotations
@@ -22,16 +22,27 @@ REQUIRED_FILES = (
     "index.html",
     "app.js",
     "obb.js",
-    "showcase-fixture.js",
+    "demo-assets.js",
     "style.css",
-    "fixtures/showcase.svg",
     "fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "fonts/IBM-Plex-OFL.txt",
     "README.md",
+    "samples/harbor.jpg",
+    "models/yolo26n-obb-privacy-sanitized.onnx",
+    "demo-model.json",
+    "third_party/ULTRALYTICS-AGPL-3.0.txt",
+    "third_party/yolo26n-obb-privacy-sanitization.json",
+    "THIRD_PARTY_NOTICES.md",
 )
 ALLOWED_FILES = frozenset(REQUIRED_FILES)
-ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts"))
+ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts", "models", "samples", "third_party"))
 FONT_PATH = "fonts/IBMPlexSansCondensed-SemiBold.woff2"
+MODEL_PATH = "models/yolo26n-obb-privacy-sanitized.onnx"
+IMAGE_PATHS = (
+    "samples/harbor.jpg",
+)
+BINARY_PUBLIC_PATHS = frozenset((FONT_PATH, MODEL_PATH, *IMAGE_PATHS))
+SOURCE_MODEL_SHA256 = "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"
 TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".svg", ".txt"}
 RUNTIME_TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".svg"}
 FORBIDDEN_MODEL_SUFFIXES = {
@@ -77,6 +88,9 @@ ABSOLUTE_USER_PATH_RE = re.compile(
     )
     '''
 )
+ABSOLUTE_USER_PATH_BYTES_RE = re.compile(
+    rb"(?i)(?:[a-z]:[\\/]+(?:users|documents[ ]and[ ]settings)[\\/]+|/(?:users|home)/)"
+)
 URL_RE = re.compile(r'''(?:(?:https?:)?//)[^\s"'`<>()\[\]{}]+''', re.I)
 GITHUB_NAVIGATION_RE = re.compile(
     r'''<a\b[^>]*\bhref\s*=\s*["'](https://github\.com/[^"']+)["'][^>]*>''',
@@ -86,7 +100,7 @@ SVG_NAMESPACE_RE = re.compile(
     r'''\bxmlns\s*=\s*["'](http://www\.w3\.org/2000/svg)["']''', re.I
 )
 FORBIDDEN_BROWSER_API_RE = re.compile(
-    r"\b(?:localStorage|sessionStorage|indexedDB|caches|fetch|XMLHttpRequest|"
+    r"\b(?:localStorage|sessionStorage|indexedDB|caches|XMLHttpRequest|"
     r"WebSocket|EventSource|sendBeacon|serviceWorker)\b|\bnavigator\.storage\b"
 )
 REMOTE_MODEL_FETCH_RE = re.compile(
@@ -105,41 +119,69 @@ REVIEWED_ASSET_DIGESTS = {
         "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d",
         "reviewed font bytes differ",
     ),
+    "samples/harbor.jpg": (
+        "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
+        "reviewed sample image bytes differ",
+    ),
+    MODEL_PATH: (
+        "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+        "published model bytes differ",
+    ),
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "4a09df2370c56e59dff9337a5754605c7bc28a36effdeba1e4321778396c8325",
+        "605499f87aef278ba6436b4538ff27e38dc9717e9ce0c008db3fafe00ed6830c",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "5e56a01b3973becfc6f806dc2063e13d16a56ae0ad35e0b64e81e03b7c4613ff",
+        "3eeb7b65ae07975d2be2579d77679c6b4be6896d7ccb657abf4c2e542d6df087",
         "reviewed application bytes differ",
     ),
     "obb.js": (
         "c2c83882a1cb1b6d76ab48d12784af6c2ef526be08d4fe1b7ed23798b7350043",
         "reviewed geometry bytes differ",
     ),
-    "showcase-fixture.js": (
-        "d56958508b82d18028b9026aa8fd40235cba49174a2593118e8c7f8e41f478f6",
-        "reviewed showcase data bytes differ",
+    "demo-assets.js": (
+        "e1dd5848507d793d34947200af099d6a84481028f404ed571e1eeb7d44c8d75e",
+        "reviewed demo asset loader bytes differ",
     ),
     "style.css": (
-        "5685625db34b50b25f41006f7a57684830c68f8c10971fd0917707ad2e00332b",
+        "f834972059498d2e68682aa5d3ecfefd469355eaf0282af2e08e031ffe90f2ec",
         "reviewed stylesheet bytes differ",
-    ),
-    "fixtures/showcase.svg": (
-        "8dab1056011c99a21ad2a01d088956a444308f61cb57b0e6f5bafd3e2f0dd5bf",
-        "reviewed synthetic fixture bytes differ",
     ),
     "fonts/IBM-Plex-OFL.txt": (
         "9590325331b1975eac408dc78e7d369c042f565cee8aa9e34d6b40524f400972",
         "reviewed font license bytes differ",
     ),
     "README.md": (
-        "458772e09e2d1ed4d034c323228cf42fd20e8f2079dc4f389bb7d916740745a4",
+        "2b8c7d0540f71025c78ba5d3eed20257a2d3f355753b535b4d4e0df13ac266e0",
         "reviewed README bytes differ",
     ),
+    "demo-model.json": (
+        "a25e9a112d06c92b342b276ea601fa19113896f91e1787e67a754c7c8707ed83",
+        "reviewed demo manifest bytes differ",
+    ),
+    "third_party/ULTRALYTICS-AGPL-3.0.txt": (
+        "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+        "reviewed Ultralytics license bytes differ",
+    ),
+    "third_party/yolo26n-obb-privacy-sanitization.json": (
+        "e0e03b45e5750ebe21070e93ef4f2c537f6040f471980f55428aa4d69d7a659b",
+        "reviewed sanitization record bytes differ",
+    ),
+    "THIRD_PARTY_NOTICES.md": (
+        "11340793b3f1be511fbbc8010987c359b52129b5314a9bf89655d20b585fdaea",
+        "reviewed third-party notice bytes differ",
+    ),
 }
+
+APPROVED_PROVENANCE_URLS = frozenset(
+    (
+        "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
+        "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+        "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
+    )
+)
 
 
 def _is_link(path: Path) -> bool:
@@ -177,6 +219,13 @@ def _read_public_text(path: Path, relative: str, errors: list[str]) -> str | Non
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _check_model_binary(binary: bytes, digest: str, errors: list[str]) -> None:
+    if ABSOLUTE_USER_PATH_BYTES_RE.search(binary):
+        errors.append(f"{MODEL_PATH}: binary contains absolute user path")
+    if digest == SOURCE_MODEL_SHA256:
+        errors.append(f"{MODEL_PATH}: upstream model bytes are forbidden")
+
+
 def _scan_runtime_urls(relative: str, text: str, errors: list[str]) -> None:
     approved_context_spans = (
         {match.span(1) for match in GITHUB_NAVIGATION_RE.finditer(text)}
@@ -190,6 +239,11 @@ def _scan_runtime_urls(relative: str, text: str, errors: list[str]) -> None:
     for match in URL_RE.finditer(text):
         url = match.group(0)
         if url.startswith(ORT_PACKAGE_BASE):
+            continue
+        if relative in {
+            "demo-model.json", "demo-assets.js", "README.md", "THIRD_PARTY_NOTICES.md",
+            "third_party/yolo26n-obb-privacy-sanitization.json",
+        } and url in APPROVED_PROVENANCE_URLS:
             continue
         if match.span() in approved_context_spans:
             continue
@@ -330,13 +384,14 @@ def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: lis
 
     html = texts.get("index.html")
     if html is not None:
-        for reference in ("style.css", "obb.js", "showcase-fixture.js", "app.js"):
+        for reference in ("style.css", "obb.js", "demo-assets.js", "app.js"):
             if reference not in html:
                 errors.append(f"index.html: required reference is missing: {reference}")
 
-    fixture = texts.get("showcase-fixture.js")
-    if fixture is not None and 'imageUrl: "fixtures/showcase.svg"' not in fixture:
-        errors.append("showcase-fixture.js: exact synthetic fixture reference is missing")
+    demo_assets = texts.get("demo-assets.js")
+    model_reference = 'models/yolo26n-obb-privacy-sanitized.onnx'
+    if demo_assets is not None and model_reference not in demo_assets:
+        errors.append("demo-assets.js: exact derivative model path is missing")
 
     style = texts.get("style.css")
     font_reference = 'url("fonts/IBMPlexSansCondensed-SemiBold.woff2")'
@@ -346,11 +401,6 @@ def _check_exact_runtime_contract(root: Path, texts: dict[str, str], errors: lis
     license_text = texts.get("fonts/IBM-Plex-OFL.txt")
     if license_text is not None and "SIL OPEN FONT LICENSE Version 1.1" not in license_text:
         errors.append("fonts/IBM-Plex-OFL.txt: SIL Open Font License 1.1 text is missing")
-
-    fixture_path = root / "fixtures" / "showcase.svg"
-    if fixture_path.is_file() and _is_link(fixture_path):
-        errors.append("fixtures/showcase.svg: required fixture must be a regular file")
-
 
 def verify_pages_tree(root: Path) -> list[str]:
     """Return deterministic ``path: reason`` violations without modifying *root*."""
@@ -388,11 +438,14 @@ def verify_pages_tree(root: Path) -> list[str]:
             continue
         if stat.st_nlink != 1:
             errors.append(f"{relative}: hard link count is {stat.st_nlink}")
-        if stat.st_size > ONE_MIB and relative != FONT_PATH:
+        if stat.st_size > ONE_MIB and relative not in {FONT_PATH, MODEL_PATH}:
             errors.append(f"{relative}: file exceeds 1 MiB")
 
         suffix = path.suffix.casefold()
-        if suffix in FORBIDDEN_MODEL_SUFFIXES or suffix in FORBIDDEN_ARCHIVE_SUFFIXES:
+        if (
+            (suffix in FORBIDDEN_MODEL_SUFFIXES and relative != MODEL_PATH)
+            or suffix in FORBIDDEN_ARCHIVE_SUFFIXES
+        ):
             errors.append(f"{relative}: forbidden model/runtime artifact")
         if FORBIDDEN_PATH_TOKEN_RE.search(relative):
             errors.append(f"{relative}: forbidden DOTA-derived path")
@@ -423,7 +476,14 @@ def verify_pages_tree(root: Path) -> list[str]:
                 if actual_digest != expected_digest:
                     errors.append(f"{relative}: {reason}")
 
-        if relative == FONT_PATH:
+        if relative in BINARY_PUBLIC_PATHS:
+            if relative == MODEL_PATH:
+                try:
+                    binary = path.read_bytes()
+                except OSError:
+                    errors.append(f"{relative}: cannot read file")
+                else:
+                    _check_model_binary(binary, hashlib.sha256(binary).hexdigest(), errors)
             continue
         if suffix not in TEXT_SUFFIXES:
             errors.append(f"{relative}: unexpected binary file")
@@ -437,6 +497,8 @@ def verify_pages_tree(root: Path) -> list[str]:
             errors.append(f"{relative}: token-shaped string")
         if ABSOLUTE_USER_PATH_RE.search(text):
             errors.append(f"{relative}: absolute user path")
+        if "synthetic" in text.casefold():
+            errors.append(f"{relative}: current Synthetic reference is forbidden")
         if suffix in RUNTIME_TEXT_SUFFIXES:
             _scan_runtime_urls(relative, text, errors)
             if REMOTE_MODEL_FETCH_RE.search(text):

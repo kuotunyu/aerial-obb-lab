@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
-  "release_candidate": "v1.0.0-rc.2",
-  "distribution_mode": "code-only-byom",
+  "release_candidate": "unreleased-pages-candidate",
+  "distribution_mode": "public-agpl-privacy-sanitized-demo-model-plus-byom",
   "generated_from_committed_files": true,
   "policy": {
     "maximum_unlisted_tracked_file_bytes": 25000000,
     "commercial_use_cleared": false,
-    "notes": "The public release bundles no third-party model binary or DOTA-derived raster image. Historical artifact records are retained only as exclusion audit metadata."
+    "notes": "The public release bundles one exact privacy-sanitized AGPL demo model and one exact public-domain NAIP harbor aerial sample derivative. No DOTA pixels, annotations, or DOTA-derived renders are distributed; commercial-use clearance is not claimed. Historical exclusion records remain audit metadata."
   },
   "bundled_third_party_artifacts": [
     {
@@ -23,6 +23,127 @@
       "restrictions": [
         "Keep the copyright notice and SIL Open Font License 1.1 with redistributed copies.",
         "Reserved Font Name Plex applies if the font is modified."
+      ]
+    },
+    {
+      "path": "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+      "bytes": 10207127,
+      "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97",
+      "kind": "privacy-sanitized browser demo model",
+      "provenance": "Ultralytics YOLO26n-OBB v8.4.0, trained on DOTAv1; one non-inference metadata entry was removed on 2026-08-31 while graph and weights remained structurally unchanged.",
+      "source_url": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx",
+      "source_sha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38",
+      "modification_status": "metadata-only",
+      "modification_date": "2026-08-31",
+      "sanitization_record": "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+      "license": "AGPL-3.0-only",
+      "license_file": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+      "restrictions": [
+        "No Ultralytics endorsement is implied.",
+        "The project makes no commercial-use clearance claim for the DOTAv1-trained derivative.",
+        "Closed-source or commercial use requires separate license and data-rights analysis."
+      ]
+    },
+    {
+      "path": "demo/web/samples/harbor.jpg",
+      "sample_id": "harbor",
+      "sample_title": "低密度港區航拍範例",
+      "media_type": "image/jpeg",
+      "width": 1280,
+      "height": 800,
+      "bytes": 241046,
+      "sha256": "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
+      "kind": "public-domain NAIP aerial sample derivative",
+      "provenance": "USGS/USDA NAIP product m_3411955_sw_11_060_20220514, 2022; crop/resample/metadata removal, bbox [-119.216719, 34.14417, -119.200719, 34.15417], 1280x800 sRGB JPEG quality 90.",
+      "source_url": "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPPlus/ImageServer",
+      "source_product_id": "m_3411955_sw_11_060_20220514",
+      "source_year": 2022,
+      "source_acquisition_date": 1652486400000,
+      "source_agency": "USDA",
+      "public_domain_record": "https://data.usgs.gov/datacatalog/data/USGS%3AEROS5e83a340bf820c39",
+      "modification_status": "crop/resample/metadata removal",
+      "derivation": {"bboxWgs84": [-119.216719, 34.14417, -119.200719, 34.15417], "outputSize": [1280, 800], "color": "sRGB", "jpegQuality": 90, "metadata": "stripped"},
+      "alt": "低密度港區的真實航拍原圖",
+      "guardrails": {"classIds": [1, 2, 7], "countMin": 16, "countMax": 26, "representative": {"classId": 1, "cx": 951.1, "cy": 443.1, "w": 164.4, "h": 26.4, "tolerance": 32.9}},
+      "license": "Public Domain",
+      "restrictions": ["Curated integration example only; not accuracy, evaluation, or model-quality evidence.", "No USGS or USDA endorsement is implied."]
+    },
+    {
+      "path": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+      "bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "digest_mode": "canonical-lf",
+      "kind": "unmodified upstream model license text",
+      "provenance": "Complete AGPL-3.0-only license text distributed with the privacy-sanitized model derivative.",
+      "source_url": "https://raw.githubusercontent.com/ultralytics/assets/v8.4.0/LICENSE",
+      "license": "AGPL-3.0-only",
+      "restrictions": [
+        "Redistribution and network use remain subject to the included AGPL-3.0-only terms."
+      ]
+    }
+  ],
+  "reviewed_public_artifacts": [
+    {"path": "README.md", "bytes": 15350, "sha256": "10daf6b2b7fe34aa97ffd1fd41b63db6a0d760418850a5367258a97d8c40ec8e", "digest_mode": "canonical-lf"},
+    {"path": "README.en.md", "bytes": 15447, "sha256": "811857ae0872cfd7964206f1c1bbfd2a68fdaca9ab1b11c1d4b020a0c94d22d8", "digest_mode": "canonical-lf"},
+    {"path": "THIRD_PARTY_NOTICES.md", "bytes": 6275, "sha256": "744d0477a6e942d3e38070e6e9198b0854457f47d184806f965e712cfe140175", "digest_mode": "canonical-lf"},
+    {"path": "RELEASE_CHECKLIST.md", "bytes": 6324, "sha256": "47383dbe91dbf5efdc9047c2f1c70aed2aa1b938e1aa28b1d0fbaca242ed4db1", "digest_mode": "canonical-lf"},
+    {"path": "CHANGELOG.md", "bytes": 7421, "sha256": "d3d9296b6093a1c20e6f7e9fedba653a4672ed45d60a5c86aee0ed0b178379b4", "digest_mode": "canonical-lf"},
+    {"path": "demo/web/README.md", "bytes": 4239, "sha256": "2b8c7d0540f71025c78ba5d3eed20257a2d3f355753b535b4d4e0df13ac266e0", "digest_mode": "canonical-lf"},
+    {"path": "demo/web/THIRD_PARTY_NOTICES.md", "bytes": 1566, "sha256": "11340793b3f1be511fbbc8010987c359b52129b5314a9bf89655d20b585fdaea", "digest_mode": "canonical-lf"},
+    {
+      "path": "demo/web/app.js",
+      "bytes": 27131,
+      "sha256": "3eeb7b65ae07975d2be2579d77679c6b4be6896d7ccb657abf4c2e542d6df087",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
+      "bytes": 66040,
+      "sha256": "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d"
+    },
+    {
+      "path": "demo/web/index.html",
+      "bytes": 7892,
+      "sha256": "605499f87aef278ba6436b4538ff27e38dc9717e9ce0c008db3fafe00ed6830c",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
+      "bytes": 10207127,
+      "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97"
+    },
+    {
+      "path": "demo/web/samples/harbor.jpg",
+      "bytes": 241046,
+      "sha256": "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0"
+    },
+    {
+      "path": "demo/web/style.css",
+      "bytes": 18009,
+      "sha256": "f834972059498d2e68682aa5d3ecfefd469355eaf0282af2e08e031ffe90f2ec",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
+      "bytes": 34523,
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
+      "bytes": 1351,
+      "sha256": "e0e03b45e5750ebe21070e93ef4f2c537f6040f471980f55428aa4d69d7a659b",
+      "digest_mode": "canonical-lf"
+    },
+    {
+      "path": "docs/assets/browser-workbench.png",
+      "bytes": 782563,
+      "sha256": "8b61aa584bd90d9c95ba0d8d1007beb1675b7bff5ea316d4186406f90229caa0",
+      "kind": "canonical local interface screenshot",
+      "provenance": "Generated from the exact reviewed Pages bytes after genuine local inference with the fixed harbor NAIP derivative and privacy-sanitized model.",
+      "limitations": [
+        "The overlay is model output, not ground truth or model-quality evidence.",
+        "The displayed browser runtime is client-specific and not historical T4 latency evidence."
       ]
     }
   ],

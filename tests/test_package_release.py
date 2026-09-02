@@ -93,7 +93,7 @@ def test_ci_uses_current_node24_action_majors() -> None:
     assert workflow.count("actions/setup-node@v7") == 1
 
 
-def test_ci_runs_a_headless_synthetic_browser_smoke() -> None:
+def test_ci_names_the_real_demo_browser_smoke() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-gates.yml").read_text(
         encoding="utf-8"
     )
@@ -102,6 +102,8 @@ def test_ci_runs_a_headless_synthetic_browser_smoke() -> None:
     assert "playwright>=1.55,<2" in project["dependency-groups"]["dev"]
     for token in (
         "browser-smoke:",
+        "Live demo browser smoke / Ubuntu CPU",
+        "Exercise the real-image browser demo and BYOM safety paths",
         "ubuntu-latest",
         "playwright install --with-deps chromium",
         "python scripts/browser_smoke.py",

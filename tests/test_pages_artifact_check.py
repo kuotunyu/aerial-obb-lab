@@ -8,6 +8,7 @@ import sys
 
 import pytest
 
+import scripts.pages_artifact_check as pages_check
 from scripts.pages_artifact_check import verify_pages_tree
 
 
@@ -27,6 +28,59 @@ def joined_errors(site: Path) -> str:
 
 def test_current_pages_tree_passes() -> None:
     assert verify_pages_tree(PAGES_TREE) == []
+
+
+def test_pages_tree_admits_exact_single_harbor_inventory(tmp_path: Path) -> None:
+    site = copied_pages_tree(tmp_path)
+
+    assert verify_pages_tree(site) == []
+    assert tuple(sorted(path.name for path in (site / "samples").iterdir())) == ("harbor.jpg",)
+
+
+def test_pages_tree_admits_exact_real_demo_inventory(
+    tmp_path: Path,
+) -> None:
+    site = copied_pages_tree(tmp_path)
+
+    assert verify_pages_tree(site) == []
+    assert {path.name for path in (site / "samples").iterdir()} == {"harbor.jpg"}
+    assert (site / "models" / "yolo26n-obb-privacy-sanitized.onnx").is_file()
+    assert (site / "demo-model.json").is_file()
+    assert (site / "demo-assets.js").is_file()
+    assert not (site / "showcase-fixture.js").exists()
+    assert not (site / "fixtures" / "showcase.svg").exists()
+    assert (
+        site / "third_party" / "yolo26n-obb-privacy-sanitization.json"
+    ).is_file()
+
+
+def test_pages_tree_rejects_upstream_model_digest_alternate_model_and_binary_path_leak(
+    tmp_path: Path,
+) -> None:
+    upstream = copied_pages_tree(tmp_path / "upstream")
+    model = upstream / "models" / "yolo26n-obb-privacy-sanitized.onnx"
+    model.write_bytes(bytes.fromhex("02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38"))
+    assert "published model bytes differ" in joined_errors(upstream)
+    source_errors: list[str] = []
+    pages_check._check_model_binary(
+        b"model-bytes-are-hashed-by-the-caller",
+        pages_check.SOURCE_MODEL_SHA256,
+        source_errors,
+    )
+    assert source_errors == [
+        "models/yolo26n-obb-privacy-sanitized.onnx: upstream model bytes are forbidden"
+    ]
+
+    alternate = copied_pages_tree(tmp_path / "alternate")
+    (alternate / "models" / "alternate.onnx").write_bytes(b"alternate")
+    assert "models/alternate.onnx: forbidden model/runtime artifact" in joined_errors(
+        alternate
+    )
+
+    leaked = copied_pages_tree(tmp_path / "leaked")
+    leaked_model = leaked / "models" / "yolo26n-obb-privacy-sanitized.onnx"
+    leaked_model.write_bytes(leaked_model.read_bytes() + b"C:" + b"\\Users\\public-leak")
+    assert "binary contains absolute user path" in joined_errors(leaked)
 
 
 def test_pages_tree_rejects_model_dota_secret_path_and_origin(tmp_path: Path) -> None:
@@ -78,12 +132,17 @@ def test_pages_tree_rejects_symlinks(tmp_path: Path) -> None:
         "index.html",
         "app.js",
         "obb.js",
-        "showcase-fixture.js",
+        "demo-assets.js",
         "style.css",
-        "fixtures/showcase.svg",
         "fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "fonts/IBM-Plex-OFL.txt",
         "README.md",
+        "samples/harbor.jpg",
+        "models/yolo26n-obb-privacy-sanitized.onnx",
+        "demo-model.json",
+        "third_party/ULTRALYTICS-AGPL-3.0.txt",
+        "third_party/yolo26n-obb-privacy-sanitization.json",
+        "THIRD_PARTY_NOTICES.md",
     ),
 )
 def test_pages_tree_rejects_required_file_absence(tmp_path: Path, relative: str) -> None:
@@ -188,10 +247,10 @@ def test_pages_tree_allows_reviewed_github_navigation_only_in_html(tmp_path: Pat
     ("relative", "old", "new", "reason"),
     (
         (
-            "showcase-fixture.js",
-            'imageUrl: "fixtures/showcase.svg"',
-            'imageUrl: "fixtures/other.svg"',
-            "exact synthetic fixture reference is missing",
+            "demo-assets.js",
+                '"models/yolo26n-obb-privacy-sanitized.onnx"',
+                '"models/alternate.onnx"',
+            "exact derivative model path is missing",
         ),
         (
             "style.css",
@@ -214,12 +273,27 @@ def test_pages_tree_rejects_required_reference_mismatch(
 @pytest.mark.parametrize(
     ("relative", "reason"),
     (
-        ("fixtures/showcase.svg", "reviewed synthetic fixture bytes differ"),
+        ("demo-assets.js", "reviewed demo asset loader bytes differ"),
         (
             "fonts/IBMPlexSansCondensed-SemiBold.woff2",
             "reviewed font bytes differ",
         ),
         ("fonts/IBM-Plex-OFL.txt", "reviewed font license bytes differ"),
+        ("samples/harbor.jpg", "reviewed sample image bytes differ"),
+        (
+            "models/yolo26n-obb-privacy-sanitized.onnx",
+            "published model bytes differ",
+        ),
+        ("demo-model.json", "reviewed demo manifest bytes differ"),
+        (
+            "third_party/ULTRALYTICS-AGPL-3.0.txt",
+            "reviewed Ultralytics license bytes differ",
+        ),
+        (
+            "third_party/yolo26n-obb-privacy-sanitization.json",
+            "reviewed sanitization record bytes differ",
+        ),
+        ("THIRD_PARTY_NOTICES.md", "reviewed third-party notice bytes differ"),
     ),
 )
 def test_pages_tree_rejects_reviewed_asset_content_mismatch(
@@ -230,6 +304,48 @@ def test_pages_tree_rejects_reviewed_asset_content_mismatch(
     path.write_bytes(path.read_bytes() + b"\n")
 
     assert f"{relative}: {reason}" in verify_pages_tree(site)
+
+
+@pytest.mark.parametrize(
+    ("relative", "reason"),
+    (
+        ("index.html", "reviewed HTML bytes differ"),
+        ("app.js", "reviewed application bytes differ"),
+        ("style.css", "reviewed stylesheet bytes differ"),
+    ),
+)
+def test_pages_tree_rejects_changed_reviewed_workbench_text(
+    tmp_path: Path, relative: str, reason: str
+) -> None:
+    site = copied_pages_tree(tmp_path)
+    path = site / relative
+    path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    assert f"{relative}: {reason}" in verify_pages_tree(site)
+
+
+def test_final_pages_tree_rejects_synthetic_paths_and_references(tmp_path: Path) -> None:
+    path_site = copied_pages_tree(tmp_path / "path")
+    (path_site / "showcase-fixture.js").write_text("fixture", encoding="utf-8")
+    assert "showcase-fixture.js: unexpected Pages file" in joined_errors(path_site)
+
+    reference_site = copied_pages_tree(tmp_path / "reference")
+    app = reference_site / "app.js"
+    app.write_text(app.read_text(encoding="utf-8") + "\n// Synthetic legacy\n", encoding="utf-8")
+    assert "app.js: current Synthetic reference is forbidden" in joined_errors(
+        reference_site
+    )
+
+
+def test_pages_tree_rejects_synthetic_reference_in_markdown(tmp_path: Path) -> None:
+    site = copied_pages_tree(tmp_path)
+    readme = site / "README.md"
+    readme.write_text(
+        readme.read_text(encoding="utf-8") + "\nLegacy Synthetic mode.\n",
+        encoding="utf-8",
+    )
+
+    assert "README.md: current Synthetic reference is forbidden" in joined_errors(site)
 
 
 def test_pages_tree_scans_macos_and_linux_home_paths(tmp_path: Path) -> None:

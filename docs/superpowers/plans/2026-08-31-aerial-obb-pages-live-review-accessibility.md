@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Work only in `D:\AI-Portfolio\.worktrees\fix-pages-live-review-accessibility` on `fix/pages-live-review-accessibility`, based on `00d06f012acc9b4b52417374dd4c23ef84b9797c`.
+- Work only in `<repository-root>\.worktrees\fix-pages-live-review-accessibility` on `fix/pages-live-review-accessibility`, based on `00d06f012acc9b4b52417374dd4c23ef84b9797c`.
 - Use strict TDD: add the named real browser assertion, run it and observe its stated RED failure, then make the smallest GREEN change and rerun it.
 - An active synthetic result (`state.mode === "synthetic" && state.phase === "result" && state.cached !== null`) displays exactly `N/A · no inference`; synthetic never creates an ORT session or reports a numeric latency.
 - An active BYOM result displays measured rounded `… ms` only when its elapsed value is finite; it retains that runtime through confidence and class re-filtering.
