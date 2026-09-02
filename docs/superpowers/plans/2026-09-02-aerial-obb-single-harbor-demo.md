@@ -686,10 +686,17 @@ Record exact pass counts, durations, harbor detection count/class set/representa
 - [ ] **Step 3: Run strict committed-files-only clean export**
 
 ```powershell
-$cleanExport = Join-Path ([IO.Path]::GetTempPath()) ('aerial-obb-harbor-clean-export-' + [guid]::NewGuid().ToString('N'))
-if (Test-Path -LiteralPath $cleanExport) { throw 'Refusing to overwrite clean export' }
-uv run --no-sync python scripts/clean_export_check.py --output $cleanExport
-uv run --no-sync python scripts/pages_artifact_check.py --root (Join-Path $cleanExport 'demo/web')
+$cleanExportRoot = Join-Path ([IO.Path]::GetTempPath()) ('aerial-obb-harbor-clean-export-' + [guid]::NewGuid().ToString('N'))
+if (Test-Path -LiteralPath $cleanExportRoot) { throw 'Refusing to overwrite clean export' }
+New-Item -ItemType Directory -Path $cleanExportRoot | Out-Null
+$cleanExportArchive = Join-Path $cleanExportRoot 'aerial-obb-harbor-clean-export.zip'
+$cleanExportTree = Join-Path ([IO.Path]::GetTempPath()) ('aerial-obb-harbor-clean-export-tree-' + [guid]::NewGuid().ToString('N'))
+if (Test-Path -LiteralPath $cleanExportTree) { throw 'Refusing to overwrite extracted clean export' }
+New-Item -ItemType Directory -Path $cleanExportTree | Out-Null
+uv run --no-sync python scripts/clean_export_check.py --output $cleanExportArchive
+[void] (Add-Type -AssemblyName System.IO.Compression.FileSystem)
+[IO.Compression.ZipFile]::ExtractToDirectory($cleanExportArchive, $cleanExportTree, $false)
+uv run --no-sync python scripts/pages_artifact_check.py (Join-Path $cleanExportTree 'demo/web')
 ```
 
 Do not pass `--skip-browser`. Expected: archive rebuild, package build/install/import, full tests, one genuine harbor inference, privacy/origin/link/license checks, and byte/canonical-text equality pass from the export. Record the archive SHA-256 and exact member inventory.
@@ -711,7 +718,7 @@ Create a repository-external evidence directory and serve the export:
 ```powershell
 $evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) ('aerial-obb-harbor-evidence-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $evidenceRoot | Out-Null
-uv run --no-sync python -m http.server 8768 --bind 127.0.0.1 --directory (Join-Path $cleanExport 'demo/web')
+uv run --no-sync python -m http.server 8768 --bind 127.0.0.1 --directory (Join-Path $cleanExportTree 'demo/web')
 ```
 
 Open `http://127.0.0.1:8768/` and capture repository-external original/result screenshots at 1280×720 and 390×844. Also inspect a 200%-zoom-equivalent width. Verify initial harbor original, fixed non-interactive title, explicit Detect, genuine annotated result, numeric runtime, original/result toggle, cached filters, collapsed BYOM, notice-before-control order, keyboard/focus, stable labels/names/headings, canvas alternative/table synchronization, reduced motion, forced colors, Source/AGPL/public-domain readability, no page-level overflow, no console/page error, and exact request origins.
