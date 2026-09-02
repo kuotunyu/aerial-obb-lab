@@ -233,6 +233,51 @@ def approved_gallery_report(tmp_path: Path, valid_candidate_record: dict) -> dic
             "visualReview": {"harbor-port-hueneme": "approved"}}
 
 
+@pytest.fixture
+def reviewed_harbor_report(tmp_path: Path, approved_gallery_report: dict) -> dict:
+    record = approved_gallery_report["records"][0]
+    harbor_bytes = (
+        Path(__file__).resolve().parents[1] / "demo" / "web" / "samples" / "harbor.jpg"
+    ).read_bytes()
+    (tmp_path / record["image"]["reviewName"]).write_bytes(harbor_bytes)
+    record["image"].update({
+        "bytes": len(harbor_bytes),
+        "sha256": hashlib.sha256(harbor_bytes).hexdigest(),
+    })
+    record["source"].update({
+        "name": "m_3411955_sw_11_060_20220514",
+        "rasterName": "m_3411955_sw_11_060_20220514",
+        "year": 2022,
+        "acquisitionDate": 1652486400000,
+        "agency": "USDA",
+    })
+    detections = [{
+        "classId": 1, "confidence": 0.99, "cx": 951.1, "cy": 443.1,
+        "w": 164.4, "h": 26.4, "angle": 0.0,
+    }]
+    detections.extend({
+        "classId": 2, "confidence": 0.5, "cx": 50.0 + index, "cy": 100.0,
+        "w": 10.0, "h": 10.0, "angle": 0.0,
+    } for index in range(20))
+    (tmp_path / "candidate-records.json").write_text(
+        json.dumps({"schemaVersion": 1, "records": [record]}), encoding="utf-8"
+    )
+    (tmp_path / "observations.json").write_text(json.dumps({
+        "schemaVersion": 1,
+        "threshold": 0.25,
+        "modelSha256": gallery.MODEL_SHA256,
+        "candidates": [{
+            "candidateId": "harbor-port-hueneme",
+            "category": "harbor",
+            "runCompleted": True,
+            "numericRuntime": 1.0,
+            "detections": detections,
+            "visualReview": "unreviewed",
+        }],
+    }), encoding="utf-8")
+    return approved_gallery_report
+
+
 def test_candidate_recipes_are_exact_approved_harbor_only() -> None:
     assert CANDIDATE_RECIPES == (
         CandidateRecipe(
@@ -715,6 +760,77 @@ def test_first_publication_bundle_rollback_removes_new_gallery_files_and_keeps_p
     assert {path.name for path in samples.iterdir()} == {"boats.jpg"}
     assert boats.read_bytes() == predecessor
     assert not receipt.exists() and not manifest.exists() and not loader.exists()
+
+
+def test_late_bundle_failure_restores_the_exact_three_image_predecessor(
+    tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
+    root = tmp_path / "demo" / "web"
+    samples = root / "samples"
+    samples.mkdir(parents=True)
+    receipt = tmp_path / "release" / "sample-gallery-sources.json"
+    receipt.parent.mkdir()
+    manifest = root / "demo-model.json"
+    loader = root / "demo-assets.js"
+    predecessors = {
+        samples / "airfield.jpg": b"predecessor-airfield",
+        samples / "sports-complex.jpg": b"predecessor-sports",
+        samples / "harbor.jpg": b"predecessor-harbor",
+        receipt: b"predecessor-receipt",
+        manifest: b"predecessor-manifest",
+        loader: b"predecessor-loader",
+    }
+    for path, body in predecessors.items():
+        path.write_bytes(body)
+    real_write = Path.write_text
+
+    def fail_loader(path: Path, data: str, *args: object, **kwargs: object) -> int:
+        if path == loader:
+            raise OSError("late loader failure")
+        return real_write(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_loader)
+    with pytest.raises(GalleryError, match="GALLERY_SCOPE"):
+        gallery.publish_gallery_bundle(
+            approved_gallery_report, tmp_path, root, receipt, manifest, loader
+        )
+
+    assert {path: path.read_bytes() for path in predecessors if path.exists()} == predecessors
+
+
+@pytest.mark.parametrize(
+    ("generated_relative", "reviewed_relative"),
+    (
+        ("release/sample-gallery-sources.json", "release/sample-gallery-sources.json"),
+        ("demo/web/demo-model.json", "demo/web/demo-model.json"),
+        ("demo/web/demo-assets.js", "demo/web/demo-assets.js"),
+    ),
+)
+def test_supported_publisher_replays_the_exact_reviewed_harbor_artifact(
+    tmp_path: Path, reviewed_harbor_report: dict, monkeypatch: pytest.MonkeyPatch,
+    generated_relative: str, reviewed_relative: str,
+) -> None:
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
+    pages = tmp_path / "demo" / "web"
+    (pages / "samples").mkdir(parents=True)
+    receipt = tmp_path / "release" / "sample-gallery-sources.json"
+    receipt.parent.mkdir()
+    manifest = pages / "demo-model.json"
+    loader = pages / "demo-assets.js"
+
+    gallery.publish_gallery_bundle(
+        reviewed_harbor_report, tmp_path, pages, receipt, manifest, loader
+    )
+
+    generated = (tmp_path / generated_relative).read_bytes()
+    reviewed = (Path(__file__).resolve().parents[1] / reviewed_relative).read_bytes()
+    assert generated == reviewed, (
+        f"{reviewed_relative} replay differs: "
+        f"{hashlib.sha256(generated).hexdigest()} != {hashlib.sha256(reviewed).hexdigest()}"
+    )
 
 
 def test_observation_report_allows_only_fixed_candidates_and_measured_finite_values() -> None:

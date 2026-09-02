@@ -92,8 +92,8 @@
     {"path": "demo/web/THIRD_PARTY_NOTICES.md", "bytes": 1566, "sha256": "11340793b3f1be511fbbc8010987c359b52129b5314a9bf89655d20b585fdaea", "digest_mode": "canonical-lf"},
     {
       "path": "demo/web/app.js",
-      "bytes": 27014,
-      "sha256": "d9b7a43af764e2951c11ae5017acab0476f16716785b6c65d12b5c6df97b15a9",
+      "bytes": 27131,
+      "sha256": "3eeb7b65ae07975d2be2579d77679c6b4be6896d7ccb657abf4c2e542d6df087",
       "digest_mode": "canonical-lf"
     },
     {

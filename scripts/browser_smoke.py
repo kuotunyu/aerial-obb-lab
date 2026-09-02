@@ -1745,6 +1745,8 @@ def run_byom_transition(
                 "尚未 Detect", "neutral", "開始 Detect",
             ]:
                 raise RuntimeError(f"BYOM return did not restore the neutral harbor original: {returned!r}")
+            if not page.locator("#detectBtn").is_disabled():
+                raise RuntimeError("BYOM return left stale BYOM Detect enabled for the harbor original")
             if page.locator("#canvasDescription").inner_text() != "尚無 detection result。":
                 raise RuntimeError("BYOM return retained the completed canvas description")
             if requests != before_return_requests or page.evaluate("globalThis.__demoRunCount") != before_return_runs:

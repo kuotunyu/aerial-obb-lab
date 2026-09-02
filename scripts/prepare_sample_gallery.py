@@ -938,12 +938,21 @@ def publish_approved_gallery(
             data = _checked_child(review, str(image["reviewName"])).read_bytes()
             _validate_public_jpeg(data, sample)
             (stage / "samples" / f"{sample['id']}.jpg").write_bytes(data)
-        serialized = json.dumps(receipt_payload, sort_keys=True, indent=2) + "\n"
-        (stage / "receipt.json").write_text(serialized, encoding="utf-8")
+        serialized = _serialize_json(receipt_payload)
+        (stage / "receipt.json").write_text(serialized, encoding="utf-8", newline="\n")
         _atomic_replace_gallery(pages, receipt, stage)
         return receipt_payload
     finally:
         shutil.rmtree(stage, ignore_errors=True)
+
+
+def _serialize_json(value: object, *, compact: bool = False) -> str:
+    options: dict[str, object] = {"sort_keys": True, "ensure_ascii": False}
+    if compact:
+        options["separators"] = (",", ":")
+    else:
+        options["indent"] = 2
+    return json.dumps(value, **options) + "\n"
 
 
 def _demo_manifest(receipt: dict[str, object]) -> dict[str, object]:
@@ -964,7 +973,7 @@ def _demo_manifest(receipt: dict[str, object]) -> dict[str, object]:
 
 
 def _demo_assets_source(manifest: dict[str, object]) -> str:
-    expected = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
+    expected = _serialize_json(manifest, compact=True).removesuffix("\n")
     return f'''(function exposeDemoAssets(root) {{
   "use strict";
   const MAX_MODEL_BYTES = 15 * 1024 * 1024;
@@ -987,12 +996,12 @@ def _demo_assets_source(manifest: dict[str, object]) -> str:
   }}
   function getDemoSample() {{ return EXPECTED.samples[0]; }}
   function toHex(buffer) {{ return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join(""); }}
-  async function fetchVerifiedModel(manifest, signal) {{
+  async function fetchVerifiedModel(manifest, options) {{
     if (!Object.isFrozen(manifest) || !Object.isFrozen(manifest.model)) fail("DEMO_MANIFEST");
     const admitted = validateManifest(manifest); let url; let expectedUrl;
     try {{ url = new URL(admitted.model.path, globalThis.location.href); expectedUrl = new URL(EXPECTED.model.path, globalThis.location.href); }} catch (_error) {{ fail("DEMO_MODEL_URL"); }}
     if (url.origin !== globalThis.location.origin || url.pathname !== expectedUrl.pathname || url.search || url.hash) fail("DEMO_MODEL_URL");
-    let response; try {{ response = await fetch(url.href, {{cache:"force-cache", credentials:"same-origin", redirect:"error", signal}}); }} catch (_error) {{ fail("DEMO_MODEL_FETCH"); }}
+    let response; try {{ response = await fetch(url.href, {{cache:"force-cache", credentials:"same-origin", redirect:"error", signal: options?.signal ?? options}}); }} catch (_error) {{ fail("DEMO_MODEL_FETCH"); }}
     if (!response.ok || !response.body) fail("DEMO_MODEL_FETCH"); const declaredLength = response.headers.get("content-length");
     if (declaredLength !== null && (!/^\\d+$/.test(declaredLength) || Number(declaredLength) !== admitted.model.bytes)) fail("DEMO_MODEL_SIZE");
     const reader = response.body.getReader(); const chunks = []; let length = 0;
@@ -1012,7 +1021,8 @@ def publish_gallery_bundle(
     pages = _checked_root(pages_root)
     targets = [
         *(pages / "samples" / f"{sample_id}.jpg" for sample_id in _PUBLIC_SAMPLE_IDS),
-        pages / "samples" / "boats.jpg", Path(receipt_path), Path(manifest_path), Path(loader_path),
+        *(pages / "samples" / name for name in ("boats.jpg", "airfield.jpg", "sports-complex.jpg")),
+        Path(receipt_path), Path(manifest_path), Path(loader_path),
     ]
     backup_root = Path(tempfile.mkdtemp(prefix=".gallery-bundle-", dir=str(pages.parent)))
     existing: set[Path] = set()
@@ -1025,8 +1035,8 @@ def publish_gallery_bundle(
                 existing.add(target)
         receipt = publish_approved_gallery(report, review_root, pages_root, receipt_path)
         manifest = _demo_manifest(receipt)
-        manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        loader_path.write_text(_demo_assets_source(manifest), encoding="utf-8")
+        manifest_path.write_text(_serialize_json(manifest, compact=True), encoding="utf-8", newline="\n")
+        loader_path.write_text(_demo_assets_source(manifest), encoding="utf-8", newline="\n")
     except (OSError, GalleryError):
         for index, target in enumerate(targets):
             backup = backup_root / str(index)

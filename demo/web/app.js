@@ -214,6 +214,7 @@ function resetToDemoOriginal() {
   showOriginalSource("demo");
   demoFigureLabel.textContent = "原圖 · 尚未 Detect";
   demoDetectBtn.textContent = "開始 Detect";
+  detectBtn.disabled = true;
   sampleState.textContent = "Original · ready";
   demoDetectBtn.disabled = state.image === null;
   setInitialSummary();
@@ -736,7 +737,10 @@ fileInput.addEventListener("change", () => {
   if (fileInput.files[0]) void loadImageFile(fileInput.files[0]);
 });
 detectBtn.addEventListener("click", () => {
-  if (state.image && state.sessionSource === "byom") {
+  if (
+    state.source === "byom" && state.image && state.imageSource === "byom" &&
+    state.session && state.sessionSource === "byom"
+  ) {
     void runActiveInference("byom", nextGeneration());
   }
 });
