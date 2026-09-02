@@ -130,7 +130,7 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "d9ea6a69819aa03ef5d8ebb74582751d9af91633493ee6bee2f2d4b2e953bd96",
+        "605499f87aef278ba6436b4538ff27e38dc9717e9ce0c008db3fafe00ed6830c",
         "reviewed HTML bytes differ",
     ),
     "app.js": (

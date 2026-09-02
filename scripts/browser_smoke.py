@@ -370,6 +370,13 @@ def assert_single_harbor_initial(page: object, requests: list[str], messages: li
     """The one published harbor image is static and has no eager model work."""
     if page.locator("#sampleSelector, .sample-option").count() != 0:
         raise RuntimeError("retired sample selector is still interactive")
+    expected_claim = (
+        "固定的 USGS／USDA NAIP 公領域港區航拍原圖會先顯示；只有按下 Detect 後，頁面才會載入 OBB "
+        "模型並在你的瀏覽器中執行推論，影像不會上傳。此固定範例僅供操作整合展示，不是 accuracy、evaluation "
+        "或 latency benchmark。"
+    )
+    if page.locator("#claimBoundary p").inner_text() != expected_claim:
+        raise RuntimeError("claim banner does not state the fixed-harbor integration journey")
     title = page.locator("h3#demoSampleTitle")
     if title.inner_text() != "低密度港區航拍範例" or page.locator("#demoSampleKind").inner_text() != "真實航拍原圖":
         raise RuntimeError("fixed harbor identity is not exact")

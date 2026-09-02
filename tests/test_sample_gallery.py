@@ -160,6 +160,18 @@ class DerivationFailureTransport(FakeNaipTransport):
         return (b"not-a-jpeg", url) if request["kind"] == "export" else (body, url)
 
 
+class StageContaminatingTransport(PoolTransport):
+    def __init__(self, stage: Path) -> None:
+        super().__init__()
+        self.stage = stage
+
+    def __call__(self, request: dict) -> tuple[bytes, str]:
+        body, url = super().__call__(request)
+        if request["kind"] == "export":
+            (self.stage / "unrelated").write_text("not acquired", encoding="utf-8")
+        return body, url
+
+
 @pytest.fixture
 def fake_naip_transport() -> FakeNaipTransport:
     return FakeNaipTransport()
@@ -330,6 +342,17 @@ def test_acquisition_pool_keeps_derivation_failures_fatal(tmp_path: Path) -> Non
     root = tmp_path / "external-review"
     with pytest.raises(GalleryError, match="GALLERY_RECORD"):
         gallery.acquire_all(root, DerivationFailureTransport())
+    assert not (root / "candidate-records.json").exists()
+
+
+def test_acquisition_rejects_stage_contamination_created_by_the_transport(tmp_path: Path) -> None:
+    root = tmp_path / "external-review"
+    transport = StageContaminatingTransport(root / ".gallery-stage")
+
+    with pytest.raises(GalleryError, match="GALLERY_SCOPE"):
+        gallery.acquire_all(root, transport)
+
+    assert not (root / "harbor-port-hueneme.jpg").exists()
     assert not (root / "candidate-records.json").exists()
 
 

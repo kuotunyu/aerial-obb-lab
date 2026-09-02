@@ -690,6 +690,9 @@ def acquire_all(
                 raise
         if len(records) != 1:
             raise GalleryError("GALLERY_RECORD")
+        expected_stage = {str(record["image"]["reviewName"]) for record in records}  # type: ignore[index]
+        if {path.name for path in stage.iterdir()} != expected_stage:
+            raise GalleryError("GALLERY_SCOPE")
         for record in records:
             name = record["image"]["reviewName"]  # type: ignore[index]
             source = _checked_child(stage, str(name))

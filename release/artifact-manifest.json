@@ -103,8 +103,8 @@
     },
     {
       "path": "demo/web/index.html",
-      "bytes": 7870,
-      "sha256": "d9ea6a69819aa03ef5d8ebb74582751d9af91633493ee6bee2f2d4b2e953bd96",
+      "bytes": 7892,
+      "sha256": "605499f87aef278ba6436b4538ff27e38dc9717e9ce0c008db3fafe00ed6830c",
       "digest_mode": "canonical-lf"
     },
     {
@@ -137,8 +137,8 @@
     },
     {
       "path": "docs/assets/browser-workbench.png",
-      "bytes": 780717,
-      "sha256": "10cbaefb5f1f9c247d3fe2c558162ca773619e15c2575dae129e700ea948a2b4",
+      "bytes": 782563,
+      "sha256": "8b61aa584bd90d9c95ba0d8d1007beb1675b7bff5ea316d4186406f90229caa0",
       "kind": "canonical local interface screenshot",
       "provenance": "Generated from the exact reviewed Pages bytes after genuine local inference with the fixed harbor NAIP derivative and privacy-sanitized model.",
       "limitations": [
