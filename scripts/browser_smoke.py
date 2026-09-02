@@ -23,7 +23,7 @@ ORT_WASM_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"
 ORT_INTEGRITY = "sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp"
 DEMO_MANIFEST_PATH = "/demo-model.json"
 DEMO_MODEL_PATH = "/models/yolo26n-obb-privacy-sanitized.onnx"
-DEMO_IMAGE_PATH = "/samples/airfield.jpg"
+DEMO_IMAGE_PATH = "/samples/harbor.jpg"
 DEMO_PROVENANCE = "Ultralytics YOLO26n-OBB · privacy-sanitized AGPL derivative"
 FIXED_CONSOLE_DIAGNOSTICS = frozenset(
     f"[AERIAL_OBB:{code}]"
@@ -46,6 +46,7 @@ FIXED_CONSOLE_DIAGNOSTICS = frozenset(
 ORT_STUB = r"""
 globalThis.__ortCreateCount = 0;
 globalThis.__demoRunCount = 0;
+globalThis.__aerialObbTest = {sessionRunCount: 0};
 globalThis.ort = {
   env: { wasm: {} },
   Tensor: class Tensor {
@@ -234,6 +235,7 @@ CanvasRenderingContext2D.prototype.stroke = function (...args) {
 REAL_INSTRUMENTATION = CANVAS_INSTRUMENTATION + """
 globalThis.__demoRunCount = 0;
 globalThis.__ortCreateCount = 0;
+globalThis.__aerialObbTest = {sessionRunCount: 0};
 let runtime;
 Object.defineProperty(globalThis, "ort", {
   configurable: true,
@@ -247,6 +249,7 @@ Object.defineProperty(globalThis, "ort", {
       const run = session.run.bind(session);
       session.run = (...feeds) => {
         globalThis.__demoRunCount += 1;
+        globalThis.__aerialObbTest.sessionRunCount += 1;
         return run(...feeds);
       };
       return session;
@@ -295,6 +298,19 @@ def _assert_box_matches_viewport(page: object, selector: str, label: str) -> Non
                 f"{label} does not share the result viewport bounds: "
                 f"viewport={viewport!r}, layer={layer!r}"
             )
+
+
+def _assert_no_page_overflow_or_obscured_action(page: object, label: str) -> None:
+    overflow = page.evaluate(
+        "Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth"
+    )
+    action = page.locator("#demoDetectBtn")
+    box = action.bounding_box()
+    if overflow > 1 or not action.is_visible() or box is None:
+        raise RuntimeError(f"{label} obscures the primary action or overflows the page")
+    viewport = page.evaluate("[innerWidth, innerHeight]")
+    if box["x"] < -1 or box["x"] + box["width"] > viewport[0] + 1:
+        raise RuntimeError(f"{label} clips the primary action horizontally")
 
 
 def _assert_empty_disabled_result_state(page: object) -> None:
@@ -350,22 +366,26 @@ def assert_real_demo_initial(page: object, requests: list[str], messages: list[s
         raise RuntimeError("initial page emitted console or page errors")
 
 
-def assert_sample_gallery_initial(page: object, requests: list[str], messages: list[str]) -> None:
-    """Exercise the published selector before it can trigger any lazy model work."""
-    options = page.locator("#sampleSelector .sample-option")
-    if options.count() != 3:
-        raise RuntimeError("real sample selector does not expose exactly three options")
-    if page.locator('.sample-option[aria-pressed="true"]').get_attribute("data-sample-id") != "airfield":
-        raise RuntimeError("airfield is not the exact initial sample")
-    if page.locator("#demoOriginalImage").get_attribute("src") != "samples/airfield.jpg":
-        raise RuntimeError("initial original is not the admitted airfield image")
-    if any(path in _request_paths(requests) for path in (DEMO_MANIFEST_PATH, DEMO_MODEL_PATH)):
-        raise RuntimeError("sample gallery loaded model resources before Detect")
+def assert_single_harbor_initial(page: object, requests: list[str], messages: list[str]) -> None:
+    """The one published harbor image is static and has no eager model work."""
+    if page.locator("#sampleSelector, .sample-option").count() != 0:
+        raise RuntimeError("retired sample selector is still interactive")
+    title = page.locator("h3#demoSampleTitle")
+    if title.inner_text() != "低密度港區航拍範例" or page.locator("#demoSampleKind").inner_text() != "真實航拍原圖":
+        raise RuntimeError("fixed harbor identity is not exact")
+    if title.get_attribute("role") is not None or not page.locator("#demoSampleTitle, #demoSampleKind").evaluate_all("nodes => nodes.every(node => !node.matches('button,[aria-pressed],[aria-selected]'))"):
+        raise RuntimeError("fixed harbor identity is interactive")
+    if page.locator("#demoOriginalImage").get_attribute("src") != "samples/harbor.jpg" or page.locator("#demoOriginalImage").get_attribute("alt") != "低密度港區的真實航拍原圖":
+        raise RuntimeError("initial original is not the admitted harbor image")
+    if page.locator("#runtimeValue").inner_text() != "—":
+        raise RuntimeError("initial harbor runtime is not neutral")
+    if any(url == ORT_CDN_URL or url.startswith(ORT_WASM_BASE) for url in requests) or DEMO_MODEL_PATH in _request_paths(requests):
+        raise RuntimeError("single harbor initial state requested inference resources")
     if messages:
         raise RuntimeError("sample gallery initial state emitted console or page errors")
 
 
-def run_sample_gallery(
+def run_single_harbor(
     executable_path: Path | None = None,
     base_url: str | None = None,
     screenshot: Path | None = None,
@@ -384,91 +404,172 @@ def run_sample_gallery(
             page.add_init_script(REAL_INSTRUMENTATION)
             _record_errors(page, requests, messages)
             page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
-            assert_sample_gallery_initial(page, requests, messages)
-            for run_count, sample_id in enumerate(("airfield", "sports-complex", "harbor"), start=1):
-                if run_count > 1:
-                    page.locator(f'.sample-option[data-sample-id="{sample_id}"]').click()
-                    immediate = page.evaluate(
-                        "[summaryCount.textContent, runtimeValue.textContent, "
-                        "resultsBody.querySelectorAll(\"tr:not([data-empty='true'])\").length, "
-                        "canvasFrame.hidden, viewToggleBtn.hidden, demoDetectBtn.disabled, "
-                        "provenanceValue.textContent]"
-                    )
-                    if immediate != ["0", "—", 0, True, True, True, "USGS／USDA NAIP · 尚未執行"]:
-                        raise RuntimeError(f"sample switch retained stale completion state: {immediate!r}")
-                    page.wait_for_function(
-                        "document.querySelector('#sampleState').textContent === 'Original · ready'"
-                    )
-                _assert_real_sample_result(page, sample_id, run_count)
-            if page.evaluate("[globalThis.__ortCreateCount, globalThis.__demoRunCount]") != [1, 3]:
-                raise RuntimeError("three gallery runs did not reuse one verified demo session")
-            paths = _request_paths(requests)
-            if paths.count(DEMO_MANIFEST_PATH) != 1 or paths.count(DEMO_MODEL_PATH) != 1 or requests.count(ORT_CDN_URL) != 1:
-                raise RuntimeError("gallery switches requested an extra model, manifest, or runtime")
-            if messages:
-                raise RuntimeError("real sample gallery emitted console or page errors")
+            assert_single_harbor_initial(page, requests, messages)
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'", timeout=120_000)
+            if page.locator("#modeBadge").inner_text() != "LOCAL BROWSER INFERENCE" or not re.fullmatch(r"[1-9]\d* ms", page.locator("#runtimeValue").inner_text()):
+                raise RuntimeError("single harbor Detect did not report genuine local runtime")
+            count = int(page.locator("#summaryCount").inner_text())
+            if not 16 <= count <= 26 or page.locator("#resultsBody tr:not([data-empty='true'])").count() != count or not page.locator("#canvasFrame").is_visible():
+                raise RuntimeError("single harbor result violates its count or canvas contract")
+            if "低密度港區航拍範例" not in page.locator("#provenanceValue").inner_text() or page.evaluate("globalThis.__aerialObbTest.sessionRunCount") != 1:
+                raise RuntimeError("single harbor provenance or session count is wrong")
+            detections = _assert_one_filtered_output_list(page)
+            sample = page.evaluate("DemoAssets.getDemoSample()")
+            class_ids = {
+                name: int(value)
+                for value, name in page.locator(".class-cb").evaluate_all(
+                    "items => items.map(item => [item.value, item.parentElement.textContent])"
+                )
+            }
+            ids = {class_ids[str(detection["class"])] for detection in detections}
+            if not ids.issubset(set(sample["guardrails"]["classIds"])) or not detections:
+                raise RuntimeError("single harbor result includes an unapproved class")
+            representative = sample["guardrails"]["representative"]
+            if not any(
+                class_ids[str(detection["class"])] == representative["classId"]
+                and all(
+                    abs(float(detection[key]) - float(representative[key]))
+                    <= float(representative["tolerance"])
+                    for key in ("cx", "cy", "w", "h")
+                )
+                for detection in detections
+            ):
+                raise RuntimeError("single harbor result lacks its representative detection")
             if screenshot is not None:
-                screenshot.parent.mkdir(parents=True, exist_ok=True)
-                page.screenshot(path=str(screenshot), full_page=True)
+                capture_canonical_harbor_result(page, screenshot)
+            assert_original_result_toggle(page, requests, 1)
+            assert_demo_cached_filters(page, requests, 1)
+            if page.evaluate("globalThis.__aerialObbTest.sessionRunCount") != 1:
+                raise RuntimeError("cached single harbor interactions reran inference")
+            if messages:
+                raise RuntimeError("single harbor scenario emitted console or page errors")
         finally:
             browser.close()
 
 
-def _assert_real_sample_result(page: object, sample_id: str, run_count: int) -> None:
-    sample = page.evaluate(
-        "([id]) => DemoAssets.getSampleCatalog().find((candidate) => candidate.id === id)",
-        arg=[sample_id],
-    )
-    if not sample or sample["id"] != sample_id or sample["path"] != f"samples/{sample_id}.jpg":
-        raise RuntimeError("gallery run does not expose the exact admitted sample identity")
-    active = page.locator('.sample-option[aria-pressed="true"]')
-    if active.count() != 1 or active.get_attribute("data-sample-id") != sample_id:
-        raise RuntimeError("gallery run does not expose the selected aria-pressed identity")
-    if sample["title"] not in active.inner_text():
-        raise RuntimeError("gallery run does not expose the selected fixed title")
-    if page.locator("#demoOriginalImage").get_attribute("src") != sample["path"]:
-        raise RuntimeError("gallery run loaded a different original than the selected sample")
-    if page.locator("#demoOriginalImage").get_attribute("alt") != sample["alt"]:
-        raise RuntimeError("main original alt text does not describe the active sample")
-    image_layout = page.locator("#demoOriginalImage").evaluate(
-        "image => [getComputedStyle(image).objectFit, image.naturalWidth, image.naturalHeight]"
-    )
-    if image_layout != ["contain", 1280, 800]:
-        raise RuntimeError("active sample original lost its stable contain viewport geometry")
-    page.evaluate("globalThis.__obbStrokedPolygons = []")
-    page.locator("#demoDetectBtn").click()
-    page.wait_for_function(
-        "document.querySelector('#status').dataset.kind === 'success'", timeout=120_000
-    )
-    if page.locator("#modeBadge").inner_text() != "LOCAL BROWSER INFERENCE":
-        raise RuntimeError("gallery sample run lost the exact local-inference mode")
-    if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
-        raise RuntimeError("gallery sample run lacks a numeric runtime")
-    if page.evaluate("globalThis.__demoRunCount") != run_count:
-        raise RuntimeError("gallery sample run did not execute the expected real session.run")
-    detections = _assert_one_filtered_output_list(page)
-    guardrails = sample["guardrails"]
-    if set(guardrails) != {"classIds", "countMin", "countMax", "representative"}:
-        raise RuntimeError("active sample manifest lacks the closed output-guardrail interface")
-    if not guardrails["countMin"] <= len(detections) <= guardrails["countMax"]:
-        raise RuntimeError("real filtered count falls outside the active sample guardrail range")
-    class_ids = {
-        name: int(value)
-        for value, name in page.locator(".class-cb").evaluate_all(
-            "items => items.map(item => [item.value, item.parentElement.textContent])"
-        )
-    }
-    actual_ids = {class_ids[item["class"]] for item in detections}
-    if not actual_ids.intersection(guardrails["classIds"]):
-        raise RuntimeError("real filtered output lacks an admitted target-family class")
-    representative = guardrails["representative"]
-    matching = [
-        item for item in detections
-        if class_ids[item["class"]] == representative["classId"]
-        and all(abs(float(item[key]) - float(representative[key])) <= float(representative["tolerance"]) for key in ("cx", "cy", "w", "h"))
-    ]
-    if not matching:
-        raise RuntimeError("real filtered output lacks a detection within the admitted representative tolerance")
+def run_single_harbor_failures(
+    executable_path: Path | None = None, base_url: str | None = None,
+) -> None:
+    """The first fixed-image response fails closed and reload recovers exactly."""
+    try:
+        from playwright.sync_api import Route, sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+    harbor_bytes = (DEMO / DEMO_IMAGE_PATH.lstrip("/")).read_bytes()
+    sentinels = _privacy_sentinels()
+    server = nullcontext(base_url) if base_url else static_server()
+    with server as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            console_messages: list[str] = []
+            page_errors: list[str] = []
+            harbor_responses = 0
+            page.add_init_script(REAL_INSTRUMENTATION)
+            _record_evidence(page, requests, console_messages, page_errors)
+
+            def route_harbor(route: Route) -> None:
+                nonlocal harbor_responses
+                harbor_responses += 1
+                if harbor_responses == 1:
+                    route.abort("failed")
+                    return
+                route.fulfill(
+                    status=200,
+                    content_type="image/jpeg",
+                    body=harbor_bytes,
+                )
+
+            page.route("**/samples/harbor.jpg", route_harbor)
+            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            try:
+                page.wait_for_function("document.querySelector('#status').dataset.kind === 'error'")
+            except Exception as exc:
+                state = page.evaluate(
+                    "[sampleState.textContent, demoDetectBtn.disabled, status.textContent, "
+                    "demoOriginalImage.complete, demoOriginalImage.naturalWidth]"
+                )
+                raise RuntimeError(
+                    f"first harbor failure did not settle: responses={harbor_responses}; "
+                    f"state={state!r}"
+                ) from exc
+            _install_privacy_probe(page, sentinels)
+            if harbor_responses != 1:
+                raise RuntimeError("fixed harbor image failure was not limited to the first response")
+            if page.locator("#status").inner_text() != "範例影像目前無法顯示。請重新整理後重試，或使用進階 BYOM。":
+                raise RuntimeError("fixed harbor image failure copy is not exact")
+            if page.locator("#sampleSelector, .sample-option").count() or not page.locator("#demoDetectBtn").is_disabled():
+                raise RuntimeError("fixed harbor image failure exposed an interactive demo path")
+            cleanup = page.evaluate(
+                "[runtimeValue.textContent, summaryCount.textContent, canvasFrame.hidden, "
+                "resultsBody.querySelectorAll(\"tr[data-empty='true']\").length, "
+                "canvasDescription.textContent]"
+            )
+            if cleanup != ["—", "0", True, 1, "尚無 detection result。"]:
+                raise RuntimeError(f"fixed harbor image failure retained result state: {cleanup!r}")
+            if any(url == ORT_CDN_URL or url.startswith(ORT_WASM_BASE) for url in requests):
+                raise RuntimeError("fixed harbor image failure requested the lazy runtime")
+            if DEMO_MODEL_PATH in _request_paths(requests):
+                raise RuntimeError("fixed harbor image failure requested the lazy model")
+            browser_route_failure = "Failed to load resource: net::ERR_FAILED"
+            if console_messages.count(browser_route_failure) != 1:
+                raise RuntimeError("fixed harbor route did not emit one closed browser failure")
+            product_messages = [
+                message for message in console_messages
+                if message != browser_route_failure
+            ]
+            _assert_privacy_surfaces(
+                page, requests, product_messages, page_errors, sentinels
+            )
+
+            request_checkpoint = len(requests)
+            console_checkpoint = len(console_messages)
+            error_checkpoint = len(page_errors)
+            page.reload(wait_until="networkidle")
+            try:
+                page.wait_for_function(
+                    "document.querySelector('#sampleState').textContent === 'Original · ready' && "
+                    "document.querySelector('#demoDetectBtn').disabled === false"
+                )
+            except Exception as exc:
+                state = page.evaluate(
+                    "[sampleState.textContent, demoDetectBtn.disabled, status.textContent, "
+                    "demoOriginalImage.complete, demoOriginalImage.naturalWidth]"
+                )
+                raise RuntimeError(
+                    f"reload did not restore the harbor original: responses={harbor_responses}; "
+                    f"state={state!r}"
+                ) from exc
+            if harbor_responses != 2:
+                raise RuntimeError("reload did not serve the committed harbor bytes exactly once")
+            recovery_messages = [
+                *console_messages[console_checkpoint:],
+                *page_errors[error_checkpoint:],
+            ]
+            assert_single_harbor_initial(
+                page, requests[request_checkpoint:], recovery_messages
+            )
+            if page.locator("#status").inner_text() != "原圖已載入 · 尚未 Detect。":
+                raise RuntimeError("reload retained stale fixed-image failure copy")
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function(
+                "document.querySelector('#status').dataset.kind === 'success'",
+                timeout=120_000,
+            )
+            runtime = page.locator("#runtimeValue").inner_text()
+            count = int(page.locator("#summaryCount").inner_text())
+            if not re.fullmatch(r"[1-9]\d* ms", runtime) or not 16 <= count <= 26:
+                raise RuntimeError("recovered harbor did not complete genuine accepted inference")
+            if page.evaluate("globalThis.__aerialObbTest.sessionRunCount") != 1:
+                raise RuntimeError("recovered harbor did not run exactly one inference")
+            if "範例影像目前無法顯示" in page.locator("body").inner_text():
+                raise RuntimeError("recovered harbor retained stale image failure text")
+            if page_errors[error_checkpoint:]:
+                raise RuntimeError("recovered harbor emitted a page error")
+        finally:
+            browser.close()
 
 
 def _assert_one_filtered_output_list(page: object) -> list[dict[str, float | int | str]]:
@@ -545,445 +646,6 @@ def _assert_one_filtered_output_list(page: object) -> list[dict[str, float | int
     return described
 
 
-def assert_safe_sample_failure(page: object) -> None:
-    if page.locator("#status").inner_text() != (
-        "這張範例影像目前無法顯示。請選擇其他範例，或重新整理後重試。"
-    ):
-        raise RuntimeError("sample decode failure lacks fixed recovery copy")
-    if page.locator("#runtimeValue").inner_text() != "—":
-        raise RuntimeError("sample decode failure retained numeric runtime")
-    if page.locator("#resultsBody tr:not([data-empty='true'])").count() != 0:
-        raise RuntimeError("sample decode failure retained stale table rows")
-    if page.locator(".sample-option:not([disabled])").count() < 2:
-        raise RuntimeError("sample decode failure disabled unrelated examples")
-
-
-def _assert_neutral_current_sample(page: object, sample_id: str) -> None:
-    sample = page.evaluate(
-        "([id]) => DemoAssets.getSampleCatalog().find((candidate) => candidate.id === id)",
-        arg=[sample_id],
-    )
-    if not sample:
-        raise RuntimeError("race assertion could not load the admitted winning sample")
-    if page.locator('.sample-option[aria-pressed="true"]').get_attribute("data-sample-id") != sample_id:
-        raise RuntimeError("race left the wrong aria-pressed sample selected")
-    if sample["title"] not in page.locator(f'[data-sample-id="{sample_id}"]').inner_text():
-        raise RuntimeError("race lost the winning sample title")
-    original = page.locator("#demoOriginalImage")
-    if original.get_attribute("src") != sample["path"] or original.get_attribute("alt") != sample["alt"]:
-        raise RuntimeError("race restored the wrong active original identity")
-    neutral = page.evaluate(
-        "[summaryCount.textContent, runtimeValue.textContent, "
-        "resultsBody.querySelectorAll(\"tr:not([data-empty='true'])\").length, "
-        "canvasFrame.hidden, viewToggleBtn.hidden, demoDetectBtn.disabled]"
-    )
-    expected_status = f"已選擇 {sample['title']} · 原圖已載入 · 尚未 Detect。"
-    if neutral != ["0", "—", 0, True, True, False] or page.locator("#canvasDescription").inner_text() != "尚無 detection result。" or page.locator("#sampleState").inner_text() != "Original · ready" or page.locator("#status").inner_text() != expected_status:
-        raise RuntimeError(f"race published stale state into the winning sample: {neutral!r}")
-
-
-def _assert_initial_airfield_failure(
-    page: object,
-    requests: list[str],
-    console_messages: list[str],
-    page_errors: list[str],
-) -> None:
-    assert_safe_sample_failure(page)
-    _assert_failure_cleanup(page)
-    if page.locator('.sample-option[aria-pressed="true"]').get_attribute("data-sample-id") != "airfield":
-        raise RuntimeError("initial sample failure did not preserve the selected airfield identity")
-    if not page.locator("#demoDetectBtn").is_disabled() or page.locator("#sampleState").inner_text() == "Original · ready":
-        raise RuntimeError("initial sample failure left a misleading ready/Detect state")
-    _assert_privacy_surfaces(
-        page, requests, console_messages, page_errors, _privacy_sentinels()
-    )
-    page.locator('[data-sample-id="harbor"]').click()
-    page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-    if page.locator("#status").get_attribute("data-kind") == "error":
-        raise RuntimeError("healthy selection did not recover the failed initial sample")
-
-
-def _run_initial_airfield_failure(
-    *,
-    hold_until_app_attaches: bool,
-    executable_path: Path | None = None,
-    base_url: str | None = None,
-) -> None:
-    from playwright.sync_api import Route, sync_playwright
-
-    server = nullcontext(base_url) if base_url else static_server()
-    with server as served_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(**_launch_options(executable_path))
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            requests: list[str] = []
-            console_messages: list[str] = []
-            page_errors: list[str] = []
-            _record_evidence(page, requests, console_messages, page_errors)
-            held: list[Route] = []
-
-            def route_airfield(route: Route) -> None:
-                if hold_until_app_attaches:
-                    held.append(route)
-                else:
-                    route.fulfill(status=200, content_type="image/jpeg", body=b"not-a-jpeg")
-
-            page.route("**/samples/airfield.jpg", route_airfield)
-            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
-            if hold_until_app_attaches:
-                page.wait_for_function("document.querySelector('#demoDetectBtn').disabled === true")
-                if not held:
-                    raise RuntimeError("initial-airfield hold did not intercept the production image request")
-                for route in held:
-                    route.fulfill(status=200, content_type="image/jpeg", body=b"not-a-jpeg")
-            page.wait_for_function("document.querySelector('#status').dataset.kind === 'error'")
-            _assert_initial_airfield_failure(page, requests, console_messages, page_errors)
-        finally:
-            browser.close()
-
-
-def run_initial_sample_failures(
-    executable_path: Path | None = None, base_url: str | None = None,
-) -> None:
-    """Initial admitted-image failures use the same safe recovery as later selections."""
-    _run_initial_airfield_failure(
-        hold_until_app_attaches=True, executable_path=executable_path, base_url=base_url
-    )
-    _run_initial_airfield_failure(
-        hold_until_app_attaches=False, executable_path=executable_path, base_url=base_url
-    )
-
-
-def run_sample_gallery_failures(
-    executable_path: Path | None = None, base_url: str | None = None,
-) -> None:
-    """A broken admitted JPEG clears the prior demo result and remains recoverable."""
-    from playwright.sync_api import sync_playwright
-
-    server = nullcontext(base_url) if base_url else static_server()
-    with server as served_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(**_launch_options(executable_path))
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            requests: list[str] = []
-            console_messages: list[str] = []
-            page_errors: list[str] = []
-            _record_evidence(page, requests, console_messages, page_errors)
-            page.add_init_script(SRI_STUB_SHIM)
-            page.route(
-                ORT_CDN_URL,
-                lambda route: route.fulfill(
-                    status=200,
-                    content_type="application/javascript",
-                    headers={"Access-Control-Allow-Origin": "*"},
-                    body=ORT_STUB,
-                ),
-            )
-            fail_sports = False
-
-            def route_sports(route: object) -> None:
-                if fail_sports:
-                    route.fulfill(status=200, content_type="image/jpeg", body=b"not-a-jpeg")
-                else:
-                    route.continue_()
-
-            page.route("**/samples/sports-complex.jpg", route_sports)
-            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
-            page.locator("#demoDetectBtn").click()
-            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
-            page.context.new_cdp_session(page).send("Network.clearBrowserCache")
-            fail_sports = True
-            page.locator('[data-sample-id="sports-complex"]').click()
-            page.wait_for_function("document.querySelector('#status').dataset.kind === 'error'")
-            assert_safe_sample_failure(page)
-            _assert_failure_cleanup(page)
-            if not page.locator("#demoDetectBtn").is_disabled():
-                raise RuntimeError("failed selected sample left Detect enabled")
-            _assert_privacy_surfaces(
-                page, requests, console_messages, page_errors, _privacy_sentinels()
-            )
-            page.locator('[data-sample-id="harbor"]').click()
-            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-            if page.locator("#status").get_attribute("data-kind") == "error":
-                raise RuntimeError("healthy sample selection did not clear sample decode failure")
-        finally:
-            browser.close()
-    run_superseded_reload(executable_path, base_url)
-    _run_sample_switch_after_delayed_inference(executable_path, base_url)
-
-
-def _run_sample_switch_after_delayed_inference(
-    executable_path: Path | None = None, base_url: str | None = None,
-) -> None:
-    """A delayed run for A must not publish after selector B becomes current."""
-    from playwright.sync_api import sync_playwright
-
-    server = nullcontext(base_url) if base_url else static_server()
-    with server as served_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(**_launch_options(executable_path))
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            requests: list[str] = []
-            console_messages: list[str] = []
-            page_errors: list[str] = []
-            page.add_init_script(SRI_STUB_SHIM)
-            _record_evidence(page, requests, console_messages, page_errors)
-            page.route(
-                ORT_CDN_URL,
-                lambda route: route.fulfill(
-                    status=200,
-                    content_type="application/javascript",
-                    headers={"Access-Control-Allow-Origin": "*"},
-                    body=_scenario_ort_stub(run_mode="delayed"),
-                ),
-            )
-            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
-            page.locator("#demoDetectBtn").click()
-            page.wait_for_function("typeof globalThis.__resolveDemoRun === 'function'")
-            before_runs = page.evaluate("globalThis.__demoRunCount")
-            before_inference_requests = [
-                request for request in requests
-                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
-            ]
-            page.locator('[data-sample-id="sports-complex"]').click()
-            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-            page.evaluate("globalThis.__resolveDemoRun()")
-            page.wait_for_function("globalThis.__delayedRunSettled === true")
-            _assert_neutral_current_sample(page, "sports-complex")
-            if page.evaluate("globalThis.__demoRunCount") != before_runs:
-                raise RuntimeError("delayed inference created an extra run after the later selector won")
-            after_inference_requests = [
-                request for request in requests
-                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
-            ]
-            if after_inference_requests != before_inference_requests:
-                raise RuntimeError("delayed inference requested an extra runtime, manifest, or model")
-            _assert_privacy_surfaces(
-                page, requests, console_messages, page_errors, _privacy_sentinels()
-            )
-        finally:
-            browser.close()
-
-
-def run_held_decode(
-    executable_path: Path | None = None, base_url: str | None = None,
-) -> None:
-    """A pending replacement decode must expose no stale result surface."""
-    from playwright.sync_api import Route, sync_playwright
-    server = nullcontext(base_url) if base_url else static_server()
-    with server as served_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(**_launch_options(executable_path))
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            requests: list[str] = []
-            messages: list[str] = []
-            _record_errors(page, requests, messages)
-            page.add_init_script(SRI_STUB_SHIM)
-            page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=ORT_STUB))
-            held_images: list[Route] = []
-            page.route("**/samples/sports-complex.jpg", lambda route: held_images.append(route))
-            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
-            page.wait_for_function("demoOriginalImage.complete && demoOriginalImage.naturalWidth > 0")
-            page.locator("#demoDetectBtn").click()
-            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
-            page.locator('[data-sample-id="sports-complex"]').click()
-            page.wait_for_function("() => document.querySelector('#sampleState').textContent.includes('Loading')")
-            held_state = page.evaluate("[summaryCount.textContent, runtimeValue.textContent, demoDetectBtn.disabled, demoDetectBtn.textContent, sampleState.textContent, canvasFrame.hidden, viewToggleBtn.hidden]")
-            if held_state[0] != "0" or held_state[2] is not True or held_state[3] != "開始 Detect" or held_state[5:] != [True, True]:
-                raise RuntimeError(f"held decode leaves stale result or active Detect: {held_state!r}")
-            if page.locator("#resultsBody tr[data-empty='true']").count() != 1 or not page.locator("#confSlider").is_disabled():
-                raise RuntimeError("held decode did not clear result controls")
-            if not held_images:
-                raise RuntimeError("held-decode scenario did not intercept the selected sample response")
-            for route in held_images:
-                route.continue_()
-            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-        finally:
-            browser.close()
-
-
-def run_invalid_selector(executable_path: Path | None = None, base_url: str | None = None) -> None:
-    """Unknown selector activation cannot retain a completed inference result."""
-    from playwright.sync_api import sync_playwright
-    server = nullcontext(base_url) if base_url else static_server()
-    with server as served_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(**_launch_options(executable_path))
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            requests: list[str] = []
-            messages: list[str] = []
-            _record_errors(page, requests, messages)
-            page.add_init_script(SRI_STUB_SHIM)
-            page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=ORT_STUB))
-            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
-            page.locator("#demoDetectBtn").click(); page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
-            before_requests = len(requests); before_runs = page.evaluate("globalThis.__demoRunCount")
-            page.evaluate("document.querySelector('[data-sample-id=\"sports-complex\"]').dataset.sampleId = 'unknown'")
-            page.locator(".sample-option[value='sports-complex']").click()
-            if page.locator("#summaryCount").inner_text() != "0" or not page.locator("#canvasFrame").is_hidden() or not page.locator("#viewToggleBtn").is_hidden():
-                raise RuntimeError("unknown selector retained a stale completed result")
-            if page.locator("#status").get_attribute("data-kind") != "error" or not page.locator("#demoDetectBtn").is_disabled():
-                raise RuntimeError("unknown selector did not enter safe disabled failure state")
-            if page.evaluate("globalThis.__demoRunCount") != before_runs or len(requests) != before_requests:
-                raise RuntimeError("unknown selector started an inference or requested an asset")
-            page.locator("[data-sample-id='airfield']").click()
-            page.wait_for_function("sampleState.textContent === 'Original · ready'")
-        finally:
-            browser.close()
-
-
-def run_superseded_reload(executable_path: Path | None = None, base_url: str | None = None) -> None:
-    """A held demo reload cannot start inference after a later selector wins."""
-    from playwright.sync_api import Route, sync_playwright
-    server = nullcontext(base_url) if base_url else static_server()
-    with server as served_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(**_launch_options(executable_path))
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            requests: list[str] = []
-            console_messages: list[str] = []
-            page_errors: list[str] = []
-            page.add_init_script(SRI_STUB_SHIM)
-            _record_evidence(page, requests, console_messages, page_errors)
-            page.route(ORT_CDN_URL, lambda route: route.fulfill(status=200, content_type="application/javascript", headers={"Access-Control-Allow-Origin": "*"}, body=_scenario_ort_stub(lifecycle=True)))
-            held: list[Route] = []
-            page.route("**/samples/sports-complex.jpg", lambda route: held.append(route))
-            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="domcontentloaded")
-            page.wait_for_function("demoOriginalImage.complete && demoOriginalImage.naturalWidth > 0")
-            page.locator("#demoDetectBtn").click(); page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
-            run_count = page.evaluate("globalThis.__demoRunCount")
-            before_inference_requests = [
-                request for request in requests
-                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
-            ]
-            page.locator('[data-sample-id="sports-complex"]').click()
-            page.wait_for_function("document.querySelector('#sampleState').textContent.includes('Loading')")
-            page.locator('[data-sample-id="harbor"]').click()
-            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-            for route in held: route.continue_()
-            page.wait_for_load_state("networkidle")
-            _assert_neutral_current_sample(page, "harbor")
-            if page.evaluate("globalThis.__demoRunCount") != run_count:
-                raise RuntimeError("superseded image decode started inference")
-            after_inference_requests = [
-                request for request in requests
-                if request == ORT_CDN_URL or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
-            ]
-            if after_inference_requests != before_inference_requests:
-                raise RuntimeError("superseded image decode requested an extra runtime, manifest, or model")
-            _assert_privacy_surfaces(
-                page, requests, console_messages, page_errors, _privacy_sentinels()
-            )
-        finally:
-            browser.close()
-
-
-def run_byom_superseded_reload(
-    executable_path: Path | None = None, base_url: str | None = None,
-) -> None:
-    """A held BYOM-to-demo reload cannot infer after a later selector wins."""
-    from playwright.sync_api import Route, sync_playwright
-
-    server = nullcontext(base_url) if base_url else static_server()
-    with server as served_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(**_launch_options(executable_path))
-        try:
-            page = browser.new_page(viewport={"width": 1280, "height": 720})
-            requests: list[str] = []
-            messages: list[str] = []
-            _record_errors(page, requests, messages)
-            page.add_init_script(SRI_STUB_SHIM)
-            page.route(
-                ORT_CDN_URL,
-                lambda route: route.fulfill(
-                    status=200,
-                    content_type="application/javascript",
-                    headers={"Access-Control-Allow-Origin": "*"},
-                    body=_scenario_ort_stub(lifecycle=True),
-                ),
-            )
-            held: list[Route] = []
-            hold_reload = False
-
-            def route_airfield(route: Route) -> None:
-                if hold_reload:
-                    held.append(route)
-                    return
-                response = route.fetch()
-                headers = {**response.headers, "cache-control": "no-store"}
-                route.fulfill(response=response, headers=headers)
-
-            page.route("**/samples/airfield.jpg", route_airfield)
-            page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
-
-            _set_model_file(page, "candidate-valid.onnx")
-            page.wait_for_function(
-                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
-            )
-            page.locator("#fileInput").set_input_files(
-                {
-                    "name": "private-selected-image.jpg",
-                    "mimeType": "image/jpeg",
-                    "buffer": (DEMO / "samples/harbor.jpg").read_bytes(),
-                }
-            )
-            page.wait_for_function("document.querySelector('#detectBtn').disabled === false")
-            page.locator("#detectBtn").click()
-            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
-            if page.evaluate("globalThis.__ortCreateCount") != 1:
-                raise RuntimeError("BYOM harness did not create exactly one session")
-            before_runs = page.evaluate("globalThis.__demoRunCount")
-            before_inference_requests = [
-                request
-                for request in requests
-                if request == ORT_CDN_URL
-                or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
-            ]
-
-            # The BYOM layer owns the visible original at this point.  Clear
-            # only the dormant demo element so the production selector must
-            # make a fresh request for its closed, canonical airfield path.
-            page.context.new_cdp_session(page).send("Network.clearBrowserCache")
-            page.evaluate("demoOriginalImage.removeAttribute('src')")
-            hold_reload = True
-            page.locator("#demoDetectBtn").click()
-            page.wait_for_function(
-                "document.querySelector('#sampleState').textContent.includes('Loading')"
-            )
-            if not held:
-                raise RuntimeError("BYOM reload did not hold the selected demo image response")
-            page.locator('[data-sample-id="harbor"]').click()
-            for route in held:
-                route.continue_()
-            page.wait_for_function(
-                "document.querySelector('#sampleState').textContent === 'Original · ready'"
-            )
-            # Give the released stale decode a turn to attempt its old runDemo
-            # continuation; merely observing the newer selector's ready state
-            # would race that vulnerable completion.
-            page.wait_for_timeout(250)
-            if page.locator("#demoOriginalImage").get_attribute("src") != "samples/harbor.jpg":
-                raise RuntimeError("superseded BYOM demo reload restored the held sample")
-            if page.evaluate("globalThis.__demoRunCount") != before_runs:
-                raise RuntimeError("superseded BYOM demo reload started inference")
-            if page.evaluate("globalThis.__ortCreateCount") != 1:
-                raise RuntimeError("superseded BYOM demo reload created another session")
-            after_inference_requests = [
-                request
-                for request in requests
-                if request == ORT_CDN_URL
-                or urlparse(request).path in {DEMO_MANIFEST_PATH, DEMO_MODEL_PATH}
-            ]
-            if after_inference_requests != before_inference_requests:
-                raise RuntimeError("superseded BYOM demo reload requested inference resources")
-            if page.locator("#demoDetectBtn").is_disabled() or page.locator("#demoDetectBtn").inner_text() != "開始 Detect":
-                raise RuntimeError("final superseding sample was not neutral and ready for Detect")
-            if messages:
-                raise RuntimeError("BYOM superseded reload emitted console or page errors")
-        finally:
-            browser.close()
-
-
 def run_manifest_matrix(
     executable_path: Path | None = None,
     base_url: str | None = None,
@@ -1053,7 +715,12 @@ def run_manifest_matrix(
     # manifest recursively so every scalar, array order/member, and object key
     # has its own fresh-browser failing mutation.
     audit(manifest, [])
-    add_case("replace", ["samples", 1, "id"], "airfield", ":duplicate-id")
+    add_case(
+        "replace",
+        ["samples"],
+        [manifest["samples"][0], manifest["samples"][0]],
+        ":duplicate-sample",
+    )
     mutations = mutations[start:] if count is None else mutations[start : start + count]
     if not mutations:
         raise RuntimeError("manifest matrix selected no cases")
@@ -1103,7 +770,7 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
     )
     if page.locator("#status").inner_text() != "完成 · 可調整 filters。":
         raise RuntimeError("completed demo live status is not count-neutral")
-    if page.locator("#provenanceValue").inner_text() != f"{DEMO_PROVENANCE} · 小型機場航拍範例":
+    if page.locator("#provenanceValue").inner_text() != f"{DEMO_PROVENANCE} · 低密度港區航拍範例":
         raise RuntimeError("real demo provenance is not exact")
     runtime = page.locator("#runtimeValue").inner_text()
     if not re.fullmatch(r"\d+ ms", runtime):
@@ -1157,13 +824,12 @@ def exercise_real_demo_success(page: object, requests: list[str], messages: list
     return run_count
 
 
-def capture_canonical_default_airfield_result(page: object, screenshot: Path) -> None:
-    """Freeze the first, unfiltered genuine airfield result before cache exercises."""
-    selected = page.locator("#sampleSelector [aria-pressed='true']")
-    if selected.count() != 1 or selected.get_attribute("data-sample-id") != "airfield":
-        raise RuntimeError("canonical capture does not retain selected default airfield")
-    if page.locator("#sampleSelector [aria-pressed='true']").get_attribute("aria-pressed") != "true":
-        raise RuntimeError("canonical capture airfield aria state is not exact")
+def capture_canonical_harbor_result(page: object, screenshot: Path) -> None:
+    """Freeze the first, unfiltered genuine harbor result before cache exercises."""
+    if page.locator("#demoOriginalImage").get_attribute("src") != "samples/harbor.jpg":
+        raise RuntimeError("canonical capture does not retain the fixed harbor source")
+    if page.locator("#demoSampleTitle").inner_text() != "低密度港區航拍範例":
+        raise RuntimeError("canonical capture harbor identity is not exact")
     if page.evaluate("globalThis.__demoRunCount") != 1:
         raise RuntimeError("canonical capture is not the first genuine inference run")
     if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
@@ -1700,6 +1366,7 @@ def run_runtime_failure(
             _assert_privacy_surfaces(
                 page, requests, console_messages, page_errors, sentinels
             )
+
         finally:
             browser.close()
 
@@ -1753,6 +1420,7 @@ def _run_stubbed_failure(
             _assert_privacy_surfaces(
                 page, requests, console_messages, page_errors, sentinels
             )
+
         finally:
             browser.close()
 
@@ -1977,12 +1645,19 @@ def run_byom_transition(
             page.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
             _install_privacy_probe(page, sentinels)
             _assert_empty_disabled_result_state(page)
+            initial_requests = list(requests)
+            page.locator("#byomPanel summary").click()
+            if requests != initial_requests:
+                raise RuntimeError("opening advanced BYOM requested a network asset")
             page.locator("#demoDetectBtn").click()
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'success'"
             )
             page.evaluate("globalThis.__failNextCandidate = true")
             _set_model_file(page, sentinels[1])
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("BYOM model selection retained harbor runtime")
+            _assert_empty_disabled_result_state(page)
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'error'"
             )
@@ -2009,6 +1684,9 @@ def run_byom_transition(
                     "buffer": ("invalid-" + sentinels[2]).encode("utf-8"),
                 }
             )
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("BYOM image selection retained harbor runtime")
+            _assert_empty_disabled_result_state(page)
             page.wait_for_function(
                 "document.querySelector('#status').dataset.kind === 'error'"
             )
@@ -2022,6 +1700,9 @@ def run_byom_transition(
                     "buffer": (DEMO / DEMO_IMAGE_PATH.lstrip("/")).read_bytes(),
                 }
             )
+            if page.locator("#runtimeValue").inner_text() != "—":
+                raise RuntimeError("valid BYOM image selection retained a completed runtime")
+            _assert_empty_disabled_result_state(page)
             page.wait_for_function(
                 "document.querySelector('#detectBtn').disabled === false"
             )
@@ -2041,16 +1722,67 @@ def run_byom_transition(
                 raise RuntimeError("BYOM run did not use local-file provenance")
             if page.locator("#demoDetectBtn").is_disabled():
                 raise RuntimeError("BYOM completion left return-to-demo disabled")
+            before_return_requests = list(requests)
+            before_return_runs = page.evaluate("globalThis.__demoRunCount")
             page.locator("#demoDetectBtn").click()
             page.wait_for_function(
-                "document.querySelector('#provenanceValue').textContent === "
-                + json.dumps(f"{DEMO_PROVENANCE} · 小型機場航拍範例", ensure_ascii=False)
+                "document.querySelector('#sampleState').textContent === 'Original · ready'"
             )
-            if page.locator("#status").get_attribute("data-kind") != "success":
-                raise RuntimeError("return to demo did not complete a local inference")
+            returned = page.evaluate(
+                "[demoOriginalImage.getAttribute('src'), demoOriginalImage.alt, "
+                "runtimeValue.textContent, summaryCount.textContent, modeBadge.textContent, "
+                "document.querySelector('#status').dataset.kind, demoDetectBtn.textContent]"
+            )
+            if returned != [
+                "samples/harbor.jpg", "低密度港區的真實航拍原圖", "—", "0",
+                "尚未 Detect", "neutral", "開始 Detect",
+            ]:
+                raise RuntimeError(f"BYOM return did not restore the neutral harbor original: {returned!r}")
+            if page.locator("#canvasDescription").inner_text() != "尚無 detection result。":
+                raise RuntimeError("BYOM return retained the completed canvas description")
+            if requests != before_return_requests or page.evaluate("globalThis.__demoRunCount") != before_return_runs:
+                raise RuntimeError("BYOM return requested assets or ran inference")
+            page.locator("#demoDetectBtn").click()
+            page.wait_for_function("document.querySelector('#status').dataset.kind === 'success'")
+            if page.locator("#provenanceValue").inner_text() != f"{DEMO_PROVENANCE} · 低密度港區航拍範例":
+                raise RuntimeError("explicit Detect after BYOM return lost harbor provenance")
             _assert_privacy_surfaces(
                 page, requests, console_messages, page_errors, sentinels
             )
+
+            uncached = browser.new_page(viewport={"width": 1280, "height": 720})
+            uncached_requests: list[str] = []
+            uncached_messages: list[str] = []
+            uncached.add_init_script(SRI_STUB_SHIM)
+            _record_errors(uncached, uncached_requests, uncached_messages)
+            uncached.route(
+                ORT_CDN_URL,
+                lambda route: _fulfill_runtime(route, ORT_STUB),
+            )
+            uncached.goto(f"{str(served_url).rstrip('/')}/", wait_until="networkidle")
+            initial_uncached_requests = list(uncached_requests)
+            uncached.locator("#byomPanel summary").click()
+            if uncached_requests != initial_uncached_requests:
+                raise RuntimeError("opening uncached BYOM requested a network asset")
+            _set_model_file(uncached, "candidate-valid.onnx")
+            uncached.wait_for_function(
+                "document.querySelector('#modelLabel').textContent === 'Local ONNX model ready'"
+            )
+            runtime_tuple = uncached.evaluate(
+                """
+                () => {
+                  const script = [...document.scripts].find(item => item.src === %s);
+                  return script && [script.src, script.integrity, script.crossOrigin];
+                }
+                """ % json.dumps(ORT_CDN_URL)
+            )
+            if runtime_tuple != [ORT_CDN_URL, ORT_INTEGRITY, "anonymous"]:
+                raise RuntimeError("uncached BYOM model selection lost the pinned ORT tuple")
+            if uncached_requests.count(ORT_CDN_URL) != 1:
+                raise RuntimeError("uncached BYOM model selection did not request ORT exactly once")
+            if DEMO_MODEL_PATH in _request_paths(uncached_requests) or uncached_messages:
+                raise RuntimeError("uncached BYOM model selection requested demo bytes or logged errors")
+            uncached.close()
         finally:
             browser.close()
 
@@ -2092,70 +1824,16 @@ def run_accessibility(
             action_box = page.locator("#demoDetectBtn").bounding_box()
             if claim_box is None or action_box is None or claim_box["y"] >= action_box["y"]:
                 raise RuntimeError("claim notice lost visual priority over the first primary control")
-            selector_contract = page.evaluate(
-                """
-                () => ({
-                  legends: sampleSelector.querySelectorAll('legend').length,
-                  options: [...sampleSelector.querySelectorAll('.sample-option')].map(option => ({
-                    name: option.name,
-                    id: option.dataset.sampleId,
-                    alt: option.querySelector('img')?.alt,
-                    width: option.querySelector('img')?.getAttribute('width'),
-                    height: option.querySelector('img')?.getAttribute('height'),
-                    live: option.querySelectorAll('[aria-live]').length,
-                  })),
-                })
-                """
-            )
-            if selector_contract["legends"] != 1 or [item["name"] for item in selector_contract["options"]] != ["demo-sample"] * 3:
-                raise RuntimeError("sample selector lost its one legend or three stable demo-sample buttons")
-            if [item["id"] for item in selector_contract["options"]] != ["airfield", "sports-complex", "harbor"]:
-                raise RuntimeError("sample selector lost its fixed visual order")
-            if any(not item["alt"] or item["width"] != "96" or item["height"] != "60" or item["live"] for item in selector_contract["options"]):
-                raise RuntimeError("sample thumbnails lost meaningful fixed dimensions or added a live announcement")
-            options = page.locator("#sampleSelector .sample-option")
-            options.nth(0).focus()
-            page.keyboard.press("Tab")
-            if page.evaluate("document.activeElement?.dataset.sampleId") != "sports-complex":
-                raise RuntimeError("Tab does not follow the sample selector's visual order")
-            page.keyboard.press("Space")
-            page.wait_for_function("document.querySelector('[aria-pressed=\"true\"]')?.dataset.sampleId === 'sports-complex'")
-            if page.evaluate("document.activeElement?.dataset.sampleId") != "sports-complex":
-                raise RuntimeError("Space selection moved focus away from the activated sample")
-            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-            sports_title = "運動場館航拍範例"
-            if page.locator("#status").inner_text() != f"已選擇 {sports_title} · 原圖已載入 · 尚未 Detect。" or page.locator("#status").inner_text().count(sports_title) != 1:
-                raise RuntimeError("shared polite status does not announce the newly selected sports title exactly once")
-            if sports_title in page.locator("#canvasDescription").inner_text():
-                raise RuntimeError("non-live detailed description duplicated the selected sports title")
-            page.keyboard.press("Tab")
-            if page.evaluate("document.activeElement?.dataset.sampleId") != "harbor":
-                raise RuntimeError("Tab does not reach the final sample option")
-            page.keyboard.press("Shift+Tab")
-            if page.evaluate("document.activeElement?.dataset.sampleId") != "sports-complex":
-                raise RuntimeError("Shift+Tab does not reverse through sample options")
-            page.keyboard.press("Tab")
-            page.keyboard.press("Enter")
-            page.wait_for_function("document.querySelector('[aria-pressed=\"true\"]')?.dataset.sampleId === 'harbor'")
-            if page.evaluate("document.activeElement?.dataset.sampleId") != "harbor":
-                raise RuntimeError("Enter selection moved focus away from the activated sample")
-            page.wait_for_function("document.querySelector('#sampleState').textContent === 'Original · ready'")
-            harbor_title = "低密度港區航拍範例"
-            if page.locator("#status").inner_text() != f"已選擇 {harbor_title} · 原圖已載入 · 尚未 Detect。" or page.locator("#status").inner_text().count(harbor_title) != 1:
-                raise RuntimeError("shared polite status does not announce the newly selected harbor title exactly once")
-            if harbor_title in page.locator("#canvasDescription").inner_text():
-                raise RuntimeError("non-live detailed description duplicated the selected harbor title")
-            page.keyboard.press("Tab")
+            if page.locator("#sampleSelector, .sample-option").count() != 0:
+                raise RuntimeError("accessibility contract still exposes a sample selector")
+            identity = page.locator("#demoSampleTitle, #demoSampleKind")
+            if identity.count() != 2 or not identity.evaluate_all(
+                "nodes => nodes.every(node => !node.matches('button,[aria-pressed],[aria-selected]'))"
+            ):
+                raise RuntimeError("fixed harbor identity is not static accessible content")
+            page.locator("#demoDetectBtn").focus()
             if page.evaluate("document.activeElement?.id") != "demoDetectBtn":
-                raise RuntimeError("Detect does not follow the sample group in keyboard order")
-            page.emulate_media(forced_colors="active")
-            options.nth(2).focus()
-            forced_state = options.nth(2).evaluate(
-                "option => { const style = getComputedStyle(option); return [style.borderTopWidth, style.outlineStyle, parseFloat(style.outlineWidth) || 0]; }"
-            )
-            if float(forced_state[0].removesuffix("px")) < 3 or forced_state[1] == "none" or forced_state[2] < 3:
-                raise RuntimeError("forced-colors selected sample lacks a 3px non-color and focus-visible state")
-            page.emulate_media(forced_colors="none")
+                raise RuntimeError("fixed harbor Detect control is not focusable")
             names = page.evaluate(
                 """
                 () => ({
@@ -2179,8 +1857,8 @@ def run_accessibility(
                 () => ({
                   page: document.querySelector('h1')?.tagName,
                   controls: controlsTitle.tagName,
+                  sample: demoSampleTitle.tagName,
                   result: resultTitle.tagName,
-                  sample: sampleSelector.querySelector('legend')?.tagName,
                   table: tableTitle.tagName,
                   byom: byomPanel.querySelector('summary')?.tagName,
                 })
@@ -2189,8 +1867,8 @@ def run_accessibility(
             if headings != {
                 "page": "H1",
                 "controls": "H2",
+                "sample": "H3",
                 "result": "H2",
-                "sample": "LEGEND",
                 "table": "H3",
                 "byom": "SUMMARY",
             }:
@@ -2255,6 +1933,11 @@ def run_accessibility(
                 """
             ):
                 raise RuntimeError("BYOM disclosure no longer follows the filters")
+
+            _assert_no_page_overflow_or_obscured_action(page, "desktop accessibility")
+            page.emulate_media(forced_colors="active")
+            _assert_no_page_overflow_or_obscured_action(page, "forced colors")
+            page.emulate_media(forced_colors="none")
 
             page.locator("#demoDetectBtn").click()
             page.wait_for_function(
@@ -2378,6 +2061,7 @@ def run_accessibility(
                 raise RuntimeError("reduced-motion preference retains the result animation")
             if any(value > 20 for value in durations):
                 raise RuntimeError("reduced-motion preference retains a visible transition")
+            _assert_no_page_overflow_or_obscured_action(page, "reduced motion")
             source_links = {
                 text.strip(): href
                 for text, href in page.locator(".source-links a").evaluate_all(
@@ -2454,7 +2138,7 @@ def _assert_responsive_layout(page: object, label: str) -> None:
 
     ordered = [
         "#claimBoundary",
-        "#sampleSelector",
+        "#sampleCard",
         "#demoDetectBtn",
         "#resultViewport",
         ".result-summary",
@@ -2580,7 +2264,7 @@ def run_real_demo_success(
             assert_real_demo_initial(page, requests, messages)
             run_counter = exercise_real_demo_success(page, requests, messages)
             if screenshot is not None:
-                capture_canonical_default_airfield_result(page, screenshot)
+                capture_canonical_harbor_result(page, screenshot)
             assert_original_result_toggle(page, requests, run_counter)
             assert_demo_cached_filters(page, requests, run_counter)
             if mobile_screenshot is not None:
@@ -2671,13 +2355,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--scenario",
         choices=(
-            "sample-gallery",
-            "sample-gallery-failures",
-            "initial-sample-failures",
-            "held-decode",
-            "invalid-selector",
-            "superseded-reload",
-            "byom-superseded-reload",
+            "single-harbor",
+            "single-harbor-failures",
             "manifest-matrix",
             "real-demo-success",
             "stubbed-cache",
@@ -2698,20 +2377,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        if args.scenario == "sample-gallery":
-            run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
-        elif args.scenario == "sample-gallery-failures":
-            run_sample_gallery_failures(args.executable_path, args.base_url)
-        elif args.scenario == "initial-sample-failures":
-            run_initial_sample_failures(args.executable_path, args.base_url)
-        elif args.scenario == "held-decode":
-            run_held_decode(args.executable_path, args.base_url)
-        elif args.scenario == "invalid-selector":
-            run_invalid_selector(args.executable_path, args.base_url)
-        elif args.scenario == "superseded-reload":
-            run_superseded_reload(args.executable_path, args.base_url)
-        elif args.scenario == "byom-superseded-reload":
-            run_byom_superseded_reload(args.executable_path, args.base_url)
+        if args.scenario == "single-harbor":
+            run_single_harbor(args.executable_path, args.base_url, args.screenshot)
+        elif args.scenario == "single-harbor-failures":
+            run_single_harbor_failures(args.executable_path, args.base_url)
         elif args.scenario == "manifest-matrix":
             run_manifest_matrix(
                 args.executable_path,
@@ -2755,13 +2424,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.scenario == "mobile":
             run_mobile(args.executable_path, args.base_url)
         else:
-            run_sample_gallery(args.executable_path, args.base_url, args.screenshot)
-            run_sample_gallery_failures(args.executable_path, args.base_url)
-            run_initial_sample_failures(args.executable_path, args.base_url)
-            run_held_decode(args.executable_path, args.base_url)
-            run_invalid_selector(args.executable_path, args.base_url)
-            run_superseded_reload(args.executable_path, args.base_url)
-            run_byom_superseded_reload(args.executable_path, args.base_url)
+            run_single_harbor(args.executable_path, args.base_url, args.screenshot)
+            run_single_harbor_failures(args.executable_path, args.base_url)
             run_manifest_matrix(args.executable_path, args.base_url)
             run_real_demo_success(
                 args.executable_path,
@@ -2786,20 +2450,10 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return 1
-    if args.scenario == "sample-gallery":
-        print("[OK] Real sample gallery initial state")
-    elif args.scenario == "sample-gallery-failures":
-        print("[OK] Real sample gallery failures are safe and recoverable")
-    elif args.scenario == "initial-sample-failures":
-        print("[OK] Initial real sample failures are safe and recoverable")
-    elif args.scenario == "held-decode":
-        print("[OK] Held real sample decode clears stale result state")
-    elif args.scenario == "invalid-selector":
-        print("[OK] Invalid sample selector fails closed and recovers")
-    elif args.scenario == "superseded-reload":
-        print("[OK] Superseded sample reload remains neutral")
-    elif args.scenario == "byom-superseded-reload":
-        print("[OK] BYOM-to-demo superseded reload remains neutral")
+    if args.scenario == "single-harbor":
+        print("[OK] Single harbor real inference and cached filtering")
+    elif args.scenario == "single-harbor-failures":
+        print("[OK] Fixed harbor image failures are safe and recoverable")
     elif args.scenario == "manifest-matrix":
         print("[OK] Browser manifest catalog matrix fails closed")
     elif args.scenario == "real-demo-success":

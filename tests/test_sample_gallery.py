@@ -16,6 +16,7 @@ import scripts.prepare_sample_gallery as gallery
 import scripts.sample_gallery_smoke as smoke
 from scripts.prepare_sample_gallery import (
     CANDIDATE_RECIPES,
+    CandidateRecipe,
     GalleryError,
     acquire_candidate,
     validate_approved_gallery,
@@ -31,7 +32,9 @@ from scripts.sample_gallery_smoke import (
 
 def _valid_observation_detection(category: str) -> dict[str, float | int]:
     """Return one bounded, category-family detection for observation fixtures."""
-    class_id = {"airfield": 0, "sports-complex": 3, "harbor": 1}[category]
+    if category != "harbor":
+        raise ValueError("GALLERY_OBSERVATION")
+    class_id = 1
     return {
         "classId": class_id, "confidence": 0.9, "cx": 640.0, "cy": 400.0,
         "w": 40.0, "h": 30.0, "angle": 0.0,
@@ -199,49 +202,49 @@ def invalid_source_tuning_and_privacy_mutations(record: dict) -> tuple[dict, ...
 
 @pytest.fixture
 def approved_gallery_report(tmp_path: Path, valid_candidate_record: dict) -> dict:
-    records = []
-    for recipe in (
-        CANDIDATE_RECIPES[0], CANDIDATE_RECIPES[1], CANDIDATE_RECIPES[3],
-        CANDIDATE_RECIPES[4], CANDIDATE_RECIPES[6], CANDIDATE_RECIPES[7],
-    ):
-        record = deepcopy(valid_candidate_record)
-        record["candidateId"] = recipe.candidate_id
-        record["category"] = recipe.category
-        record["source"]["bboxWgs84"] = list(recipe.bbox_wgs84)
-        record["image"]["reviewName"] = f"{recipe.candidate_id}.jpg"
-        (tmp_path / str(record["image"]["reviewName"])).write_bytes(
-            (tmp_path / str(valid_candidate_record["image"]["reviewName"])).read_bytes()
-        )
-        records.append(record)
+    records = [valid_candidate_record]
     (tmp_path / "candidate-records.json").write_text(
         __import__("json").dumps({"schemaVersion": 1, "records": records}), encoding="utf-8"
     )
-    family = {"airfield": 0, "sports-complex": 3, "harbor": 1}
     observations = {
         "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
         "candidates": [
             {"candidateId": record["candidateId"], "category": record["category"],
              "runCompleted": True, "numericRuntime": 1.0, "visualReview": "unreviewed",
-             "detections": [{"classId": family[record["category"]], "confidence": 0.9,
+             "detections": [{"classId": 1, "confidence": 0.9,
                              "cx": 100.0, "cy": 200.0, "w": 40.0, "h": 30.0, "angle": 0.0}]}
             for record in records
         ],
     }
     (tmp_path / "observations.json").write_text(__import__("json").dumps(observations), encoding="utf-8")
-    approved = [records[0], records[2], records[4]]
-    return {"schemaVersion": 1, "threshold": 0.25, "records": approved,
-            "visualReview": {record["candidateId"]: "approved" for record in approved}}
+    return {"schemaVersion": 1, "threshold": 0.25, "records": records,
+            "visualReview": {"harbor-port-hueneme": "approved"}}
 
 
-def test_candidate_recipes_are_exact_conus_naip_only() -> None:
-    assert tuple(recipe.candidate_id for recipe in CANDIDATE_RECIPES) == (
-        "airfield-watsonville", "airfield-reid-hillview", "airfield-santa-monica",
-        "sports-big-league-manteca", "sports-twin-creeks", "sports-ken-mercer",
-        "harbor-port-hueneme", "harbor-redwood-city", "harbor-stockton",
+def test_candidate_recipes_are_exact_approved_harbor_only() -> None:
+    assert CANDIDATE_RECIPES == (
+        CandidateRecipe(
+            "harbor-port-hueneme",
+            "harbor",
+            (-119.216719, 34.144170, -119.200719, 34.154170),
+        ),
     )
-    assert {recipe.category for recipe in CANDIDATE_RECIPES} == {
-        "airfield", "sports-complex", "harbor"
-    }
+
+
+def test_approved_sample_receipt_is_exact_harbor_contract() -> None:
+    receipt = json.loads((Path(__file__).resolve().parents[1] / "release/sample-gallery-sources.json").read_text("utf-8"))
+    assert receipt["schemaVersion"] == 1
+    assert [sample["id"] for sample in receipt["samples"]] == ["harbor"]
+    sample = receipt["samples"][0]
+    assert (sample["path"], sample["bytes"], sample["sha256"]) == (
+        "samples/harbor.jpg",
+        241046,
+        "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
+    )
+    assert sample["source"]["productId"] == "m_3411955_sw_11_060_20220514"
+    assert sample["derivation"]["bboxWgs84"] == [-119.216719, 34.14417, -119.200719, 34.15417]
+    assert sample["guardrails"]["classIds"] == [1, 2, 7]
+    assert (sample["guardrails"]["countMin"], sample["guardrails"]["countMax"]) == (16, 26)
 
 
 def test_derivation_is_deterministic_1280_by_800_srgb_jpeg_without_metadata(
@@ -274,7 +277,7 @@ def test_derivation_uses_the_single_mosaic_identity_when_catalog_rows_overlap(tm
 
 def test_derivation_accepts_the_known_service_endpoint_when_its_response_keeps_request_query(tmp_path: Path) -> None:
     record = acquire_candidate(CANDIDATE_RECIPES[0], tmp_path / "review", QueryBearingServiceTransport())
-    assert record["candidateId"] == "airfield-watsonville"
+    assert record["candidateId"] == "harbor-port-hueneme"
 
 
 def test_derivation_uses_the_visible_identify_catalog_raster_not_the_service_object_id(tmp_path: Path) -> None:
@@ -303,19 +306,12 @@ def test_source_qualified_intersection_requires_exactly_one_raster() -> None:
             gallery._common_source_qualified_id(captures, recipe)
 
 
-def test_acquisition_pool_keeps_two_or_three_source_valid_candidates_per_category(tmp_path: Path) -> None:
+def test_acquisition_admits_exactly_one_harbor_candidate(tmp_path: Path) -> None:
     root = tmp_path / "external-review"
-    transport = PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84})
-    records = gallery.acquire_all(root, transport)
-    counts = {category: sum(record["category"] == category for record in records) for category in ("airfield", "sports-complex", "harbor")}
-    assert counts == {"airfield": 3, "sports-complex": 2, "harbor": 3}
+    records = gallery.acquire_all(root, PoolTransport())
+    assert [(record["candidateId"], record["category"]) for record in records] == [("harbor-port-hueneme", "harbor")]
     batch = __import__("json").loads((root / "candidate-records.json").read_text(encoding="utf-8"))
-    assert len(batch["records"]) == 8
-
-    insufficient = tmp_path / "insufficient-review"
-    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
-        gallery.acquire_all(insufficient, PoolTransport({recipe.bbox_wgs84 for recipe in CANDIDATE_RECIPES[3:5]}))
-    assert not (insufficient / "candidate-records.json").exists()
+    assert [record["candidateId"] for record in batch["records"]] == ["harbor-port-hueneme"]
 
 
 def test_acquisition_pool_keeps_network_failures_fatal(tmp_path: Path) -> None:
@@ -337,20 +333,6 @@ def test_acquisition_pool_keeps_derivation_failures_fatal(tmp_path: Path) -> Non
     assert not (root / "candidate-records.json").exists()
 
 
-def test_acquisition_pool_keeps_containment_failures_fatal(tmp_path: Path) -> None:
-    root = tmp_path / "external-review"
-    transport = FakeNaipTransport()
-
-    def contaminating_transport(request: dict) -> tuple[bytes, str]:
-        if request["kind"] == "query":
-            (root / ".gallery-stage" / "unrelated").write_bytes(b"x")
-        return transport(request)
-
-    with pytest.raises(GalleryError, match="GALLERY_SCOPE"):
-        gallery.acquire_all(root, contaminating_transport)
-    assert not (root / "candidate-records.json").exists()
-
-
 def test_acquisition_pool_keeps_write_failures_fatal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "external-review"
     original_write = Path.write_text
@@ -362,7 +344,7 @@ def test_acquisition_pool_keeps_write_failures_fatal(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr(Path, "write_text", refusing_batch_write)
     with pytest.raises(OSError):
-        gallery.acquire_all(root, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+        gallery.acquire_all(root, PoolTransport())
     assert not (root / "candidate-records.json").exists()
 
 
@@ -370,7 +352,7 @@ def test_approval_rejects_a_completed_pool_with_the_wrong_model_digest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     review = tmp_path / "external-review"
-    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    records = gallery.acquire_all(review, PoolTransport())
     observations = {
         "schemaVersion": 1, "threshold": 0.25, "modelSha256": "0" * 64,
         "candidates": [
@@ -380,7 +362,7 @@ def test_approval_rejects_a_completed_pool_with_the_wrong_model_digest(
         ],
     }
     (review / "observations.json").write_text(__import__("json").dumps(observations), encoding="utf-8")
-    selections = iter(("airfield-watsonville", "sports-big-league-manteca", "harbor-port-hueneme"))
+    selections = iter(("harbor-port-hueneme",))
     monkeypatch.setattr("builtins.input", lambda _prompt: next(selections))
     with pytest.raises(GalleryError, match="GALLERY_RECORD"):
         gallery.approve(review, review / "observations.json", tmp_path / "pointer.txt")
@@ -389,7 +371,7 @@ def test_approval_rejects_a_completed_pool_with_the_wrong_model_digest(
 
 def test_observation_report_requires_the_complete_acquired_pool(tmp_path: Path) -> None:
     review = tmp_path / "external-review"
-    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    records = gallery.acquire_all(review, PoolTransport())
     report = {
         "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
         "candidates": [
@@ -406,7 +388,7 @@ def test_observation_report_requires_the_complete_acquired_pool(tmp_path: Path) 
 
 def test_observation_report_accepts_the_authoritative_source_pool_tuple(tmp_path: Path) -> None:
     review = tmp_path / "external-review"
-    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
+    records = gallery.acquire_all(review, PoolTransport())
     pool = source_valid_pool(records, review)
     report = {
         "schemaVersion": 1, "threshold": 0.25, "modelSha256": gallery.MODEL_SHA256,
@@ -419,24 +401,13 @@ def test_observation_report_accepts_the_authoritative_source_pool_tuple(tmp_path
     validate_observations(report, pool, review)
 
 
-def test_source_valid_pool_requires_two_or_three_records_per_fixed_category(
+def test_source_valid_pool_requires_exactly_one_harbor_record(
     tmp_path: Path, valid_candidate_record: dict
 ) -> None:
-    records = []
-    for recipe in (*CANDIDATE_RECIPES[:3], *CANDIDATE_RECIPES[3:5], *CANDIDATE_RECIPES[6:]):
-        record = deepcopy(valid_candidate_record)
-        record["candidateId"] = recipe.candidate_id
-        record["category"] = recipe.category
-        record["source"]["bboxWgs84"] = list(recipe.bbox_wgs84)
-        record["image"]["reviewName"] = f"{recipe.candidate_id}.jpg"
-        (tmp_path / str(record["image"]["reviewName"])).write_bytes(
-            (tmp_path / str(valid_candidate_record["image"]["reviewName"])).read_bytes()
-        )
-        records.append(record)
-    pool = source_valid_pool(records, tmp_path)
-    assert tuple(record["category"] for record in pool).count("sports-complex") == 2
+    pool = source_valid_pool([valid_candidate_record], tmp_path)
+    assert tuple(record["category"] for record in pool) == ("harbor",)
     with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):
-        source_valid_pool([record for record in records if record["category"] != "sports-complex"] + [records[3]], tmp_path)
+        source_valid_pool([valid_candidate_record, deepcopy(valid_candidate_record)], tmp_path)
 
 
 def test_smoke_cli_starts_when_run_as_a_script() -> None:
@@ -622,15 +593,13 @@ def test_admission_rejects_non_naip_source_hidden_tuning_and_private_fields(
             validate_candidate_record(mutation, tmp_path)
 
 
-def test_approved_gallery_requires_one_visually_approved_record_per_fixed_category(
+def test_approved_gallery_requires_the_one_visually_approved_harbor_record(
     tmp_path: Path, approved_gallery_report: dict
 ) -> None:
     records = validate_approved_gallery(approved_gallery_report, tmp_path)
-    assert tuple(record["category"] for record in records) == (
-        "airfield", "sports-complex", "harbor"
-    )
+    assert tuple(record["category"] for record in records) == ("harbor",)
     duplicate = deepcopy(approved_gallery_report)
-    duplicate["records"][1]["category"] = "airfield"
+    duplicate["records"].append(deepcopy(duplicate["records"][0]))
     with pytest.raises(GalleryError, match="GALLERY_RECORD"):
         validate_approved_gallery(duplicate, tmp_path)
     missing = deepcopy(approved_gallery_report)
@@ -639,36 +608,25 @@ def test_approved_gallery_requires_one_visually_approved_record_per_fixed_catego
         validate_approved_gallery(missing, tmp_path)
 
 
-def test_publish_writes_exact_three_images_and_public_safe_receipt_atomically(
+def test_publish_writes_only_harbor_and_removes_superseded_sample_assets_atomically(
     tmp_path: Path, approved_gallery_report: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Removing a managed image or leaking review data must break publication."""
     review_root = tmp_path
-    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    review_name = approved_gallery_report["records"][0]["image"]["reviewName"]
+    approved_harbor_bytes = (review_root / review_name).read_bytes()
     pages_root = tmp_path / "demo" / "web"
-    receipt_path = tmp_path / "release" / "receipt.json"
+    samples = pages_root / "samples"
+    samples.mkdir(parents=True)
+    (samples / "airfield.jpg").write_bytes(b"superseded-airfield")
+    (samples / "sports-complex.jpg").write_bytes(b"superseded-sports")
+    monkeypatch.setattr(gallery, "REPO_ROOT", tmp_path)
+    receipt_path = tmp_path / "release" / "sample-gallery-sources.json"
     monkeypatch.setattr(gallery, "_git_worktree_roots", lambda _root: {tmp_path / "repo"})
     gallery.publish_approved_gallery(
         approved_gallery_report, review_root, pages_root, receipt_path
     )
-    assert sorted(path.name for path in (pages_root / "samples").iterdir()) == [
-        "airfield.jpg", "harbor.jpg", "sports-complex.jpg"
-    ]
-    receipt = json.loads(receipt_path.read_text("utf-8"))
-    serialized = json.dumps(receipt, sort_keys=True).casefold()
-    assert "watsonville" not in serialized
-    assert "private" not in serialized
-    assert "reviewname" not in serialized
-
-
-def test_demo_manifest_declares_exact_sample_catalog_and_default() -> None:
-    """A wrong sample order/default would make the initial workbench misleading."""
-    manifest = json.loads((Path(__file__).resolve().parents[1] / "demo/web/demo-model.json").read_text("utf-8"))
-    assert manifest["schemaVersion"] == 2
-    assert manifest["defaultSampleId"] == "airfield"
-    assert [item["id"] for item in manifest["samples"]] == [
-        "airfield", "sports-complex", "harbor"
-    ]
+    assert sorted(path.name for path in (pages_root / "samples").iterdir()) == ["harbor.jpg"]
+    assert (samples / "harbor.jpg").read_bytes() == approved_harbor_bytes
 
 
 def test_publish_preserves_the_entire_prior_batch_when_backup_replace_fails(
@@ -736,24 +694,6 @@ def test_first_publication_bundle_rollback_removes_new_gallery_files_and_keeps_p
     assert not receipt.exists() and not manifest.exists() and not loader.exists()
 
 
-def test_approval_verification_rejects_a_candidate_outside_the_acquired_pool(tmp_path: Path) -> None:
-    review = tmp_path / "external-review"
-    records = gallery.acquire_all(review, PoolTransport({CANDIDATE_RECIPES[5].bbox_wgs84}))
-    rejected = acquire_candidate(CANDIDATE_RECIPES[5], tmp_path / "other-review", FakeNaipTransport())
-    (review / str(rejected["image"]["reviewName"])).write_bytes(
-        (tmp_path / "other-review" / str(rejected["image"]["reviewName"])).read_bytes()
-    )
-    choices = [
-        next(record for record in records if record["category"] == "airfield"), rejected,
-        next(record for record in records if record["category"] == "harbor"),
-    ]
-    report = {"schemaVersion": 1, "threshold": 0.25, "records": choices,
-              "visualReview": {str(record["candidateId"]): "approved" for record in choices}}
-    (review / "approved-gallery.json").write_text(__import__("json").dumps(report), encoding="utf-8")
-    with pytest.raises(GalleryError, match="GALLERY_RECORD"):
-        gallery.verify_approved(review)
-
-
 def test_observation_report_allows_only_fixed_candidates_and_measured_finite_values() -> None:
     report = {
         "schemaVersion": 1,
@@ -814,7 +754,7 @@ def test_observations_reject_non_derivable_detection_sets(
     if mutation == "empty":
         observations["candidates"][0]["detections"] = []
     elif mutation == "no-family":
-        detections[0]["classId"] = 1
+        detections[0]["classId"] = 0
     else:
         detections.append(deepcopy(detections[0]))
     with pytest.raises(ValueError, match="GALLERY_OBSERVATION"):

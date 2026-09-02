@@ -26,8 +26,12 @@ from scripts.prepare_demo_assets import (
     main,
     publish_assets,
     urlopen_transport,
+    validate_gallery_publication,
     validate_receipts,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _jpeg_bytes(expected_bytes: int, color: tuple[int, int, int] = (21, 82, 160)) -> bytes:
@@ -702,20 +706,17 @@ def test_publish_validates_complete_batch_and_restores_prior_batch_on_failure(tm
     assert _files(pages_root) == before_rollback_failure
 
 
-def test_gallery_receipt_admits_only_the_published_three_sample_bytes(tmp_path: Path) -> None:
-    """Changing a gallery digest or adding boats must make asset publication refuse it."""
-    root = Path(__file__).resolve().parents[1]
-    receipt = json.loads((root / "release/sample-gallery-sources.json").read_text(encoding="utf-8"))
-    pages = tmp_path / "web"
-    (pages / "samples").mkdir(parents=True)
-    for item in receipt["samples"]:
-        (pages / item["path"]).write_bytes((root / "demo/web" / item["path"]).read_bytes())
-    receipt_path = tmp_path / "sample-gallery-sources.json"
-    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
-    demo_assets.validate_gallery_publication(pages, receipt_path)
-    (pages / "samples" / "boats.jpg").write_bytes(b"stale")
-    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
-        demo_assets.validate_gallery_publication(pages, receipt_path)
+def test_gallery_receipt_admits_only_the_published_harbor_bytes(tmp_path: Path) -> None:
+    payload = json.loads((ROOT / "release/sample-gallery-sources.json").read_text("utf-8"))
+    assert [sample["id"] for sample in payload["samples"]] == ["harbor"]
+    assert validate_gallery_publication(ROOT / "demo/web", ROOT / "release/sample-gallery-sources.json") == payload
+
+
+def test_demo_manifest_declares_one_fixed_harbor_sample() -> None:
+    manifest = json.loads((ROOT / "demo/web/demo-model.json").read_text("utf-8"))
+    assert "defaultSampleId" not in manifest
+    assert [sample["id"] for sample in manifest["samples"]] == ["harbor"]
+    assert manifest["samples"][0]["alt"] == "低密度港區的真實航拍原圖"
 
 
 def test_cli_disables_legacy_boats_acquisition_without_a_gallery_receipt(
@@ -736,8 +737,8 @@ def test_gallery_receipt_rejects_mutated_canonical_sample_contract(tmp_path: Pat
     receipt = tmp_path / "receipt.json"
     for path, value in [
         (("samples", 0, "source", "provider"), "private source"),
-        (("samples", 1, "derivation", "jpegQuality"), 91),
-        (("samples", 2, "guardrails", "threshold"), 0.3),
+        (("samples", 0, "derivation", "jpegQuality"), 91),
+        (("samples", 0, "guardrails", "threshold"), 0.3),
         (("samples", 0, "source", "extra"), "x"),
     ]:
         mutated = deepcopy(payload); target = mutated
@@ -754,7 +755,7 @@ def test_gallery_receipt_rejects_mutated_canonical_sample_contract(tmp_path: Pat
         pytest.param(("samples", 0, "alt"), "uncharted image", id="sample.alt"),
         pytest.param(("samples", 0, "guardrails", "classIds"), [99], id="guardrails.classIds"),
         pytest.param(("samples", 0, "guardrails", "countMin"), 0, id="guardrails.countMin"),
-        pytest.param(("samples", 0, "guardrails", "representative", "classId"), 1, id="representative.classId"),
+        pytest.param(("samples", 0, "guardrails", "representative", "classId"), 0, id="representative.classId"),
         pytest.param(("samples", 0, "guardrails", "representative", "tolerance"), 0, id="representative.tolerance"),
     ],
 )
@@ -822,9 +823,10 @@ def test_gallery_receipt_rejects_semantically_invalid_replaced_canonical_baselin
         pytest.param(("schemaVersion",), 2, id="root.schemaVersion"),
         pytest.param(("samples",), [], id="root.samples-order"),
         pytest.param(("samples", 0, "id"), "unknown", id="sample.id-unknown"),
-        pytest.param(("samples", 1, "id"), "airfield", id="sample.id-duplicate"),
+        pytest.param(("samples", 0, "id"), "airfield", id="sample.id-renamed"),
         pytest.param(("samples", 0, "title"), "changed", id="sample.title"),
         pytest.param(("samples", 0, "path"), "https://example.invalid/a.jpg", id="sample.path-external"),
+        pytest.param(("samples", 0, "path"), "samples/../harbor.jpg", id="sample.path-traversal"),
         pytest.param(("samples", 0, "bytes"), 1, id="sample.bytes"),
         pytest.param(("samples", 0, "sha256"), "0" * 64, id="sample.sha256"),
         pytest.param(("samples", 0, "mediaType"), "image/png", id="sample.mediaType"),
@@ -860,6 +862,17 @@ def test_gallery_receipt_rejects_each_closed_contract_mutation(tmp_path: Path, p
     for key in path[:-1]: target = target[key]  # type: ignore[index]
     target[path[-1]] = value  # type: ignore[index]
     receipt = tmp_path / "receipt.json"; receipt.write_text(json.dumps(mutated), encoding="utf-8")
+    with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
+        demo_assets.validate_gallery_publication(pages.parent, receipt)
+
+
+def test_gallery_receipt_rejects_a_duplicate_harbor_record(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1]
+    payload = json.loads((root / "release/sample-gallery-sources.json").read_text("utf-8"))
+    pages = tmp_path / "web" / "samples"; pages.mkdir(parents=True)
+    (pages.parent / "samples/harbor.jpg").write_bytes((root / "demo/web/samples/harbor.jpg").read_bytes())
+    payload["samples"].append(deepcopy(payload["samples"][0]))
+    receipt = tmp_path / "receipt.json"; receipt.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(AssetPreparationError, match="DEMO_ASSET_RECEIPT"):
         demo_assets.validate_gallery_publication(pages.parent, receipt)
 

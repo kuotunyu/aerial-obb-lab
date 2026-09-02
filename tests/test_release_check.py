@@ -112,7 +112,7 @@ def test_browser_demo_evidence_is_genuine_local_inference_with_privacy_sanitized
     assert browser["showcase_enabled"] is False
     assert browser["demo_inference_performed"] is True
     assert browser["model_bundled"] is True
-    assert browser["default_demo_image"] == "demo/web/samples/airfield.jpg"
+    assert browser["default_demo_image"] == "demo/web/samples/harbor.jpg"
     assert (
         browser["demo_model"]
         == "demo/web/models/yolo26n-obb-privacy-sanitized.onnx"
@@ -123,17 +123,13 @@ def test_browser_demo_evidence_is_genuine_local_inference_with_privacy_sanitized
     assert browser["represents_t4_latency"] is False
 
 
-def test_browser_demo_evidence_records_exact_curated_gallery() -> None:
+def test_browser_demo_evidence_records_exact_single_harbor() -> None:
     browser = load_evidence()["browser_demo"]
 
-    assert browser["demo_images"] == [
-        "demo/web/samples/airfield.jpg",
-        "demo/web/samples/sports-complex.jpg",
-        "demo/web/samples/harbor.jpg",
-    ]
-    assert browser["default_demo_image"] == "demo/web/samples/airfield.jpg"
-    assert browser["sample_count"] == 3
-    assert browser["sample_selection"] == "explicit-three-option"
+    assert browser["demo_images"] == ["demo/web/samples/harbor.jpg"]
+    assert browser["default_demo_image"] == "demo/web/samples/harbor.jpg"
+    assert browser["sample_count"] == 1
+    assert browser["sample_selection"] == "fixed-no-selector"
     assert browser["confidence"] == 0.25
     assert browser["per_image_tuning"] is False
     assert browser["precomputed_results"] is False
@@ -155,8 +151,6 @@ def test_browser_demo_has_one_canonical_real_demo_source_path() -> None:
         "demo/web/index.html",
         "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
         "demo/web/obb.js",
-        "demo/web/samples/airfield.jpg",
-        "demo/web/samples/sports-complex.jpg",
         "demo/web/samples/harbor.jpg",
         "demo/web/style.css",
         "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
@@ -437,8 +431,6 @@ def test_real_demo_manifest_records_exact_public_artifacts() -> None:
     assert set(bundled) == {
         "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
-        "demo/web/samples/airfield.jpg",
-        "demo/web/samples/sports-complex.jpg",
         "demo/web/samples/harbor.jpg",
         "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
     }
@@ -459,10 +451,33 @@ def test_real_demo_manifest_records_exact_public_artifacts() -> None:
     assert len(manifest["excluded_historical_artifacts"]) == 6
 
 
-def test_real_demo_manifest_records_exact_public_gallery_artifacts() -> None:
+def test_real_demo_manifest_records_exact_single_harbor_artifact() -> None:
     release_check = load_release_check()
-
     assert release_check.verify_artifacts(ROOT) == []
+    receipt = json.loads(
+        (ROOT / "release/sample-gallery-sources.json").read_text(encoding="utf-8")
+    )["samples"]
+    demo = json.loads(
+        (ROOT / "demo/web/demo-model.json").read_text(encoding="utf-8")
+    )["samples"]
+    artifacts = json.loads(
+        (ROOT / "release/artifact-manifest.json").read_text(encoding="utf-8")
+    )["bundled_third_party_artifacts"]
+    assert receipt == demo
+    assert len(receipt) == 1
+    harbor = receipt[0]
+    bundled = [entry for entry in artifacts if entry["path"].startswith("demo/web/samples/")]
+    assert len(bundled) == 1
+    entry = bundled[0]
+    assert (entry["path"], entry["sample_id"], entry["sample_title"]) == (
+        "demo/web/samples/harbor.jpg", "harbor", "低密度港區航拍範例"
+    )
+    assert (entry["bytes"], entry["sha256"], entry["alt"]) == (
+        harbor["bytes"], harbor["sha256"], harbor["alt"]
+    )
+    assert entry["derivation"] == harbor["derivation"]
+    assert entry["guardrails"] == harbor["guardrails"]
+    assert entry["source_product_id"] == harbor["source"]["productId"]
 
 
 @pytest.mark.parametrize(
@@ -488,47 +503,49 @@ def test_gallery_manifest_rejects_unreviewed_receipt_or_claim_field(
     entry = next(
         item
         for item in manifest["bundled_third_party_artifacts"]
-        if item["path"] == "demo/web/samples/airfield.jpg"
+        if item["path"] == "demo/web/samples/harbor.jpg"
     )
     entry[field] = mutation
     _write_json(manifest_path, manifest)
 
     assert release_check.verify_artifacts(root) == [
-        "demo/web/samples/airfield.jpg: manifest NAIP record differs from receipt"
+        "demo/web/samples/harbor.jpg: manifest NAIP record differs from receipt"
     ]
 
 
-def test_notices_record_public_domain_naip_derivations() -> None:
+def test_notices_record_single_public_domain_harbor_derivation() -> None:
     root_notice = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
     demo_notice = (ROOT / "demo" / "web" / "THIRD_PARTY_NOTICES.md").read_text(
         encoding="utf-8"
     )
 
-    for title, path, product_id in (
-        ("小型機場航拍範例", "airfield.jpg", "m_3411861_sw_11_060_20220511"),
-        ("運動場館航拍範例", "sports-complex.jpg", "m_3712114_se_10_060_20220614"),
-        ("低密度港區航拍範例", "harbor.jpg", "m_3411955_sw_11_060_20220514"),
-    ):
-        for notice in (root_notice, demo_notice):
-            assert title in notice
-            assert path in notice
-            assert product_id in notice
-            assert "Public Domain" in notice
-            assert "crop/resample/metadata removal" in notice
+    for notice in (root_notice, demo_notice):
+        for token in (
+            "低密度港區航拍範例",
+            "samples/harbor.jpg",
+            "m_3411955_sw_11_060_20220514",
+            "2022-05-14",
+            "USDA",
+            "Public Domain",
+            "[-119.216719, 34.14417, -119.200719, 34.15417]",
+            "crop/resample/metadata removal",
+            "241046",
+            "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
+        ):
+            assert token in notice
     assert "No USGS or USDA endorsement is implied" in demo_notice
     assert "AGPL-3.0-only" in demo_notice
 
 
-def test_current_readmes_describe_three_sample_detect_journey() -> None:
+def test_current_readmes_describe_fixed_harbor_detect_journey() -> None:
     chinese = (ROOT / "README.md").read_text(encoding="utf-8")
     english = (ROOT / "README.en.md").read_text(encoding="utf-8")
 
-    assert "官方航拍原圖" not in chinese
-    assert "三張 public-domain NAIP 原圖之一" in chinese
+    for token in ("固定的 public-domain NAIP 港區原圖", "真正 inference", "查看原圖／查看結果", "BYOM"):
+        assert token in chinese
     assert "不代表" in chinese
-    assert "official aerial original" not in english
-    assert "one of the three public-domain NAIP originals" in english
-    assert "genuine local inference" in english
+    for token in ("fixed public-domain NAIP harbor original", "genuine local inference", "cached", "BYOM"):
+        assert token in english
     assert "does not represent" in english
 
 
@@ -773,7 +790,7 @@ def test_release_artifact_contract_rejects_license_digest_mutation(
             "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
             None,
         ),
-        ("demo/web/samples/airfield.jpg", "canonical-lf"),
+        ("demo/web/samples/harbor.jpg", "canonical-lf"),
     ],
 )
 def test_release_artifact_contract_rejects_binary_digest_mode_misuse(

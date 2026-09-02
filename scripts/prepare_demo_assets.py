@@ -408,9 +408,9 @@ def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[s
         if not isinstance(payload, dict) or set(payload) != {"schemaVersion", "samples"} or payload["schemaVersion"] != 1:
             raise ValueError
         samples = payload["samples"]
-        if not isinstance(samples, list) or [item.get("id") if isinstance(item, dict) else None for item in samples] != ["airfield", "sports-complex", "harbor"]:
+        if not isinstance(samples, list) or [item.get("id") if isinstance(item, dict) else None for item in samples] != ["harbor"]:
             raise ValueError
-        expected_paths = ["samples/airfield.jpg", "samples/sports-complex.jpg", "samples/harbor.jpg"]
+        expected_paths = ["samples/harbor.jpg"]
         if [item.get("path") if isinstance(item, dict) else None for item in samples] != expected_paths:
             raise ValueError
         sample_keys = {"id", "title", "alt", "path", "bytes", "sha256", "mediaType", "width", "height", "source", "derivation", "guardrails"}
@@ -418,16 +418,8 @@ def validate_gallery_publication(pages_root: Path, receipt_path: Path) -> dict[s
         derivation_keys = {"bboxWgs84", "outputSize", "color", "jpegQuality", "metadata"}
         guardrail_keys = {"classIds", "countMin", "countMax", "representative"}
         representative_keys = {"classId", "cx", "cy", "w", "h", "tolerance"}
-        expected_alts = {
-            "airfield": "小型機場的真實航拍原圖",
-            "sports-complex": "運動場館的真實航拍原圖",
-            "harbor": "低密度港區的真實航拍原圖",
-        }
-        expected_class_ids = {
-            "airfield": [0],
-            "sports-complex": [3, 4, 5, 6, 12, 13, 14],
-            "harbor": [1, 2, 7],
-        }
+        expected_alts = {"harbor": "低密度港區的真實航拍原圖"}
+        expected_class_ids = {"harbor": [1, 2, 7]}
         def finite_number(value: object) -> bool:
             return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
@@ -761,7 +753,7 @@ def _reject_stale_managed_pages(pages: Path, *, gallery: bool = False) -> None:
         SANITIZATION_RECORD_PUBLIC_PATH,
     }
     approved.update(
-        {"samples/airfield.jpg", "samples/sports-complex.jpg", "samples/harbor.jpg"}
+        {"samples/harbor.jpg"}
         if gallery else {"samples/boats.jpg"}
     )
     for directory in ("samples", "models", "third_party"):

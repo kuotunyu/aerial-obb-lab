@@ -139,8 +139,6 @@ RAW_BINARY_DIGEST_MODE = "raw-binary"
 REQUIRED_BUNDLED_THIRD_PARTY_ARTIFACTS = {
     "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
     APPROVED_DEMO_MODEL,
-    "demo/web/samples/airfield.jpg",
-    "demo/web/samples/sports-complex.jpg",
     "demo/web/samples/harbor.jpg",
     "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
 }
@@ -156,19 +154,13 @@ REQUIRED_REVIEWED_PUBLIC_ARTIFACTS = {
     "demo/web/fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "demo/web/index.html",
     APPROVED_DEMO_MODEL,
-    "demo/web/samples/airfield.jpg",
-    "demo/web/samples/sports-complex.jpg",
     "demo/web/samples/harbor.jpg",
     "demo/web/style.css",
     "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
     "demo/web/third_party/yolo26n-obb-privacy-sanitization.json",
     "docs/assets/browser-workbench.png",
 }
-GALLERY_SAMPLE_PATHS = (
-    "demo/web/samples/airfield.jpg",
-    "demo/web/samples/sports-complex.jpg",
-    "demo/web/samples/harbor.jpg",
-)
+GALLERY_SAMPLE_PATHS = ("demo/web/samples/harbor.jpg",)
 DOTA_DERIVED_VISUAL_RE = re.compile(r"^assets/hbb_vs_obb_.*\.(?:jpg|jpeg|png)$", re.I)
 
 
@@ -270,14 +262,10 @@ def verify_evidence(root: Path = ROOT) -> list[str]:
         "showcase_enabled": False,
         "demo_inference_performed": True,
         "model_bundled": True,
-        "demo_images": [
-            "demo/web/samples/airfield.jpg",
-            "demo/web/samples/sports-complex.jpg",
-            "demo/web/samples/harbor.jpg",
-        ],
-        "default_demo_image": "demo/web/samples/airfield.jpg",
-        "sample_count": 3,
-        "sample_selection": "explicit-three-option",
+        "demo_images": ["demo/web/samples/harbor.jpg"],
+        "default_demo_image": "demo/web/samples/harbor.jpg",
+        "sample_count": 1,
+        "sample_selection": "fixed-no-selector",
         "confidence": 0.25,
         "per_image_tuning": False,
         "precomputed_results": False,
@@ -387,8 +375,8 @@ def _verify_gallery_contract(root: Path, manifest: dict) -> list[str]:
     if receipt_paths != GALLERY_SAMPLE_PATHS or demo_paths != GALLERY_SAMPLE_PATHS:
         errors.append("public sample gallery inventory is not exact")
         return errors
-    if demo.get("defaultSampleId") != "airfield":
-        errors.append("public sample gallery default is not airfield")
+    if "defaultSampleId" in demo:
+        errors.append("single-harbor demo must not declare a selectable default")
     entries = {entry.get("path"): entry for entry in manifest.get("bundled_third_party_artifacts", [])}
     for receipt_sample, demo_sample, path in zip(samples, demo["samples"], GALLERY_SAMPLE_PATHS):
         entry = entries.get(path)

@@ -12,7 +12,7 @@ const ERROR_COPY = Object.freeze({
   DEMO_MODEL_SIZE: "範例模型大小驗證失敗。請重新整理頁面，或使用 BYOM。",
   DEMO_MODEL_DIGEST: "範例模型完整性驗證失敗。請重新整理頁面，或使用 BYOM。",
   DEMO_MODEL_URL: "範例模型來源驗證失敗。請重新整理頁面，或使用 BYOM。",
-  DEMO_IMAGE_DECODE: "這張範例影像目前無法顯示。請選擇其他範例，或重新整理後重試。",
+  DEMO_IMAGE_DECODE: "範例影像目前無法顯示。請重新整理後重試，或使用進階 BYOM。",
   RUNTIME_LOAD: "Browser runtime 無法載入。請檢查網路或 content blocker 後重試，或使用 BYOM。",
   MODEL_CONTRACT: "請選擇使用 images [1,3,1024,1024] 與 output0 [1,N,7] 的相容 ONNX。",
   IMAGE_DECODE: "Browser 無法解碼影像。請改選 PNG、JPEG 或 WebP。",
@@ -33,8 +33,7 @@ const CLASS_COLORS = Object.freeze([
 ]);
 
 const demoOriginalImage = document.getElementById("demoOriginalImage");
-const sampleOptions = Array.from(document.querySelectorAll(".sample-option"));
-const SAMPLE_CATALOG = DemoAssets.getSampleCatalog();
+const DEMO_SAMPLE = DemoAssets.getDemoSample();
 const viewportByomImage = document.getElementById("viewportByomImage");
 const demoFigure = document.getElementById("demoFigure");
 const demoFigureLabel = document.getElementById("demoFigureLabel");
@@ -80,7 +79,6 @@ const state = {
   elapsedMs: null,
   manifest: null,
   demoModelBytes: null,
-  selectedSampleId: "airfield",
   view: "original",
 };
 
@@ -208,12 +206,6 @@ function clearResultState({keepImage = false} = {}) {
 function resetToDemoOriginal() {
   state.source = "demo";
   state.phase = "idle";
-  try {
-    setSampleSelection(state.selectedSampleId);
-  } catch (_error) {
-    reportFailure("DEMO_MANIFEST");
-    return;
-  }
   state.image = demoOriginalImage.complete && demoOriginalImage.naturalWidth
     ? demoOriginalImage
     : null;
@@ -226,26 +218,10 @@ function resetToDemoOriginal() {
   demoDetectBtn.disabled = state.image === null;
   setInitialSummary();
   setStatus(state.image ? "原圖已載入 · 尚未 Detect。" : "正在載入官方範例原圖…");
+  if (!state.image) void loadDemoImage(nextGeneration()).catch(() => reportFailure("DEMO_IMAGE_DECODE"));
 }
 
-function selectedDemoSample() {
-  const sample = SAMPLE_CATALOG.find((candidate) => candidate.id === state.selectedSampleId);
-  if (!sample || !sampleOptions.some((option) => option.dataset.sampleId === sample.id)) {
-    throw new Error("DEMO_MANIFEST");
-  }
-  return sample;
-}
-
-function setSampleSelection(sampleId) {
-  const sample = SAMPLE_CATALOG.find((candidate) => candidate.id === sampleId);
-  if (!sample) throw new Error("DEMO_MANIFEST");
-  sampleOptions.forEach((option) => {
-    option.setAttribute("aria-pressed", String(option.dataset.sampleId === sampleId));
-  });
-  demoOriginalImage.alt = sample.alt;
-}
-
-function loadSelectedDemoImage(sample, token) {
+function loadDemoImage(token) {
   return new Promise((resolve, reject) => {
     const cleanup = () => {
       demoOriginalImage.removeEventListener("load", onLoad);
@@ -275,62 +251,32 @@ function loadSelectedDemoImage(sample, token) {
     };
     demoOriginalImage.addEventListener("load", onLoad, {once: true});
     demoOriginalImage.addEventListener("error", onError, {once: true});
-    demoOriginalImage.width = sample.width;
-    demoOriginalImage.height = sample.height;
-    demoOriginalImage.src = sample.path;
-  });
-}
-
-async function selectDemoSample(sampleId) {
-  const sample = SAMPLE_CATALOG.find((candidate) => candidate.id === sampleId);
-  if (!sample) {
-    nextGeneration();
-    state.source = "demo";
-    state.image = null;
-    state.imageSource = null;
-    clearResultState({keepImage: true});
-    state.phase = "error";
-    sampleState.textContent = "Retry · available";
-    demoDetectBtn.textContent = "開始 Detect";
-    demoDetectBtn.disabled = true;
-    setStatus(ERROR_COPY.DEMO_MANIFEST, "error");
-    return null;
-  }
-  const generation = nextGeneration();
-  state.source = "demo";
-  state.selectedSampleId = sampleId;
-  if (state.sessionSource !== "demo") {
-    state.session = null;
-    state.sessionSource = null;
-  }
-  state.image = null;
-  state.imageSource = null;
-  clearResultState({keepImage: true});
-  setSampleSelection(sampleId);
-  state.phase = "loading";
-  demoDetectBtn.disabled = true;
-  demoDetectBtn.textContent = "開始 Detect";
-  sampleState.textContent = "Loading · original";
-  setInitialSummary();
-  setStatus("正在載入真實航拍原圖…");
-  try {
-    const image = await loadSelectedDemoImage(sample, generation);
-    if (!image || !isCurrentGeneration(generation)) return;
+    const alreadySettled = demoOriginalImage.complete &&
+      demoOriginalImage.getAttribute("src") === DEMO_SAMPLE.path;
+    demoOriginalImage.alt = DEMO_SAMPLE.alt;
+    demoOriginalImage.width = DEMO_SAMPLE.width;
+    demoOriginalImage.height = DEMO_SAMPLE.height;
+    if (alreadySettled) {
+      if (demoOriginalImage.naturalWidth) onLoad();
+      else onError();
+      return;
+    }
+    demoOriginalImage.src = DEMO_SAMPLE.path;
+    if (demoOriginalImage.complete) {
+      if (demoOriginalImage.naturalWidth) onLoad();
+      else onError();
+    }
+  }).then((image) => {
+    if (!image || !isCurrentGeneration(token)) return image;
     state.image = image;
     state.imageSource = "demo";
     state.phase = "idle";
     showOriginalSource("demo");
-    demoFigureLabel.textContent = "原圖 · 尚未 Detect";
-    demoDetectBtn.textContent = "開始 Detect";
     demoDetectBtn.disabled = false;
     sampleState.textContent = "Original · ready";
-    setInitialSummary();
-    setStatus(`已選擇 ${sample.title} · 原圖已載入 · 尚未 Detect。`);
-    return generation;
-  } catch (_error) {
-    if (isCurrentGeneration(generation)) reportFailure("DEMO_IMAGE_DECODE");
-    return null;
-  }
+    setStatus("原圖已載入 · 尚未 Detect。");
+    return image;
+  });
 }
 
 function loadOrtRuntime() {
@@ -651,7 +597,7 @@ async function runActiveInference(source, generation) {
     ? "LOCAL BROWSER INFERENCE"
     : "BYOM · LOCAL BROWSER INFERENCE";
   provenanceValue.textContent = source === "demo"
-    ? `${DEMO_PROVENANCE} · ${selectedDemoSample().title}`
+    ? `${DEMO_PROVENANCE} · ${DEMO_SAMPLE.title}`
     : "Local files";
   viewToggleBtn.hidden = source !== "demo";
   const detections = setResultView("result");
@@ -668,18 +614,20 @@ async function runActiveInference(source, generation) {
 }
 
 async function runDemo() {
-  const generation = nextGeneration();
-  let sample;
-  try {
-    sample = selectedDemoSample();
-  } catch (error) {
-    reportFailure(error.message || "DEMO_MANIFEST");
+  if (state.source === "byom") {
+    nextGeneration();
+    resetToDemoOriginal();
     return;
   }
-  if (!state.image || state.image !== demoOriginalImage || demoOriginalImage.getAttribute("src") !== sample.path) {
-    const reloadGeneration = await selectDemoSample(sample.id);
-    if (!reloadGeneration || !isCurrentGeneration(reloadGeneration)) return;
-    return runDemo();
+  const generation = nextGeneration();
+  if (!state.image || state.image !== demoOriginalImage || demoOriginalImage.getAttribute("src") !== DEMO_SAMPLE.path) {
+    try {
+      const image = await loadDemoImage(generation);
+      if (!image || !isCurrentGeneration(generation)) return;
+    } catch (_error) {
+      if (isCurrentGeneration(generation)) reportFailure("DEMO_IMAGE_DECODE");
+      return;
+    }
   }
   state.source = "demo";
   state.imageSource = "demo";
@@ -783,9 +731,6 @@ viewToggleBtn.addEventListener("click", () => {
   setResultView(state.view === "result" ? "original" : "result");
 });
 demoDetectBtn.addEventListener("click", () => void runDemo());
-sampleOptions.forEach((option) => {
-  option.addEventListener("click", () => void selectDemoSample(option.dataset.sampleId));
-});
 modelInput.addEventListener("change", () => void handleModelSelection(modelInput.files[0]));
 fileInput.addEventListener("change", () => {
   if (fileInput.files[0]) void loadImageFile(fileInput.files[0]);
@@ -818,4 +763,4 @@ fileDrop.addEventListener("drop", (event) => {
   if (file) void loadImageFile(file);
 });
 
-void selectDemoSample(state.selectedSampleId);
+resetToDemoOriginal();

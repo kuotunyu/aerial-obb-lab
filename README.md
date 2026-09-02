@@ -14,10 +14,10 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 結果不美化：fine-tuned model 在同條件下是持平略降。
 
 **Demo：**[`demo/web/`](demo/web/) · **Model card：**[`docs/model_card.md`](docs/model_card.md) ·
-**發布範圍：**程式碼、證據、三張 public-domain NAIP 航拍衍生圖，以及一個 privacy-sanitized AGPL demo model。
+**發布範圍：**程式碼、證據、固定的 public-domain NAIP 港區原圖，以及一個 privacy-sanitized AGPL demo model。
 
 <!-- claim:browser-scope -->
-> 瀏覽器 demo 首先讓使用者選擇三張 public-domain NAIP 原圖之一；按「開始 Detect」後，才會載入 same-origin
+> 瀏覽器 demo 會立即顯示固定的 public-domain NAIP 港區原圖；按「開始 Detect」後，才會載入 same-origin
 > privacy-sanitized AGPL derivative 與 pinned runtime，在目前的 browser session 執行真正 inference。
 > BYOM 仍可使用使用者自行提供的相容 ONNX 與圖片；所有 model／image bytes 都不會上傳。
 > 這個 integration demo 與 screenshot **不代表** fine-tuned `yolo26m-obb` 的 accuracy、evaluation
@@ -31,11 +31,11 @@ OBB／HBB geometry analysis，一路做到 ONNX／TensorRT benchmark 與 Browser
 | Matched evaluation | Fine-tuned 相較官方 baseline：Δ mAP50 **-0.05pt**、Δ mAP50-95 **-0.13pt** | 持平略降，不宣稱精度提升 |
 | OBB geometry | 456 張 val images、28,853 個 objects；全體 weighted mean HBB／OBB 面積比 **1.76×**（bridge mean 2.43×） | Ground-truth geometry，不是 detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms／49.4 FPS** | 歷史 Tesla T4、batch=1、1024px 指定環境 |
-| Browser-native real-image demo | 選擇三張 public-domain NAIP 原圖之一 → 使用者按 Detect → 本機 genuine inference；另有進階 BYOM | Detect 才 lazy-load pinned jsDelivr runtime 與 same-origin privacy-sanitized derivative；非零網路、不含 DOTA pixels |
+| Browser-native real-image demo | 固定港區原圖 → 使用者按 Detect → 本機 genuine inference；另有進階 BYOM | Detect 才 lazy-load pinned jsDelivr runtime 與 same-origin privacy-sanitized derivative；非零網路、不含 DOTA pixels |
 
-![預設小型機場範例完成本機 browser inference 的 OBB workbench；不代表模型精度](docs/assets/browser-workbench.png)
+![固定港區範例完成本機 browser inference 的 OBB workbench；不代表模型精度](docs/assets/browser-workbench.png)
 
-*選取的 public-domain NAIP 原圖經使用者按 Detect 後，在本機 browser 完成真正 inference 並顯示 rotated polygons、數值 runtime 與結果表；這些為視覺清楚而 curated 的 integration examples，不代表 accuracy、evaluation 或歷史 T4 latency；guardrails 僅用於 drift checks。*
+*固定的 public-domain NAIP 港區原圖經使用者按 Detect 後，在本機 browser 完成真正 inference 並顯示 rotated polygons、數值 runtime 與結果表；這是視覺清楚的 curated integration evidence，不代表 accuracy、evaluation、benchmark、representative dataset、model quality、USGS／USDA endorsement 或歷史 T4 latency；guardrails 僅用於 drift checks。*
 
 ---
 
@@ -207,7 +207,7 @@ uv sync --frozen --no-install-project
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-- Demo：開啟 `http://localhost:8765`；選擇三張 public-domain NAIP 原圖之一，再按「開始 Detect」查看真正本機結果。影像與模型不會上傳；
+- Demo：開啟 `http://localhost:8765`；固定港區原圖會立即顯示，再按「開始 Detect」查看真正本機結果。影像與模型不會上傳；
   第一次 Detect 才會讀取 same-origin privacy-sanitized derivative，並由固定版本 CDN + SRI 載入 runtime。
 - Default env：不含 Torch、CUDA、Ultralytics 或 Python ONNX Runtime。
 - 壞掉的 `.venv`：執行 `uv venv --clear --python 3.11`；Linux/macOS 改用 `.venv/bin/python`。
@@ -241,7 +241,7 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
 
 ### 3. 瀏覽器真實影像 Demo + BYOM
 
-- 共同 viewport 提供小型機場（預設）、運動場館、港區三個 public-domain NAIP 原圖選項；按「開始 Detect」才會 lazy-load pinned
+- 共同 viewport 立即顯示固定的 public-domain NAIP 港區原圖，沒有 selector 或自動 inference；按「開始 Detect」才會 lazy-load pinned
   ONNX Runtime Web 與 same-origin privacy-sanitized YOLO26n-OBB derivative，在目前的 browser session
   完成真正 inference，然後在同一位置顯示 rotated polygons、數值 runtime、provenance 與結果表格。
 - 「查看原圖／查看結果」以及 confidence／class filters 都只重繪同一份 cached output，不會重新 inference。
@@ -259,7 +259,7 @@ DOTA 與 private Hugging Face remote writes；只有在獨立重現且完成授�
 - Repository code：依 `pyproject.toml` 宣告為 **AGPL-3.0-or-later**；Ultralytics components
   仍受 Ultralytics 各自的 AGPL／Enterprise 授權路線約束。
 - 本 candidate 包含一個已移除私人 build metadata、graph／weights 不變的 YOLO26n-OBB AGPL derivative，
-  以及三張 public-domain NAIP 航拍衍生圖；不含 DOTA pixels、標註或衍生 render。模型的 DOTAv1 training provenance
+  以及一張 public-domain NAIP 港區航拍衍生圖；不含 DOTA pixels、標註或衍生 render。模型的 DOTAv1 training provenance
   已揭露，本專案不暗示 Ultralytics endorsement，也不主張取得商用許可。使用者自行提供的模型與影像
   仍受其資料集、上游軟體、權重及 image-rights 條款約束。
 - Artifact hash、第三方條款與 release gates：見 [artifact manifest](release/artifact-manifest.json)、

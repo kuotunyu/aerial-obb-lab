@@ -4,9 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-- Freeze the three-image public-domain NAIP gallery evidence, notices, exact artifact digests, and
-  default-airfield local-inference screenshot. The curated samples are integration/drift-check examples,
-  not accuracy, evaluation, model-quality, or T4 latency evidence.
+- Replace the former selectable sample set with one fixed public-domain NAIP harbor original; freeze its
+  evidence, notices, exact artifact digests, and genuine local-inference screenshot. The harbor is integration/
+  drift-check evidence only, not ground truth, accuracy, evaluation, benchmark, representative-dataset,
+  model-quality, USGS/USDA endorsement, or T4 latency evidence.
 
 ### Real-image browser workbench
 

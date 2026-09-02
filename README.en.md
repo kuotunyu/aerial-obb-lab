@@ -14,10 +14,10 @@ through OBB/HBB geometry analysis, ONNX/TensorRT benchmarking, and a browser-nat
 The result is reported as-is: matched fine-tuning was a near-tie/slight regression.
 
 **Demo:** [`demo/web/`](demo/web/) · **Model card:** [`docs/model_card.md`](docs/model_card.md) ·
-**Release scope:** code, evidence, three public-domain NAIP aerial derivatives, and one privacy-sanitized AGPL demo model.
+**Release scope:** code, evidence, one fixed public-domain NAIP harbor original, and one privacy-sanitized AGPL demo model.
 
 <!-- claim:browser-scope -->
-> The browser demo first lets you choose one of the three public-domain NAIP originals. Only after **Start Detect** does it
+> The browser demo immediately shows the fixed public-domain NAIP harbor original. Only after **Start Detect** does it
 > load the same-origin privacy-sanitized AGPL derivative and pinned runtime, then perform genuine
 > inference in the current browser session. BYOM still accepts a user-supplied compatible ONNX model
 > and image; no model/image bytes are uploaded. This integration demo **does not represent** the
@@ -32,11 +32,11 @@ The result is reported as-is: matched fine-tuning was a near-tie/slight regressi
 | Matched evaluation | Fine-tuned vs. official baseline: Δ mAP50 **-0.05pt**, Δ mAP50-95 **-0.13pt** | Near-tie/slight regression, not an accuracy gain |
 | OBB geometry | 456 val images, 28,853 objects; overall weighted mean **1.76×**, bridge mean **2.43×** | Ground-truth geometry, not a detector benchmark |
 | Deployment | TensorRT FP16 **20.22 ms / 49.4 FPS** | Historical Tesla T4, batch=1, 1024px environment |
-| Browser-native real-image demo | Choose one of three public-domain NAIP originals → user presses Detect → genuine local inference; advanced BYOM remains available | Detect lazy-loads pinned jsDelivr runtime and the same-origin privacy-sanitized derivative; non-zero network, no DOTA pixels |
+| Browser-native real-image demo | Fixed harbor original → user presses Detect → genuine local inference; advanced BYOM remains available | Detect lazy-loads pinned jsDelivr runtime and the same-origin privacy-sanitized derivative; non-zero network, no DOTA pixels |
 
-![OBB workbench after genuine local-browser inference on the default airfield sample; not model-quality evidence](docs/assets/browser-workbench.png)
+![OBB workbench after genuine local-browser inference on the fixed harbor sample; not model-quality evidence](docs/assets/browser-workbench.png)
 
-*After explicit Detect, the selected public-domain NAIP original is processed by genuine local-browser inference and shown with rotated polygons, numeric runtime, and the result table. These curated clarity examples are integration evidence, not accuracy, evaluation, or historical T4 latency evidence; their guardrails are drift checks only.*
+*After explicit Detect, the fixed public-domain NAIP harbor original is processed by genuine local-browser inference and shown with rotated polygons, numeric runtime, and the result table. It is integration evidence, not ground truth, accuracy, evaluation, benchmark, representative-dataset, model-quality, USGS/USDA endorsement, or historical T4 latency evidence; its guardrails are drift checks only.*
 
 ---
 
@@ -215,7 +215,7 @@ uv sync --frozen --no-install-project
 .venv/Scripts/python.exe -m http.server 8765 --directory demo/web
 ```
 
-- Demo: open `http://localhost:8765`, choose one of the three public-domain NAIP originals, then press **Start Detect** and inspect the genuine local result.
+- Demo: open `http://localhost:8765`; the fixed public-domain NAIP harbor original is visible immediately. Press **Start Detect** to inspect the genuine local result.
   The image and model are not uploaded; first Detect reads the same-origin privacy-sanitized derivative
   and loads the pinned runtime through CDN + SRI.
 - Default env: no Torch, CUDA, Ultralytics, or Python ONNX Runtime.
@@ -252,8 +252,7 @@ frozen and must not be rerun merely to improve the numbers.
 
 ### 3. Browser Real-image Demo + BYOM
 
-- The shared viewport has three compact choices—airfield (default), sports complex, and harbor—of
-  public-domain NAIP originals. **Start Detect** then
+- The shared viewport immediately shows one fixed public-domain NAIP harbor original, with no selector or automatic inference. **Start Detect** then
   lazy-loads pinned ONNX Runtime Web and the same-origin privacy-sanitized YOLO26n-OBB derivative,
   performs genuine inference in the current browser session, and replaces the original with rotated
   polygons, numeric runtime, provenance, and the result table in that same viewport.
@@ -273,7 +272,7 @@ frozen and must not be rerun merely to improve the numbers.
 - Repository code: **AGPL-3.0-or-later** as declared in `pyproject.toml`; Ultralytics components
   remain subject to their respective AGPL / Enterprise licensing.
 - This candidate includes one AGPL YOLO26n-OBB derivative whose private build metadata was removed
-  without changing graph or weights, plus three public-domain NAIP aerial derivatives. It contains no DOTA pixels,
+  without changing graph or weights, plus one public-domain NAIP harbor aerial derivative. It contains no DOTA pixels,
   annotations, or derived renders. DOTAv1 training provenance is disclosed; the project implies no
   Ultralytics endorsement and makes no commercial-use clearance claim. User-supplied models/images
   remain subject to their dataset, software, weight, and image-rights terms.

@@ -33,24 +33,13 @@
       <aside id="controlRail" class="control-rail" aria-labelledby="controlsTitle">
         <div class="rail-heading">
           <h2 id="controlsTitle">範例與設定</h2>
-          <p>先選擇一張真實航拍原圖，再由目前的 browser 執行 Detect。</p>
+          <p>先查看真實航拍原圖，再由目前的 browser 執行 Detect。</p>
         </div>
-        <article id="sampleCard" class="sample-card" aria-labelledby="sampleSelector">
-          <fieldset id="sampleSelector" class="sample-selector">
-            <legend>選擇範例</legend>
-            <button class="sample-option" type="button" name="demo-sample" value="airfield" data-sample-id="airfield" aria-pressed="true">
-              <img src="samples/airfield.jpg" alt="小型機場航拍原圖縮圖" width="96" height="60" />
-              <span><strong>小型機場航拍範例</strong><small>真實航拍原圖</small></span>
-            </button>
-            <button class="sample-option" type="button" name="demo-sample" value="sports-complex" data-sample-id="sports-complex" aria-pressed="false">
-              <img src="samples/sports-complex.jpg" alt="運動場館航拍原圖縮圖" width="96" height="60" />
-              <span><strong>運動場館航拍範例</strong><small>真實航拍原圖</small></span>
-            </button>
-            <button class="sample-option" type="button" name="demo-sample" value="harbor" data-sample-id="harbor" aria-pressed="false">
-              <img src="samples/harbor.jpg" alt="低密度港區航拍原圖縮圖" width="96" height="60" />
-              <span><strong>低密度港區航拍範例</strong><small>真實航拍原圖</small></span>
-            </button>
-          </fieldset>
+        <article id="sampleCard" class="sample-card" aria-labelledby="demoSampleTitle">
+          <div class="demo-sample-identity">
+            <h3 id="demoSampleTitle">低密度港區航拍範例</h3>
+            <p id="demoSampleKind">真實航拍原圖</p>
+          </div>
           <p id="sampleState">Original · ready</p>
           <button id="demoDetectBtn" type="button" aria-describedby="claimTitle">開始 Detect</button>
           <button id="viewToggleBtn" class="secondary-action" type="button" hidden>查看原圖</button>
@@ -111,8 +100,8 @@
         <div id="resultViewport" class="result-viewport">
           <figure id="demoFigure" class="viewport-original">
             <figcaption id="demoFigureLabel">原圖 · 尚未 Detect</figcaption>
-            <img id="demoOriginalImage" src="samples/airfield.jpg" width="1280" height="800"
-                 alt="小型機場的真實航拍原圖" />
+            <img id="demoOriginalImage" src="samples/harbor.jpg" width="1280" height="800"
+                 alt="低密度港區的真實航拍原圖" />
             <img id="viewportByomImage" hidden alt="使用者選擇的航拍影像" />
           </figure>
           <div class="canvas-frame" id="canvasFrame" hidden>

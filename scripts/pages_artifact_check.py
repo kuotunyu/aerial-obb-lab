@@ -27,8 +27,6 @@ REQUIRED_FILES = (
     "fonts/IBMPlexSansCondensed-SemiBold.woff2",
     "fonts/IBM-Plex-OFL.txt",
     "README.md",
-    "samples/airfield.jpg",
-    "samples/sports-complex.jpg",
     "samples/harbor.jpg",
     "models/yolo26n-obb-privacy-sanitized.onnx",
     "demo-model.json",
@@ -41,8 +39,6 @@ ALLOWED_DIRECTORIES = frozenset(("fixtures", "fonts", "models", "samples", "thir
 FONT_PATH = "fonts/IBMPlexSansCondensed-SemiBold.woff2"
 MODEL_PATH = "models/yolo26n-obb-privacy-sanitized.onnx"
 IMAGE_PATHS = (
-    "samples/airfield.jpg",
-    "samples/sports-complex.jpg",
     "samples/harbor.jpg",
 )
 BINARY_PUBLIC_PATHS = frozenset((FONT_PATH, MODEL_PATH, *IMAGE_PATHS))
@@ -123,14 +119,6 @@ REVIEWED_ASSET_DIGESTS = {
         "385a082a1eac88343eab01fb6746be04b7175dacaf4550b17dee76ea0f78126d",
         "reviewed font bytes differ",
     ),
-    "samples/airfield.jpg": (
-        "5a60f3a6c7f8678c200f7051bfcdf378d360d08b1d3e72c62a15e7c6f7ee0c53",
-        "reviewed sample image bytes differ",
-    ),
-    "samples/sports-complex.jpg": (
-        "22974d633ae13f68e78ccf9d418bae2fd17a3109d6ad92a2390eb5a6666380de",
-        "reviewed sample image bytes differ",
-    ),
     "samples/harbor.jpg": (
         "916a8f11717545b0796cf0ca563d6228c2cc14f02124c9d8639dd26a753ea6f0",
         "reviewed sample image bytes differ",
@@ -142,11 +130,11 @@ REVIEWED_ASSET_DIGESTS = {
 }
 REVIEWED_TEXT_DIGESTS = {
     "index.html": (
-        "25b2b5f9cbeefecac658c9dffb3c7cd65e23cfbb2974fd419d9013be80e25007",
+        "d9ea6a69819aa03ef5d8ebb74582751d9af91633493ee6bee2f2d4b2e953bd96",
         "reviewed HTML bytes differ",
     ),
     "app.js": (
-        "77c6672419ac75a6d58e1f88457153dfab37306da1b5ca8a5830e1289630f2d3",
+        "d9b7a43af764e2951c11ae5017acab0476f16716785b6c65d12b5c6df97b15a9",
         "reviewed application bytes differ",
     ),
     "obb.js": (
@@ -154,11 +142,11 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed geometry bytes differ",
     ),
     "demo-assets.js": (
-        "9e2df330bbe830f1450d24853481c8392ff2fa5b223278779e19eef968fbcc74",
+        "e1dd5848507d793d34947200af099d6a84481028f404ed571e1eeb7d44c8d75e",
         "reviewed demo asset loader bytes differ",
     ),
     "style.css": (
-        "8972af5511b4a6d525ea96ff76b8f5f523558a0d827f131e6dee00e88bd82a9f",
+        "f834972059498d2e68682aa5d3ecfefd469355eaf0282af2e08e031ffe90f2ec",
         "reviewed stylesheet bytes differ",
     ),
     "fonts/IBM-Plex-OFL.txt": (
@@ -166,11 +154,11 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed font license bytes differ",
     ),
     "README.md": (
-        "aecd15280e6d231dcb8908971706009a4be1987b802f5d875cce4829e7da255b",
+        "2b8c7d0540f71025c78ba5d3eed20257a2d3f355753b535b4d4e0df13ac266e0",
         "reviewed README bytes differ",
     ),
     "demo-model.json": (
-        "fa17d85b5c796835c0b849a7f7da11e310e60366e33dbc0796b8896425c6542f",
+        "a25e9a112d06c92b342b276ea601fa19113896f91e1787e67a754c7c8707ed83",
         "reviewed demo manifest bytes differ",
     ),
     "third_party/ULTRALYTICS-AGPL-3.0.txt": (
@@ -182,7 +170,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed sanitization record bytes differ",
     ),
     "THIRD_PARTY_NOTICES.md": (
-        "67a00352ee5f9accafe5e6dacc5b68d733309bfefd6a5f1ae2318607f9939e22",
+        "11340793b3f1be511fbbc8010987c359b52129b5314a9bf89655d20b585fdaea",
         "reviewed third-party notice bytes differ",
     ),
 }

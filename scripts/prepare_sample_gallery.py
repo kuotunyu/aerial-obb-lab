@@ -45,22 +45,14 @@ OFFICIAL_DOWNLOAD_HOST = "earthexplorer.usgs.gov"
 @dataclass(frozen=True)
 class CandidateRecipe:
     candidate_id: str
-    category: Literal["airfield", "sports-complex", "harbor"]
+    category: Literal["harbor"]
     bbox_wgs84: tuple[float, float, float, float]
 
 
 CANDIDATE_RECIPES = (
-    CandidateRecipe("airfield-watsonville", "airfield", (-121.797682, 36.929906, -121.785682, 36.937406)),
-    CandidateRecipe("airfield-reid-hillview", "airfield", (-121.825300, 37.330133, -121.813300, 37.337633)),
-    CandidateRecipe("airfield-santa-monica", "airfield", (-118.456705, 34.012771, -118.444705, 34.020271)),
-    CandidateRecipe("sports-big-league-manteca", "sports-complex", (-121.265210, 37.784685, -121.253210, 37.792185)),
-    CandidateRecipe("sports-twin-creeks", "sports-complex", (-122.006126, 37.411869, -121.994126, 37.419369)),
-    CandidateRecipe("sports-ken-mercer", "sports-complex", (-121.897930, 37.677402, -121.885930, 37.684902)),
     CandidateRecipe("harbor-port-hueneme", "harbor", (-119.216719, 34.144170, -119.200719, 34.154170)),
-    CandidateRecipe("harbor-redwood-city", "harbor", (-122.216577, 37.508270, -122.200577, 37.518270)),
-    CandidateRecipe("harbor-stockton", "harbor", (-121.334614, 37.946035, -121.318614, 37.956035)),
 )
-RECIPE_BY_ID = {recipe.candidate_id: recipe for recipe in CANDIDATE_RECIPES}
+RECIPE_BY_ID = {"harbor-port-hueneme": CANDIDATE_RECIPES[0]}
 Transport = Callable[[dict[str, object]], tuple[bytes, str]]
 
 
@@ -489,8 +481,6 @@ _REPORT_KEYS = {"schemaVersion", "threshold", "modelSha256", "candidates"}
 _CANDIDATE_KEYS = {"candidateId", "category", "runCompleted", "numericRuntime", "detections", "visualReview"}
 _DETECTION_KEYS = {"classId", "confidence", "cx", "cy", "w", "h", "angle"}
 _OBSERVATION_CLASS_FAMILIES = {
-    "airfield": (0,),
-    "sports-complex": (3, 4, 5, 6, 12, 13, 14),
     "harbor": (1, 2, 7),
 }
 
@@ -504,7 +494,6 @@ def source_valid_pool(records: object, review_root: Path) -> tuple[dict[str, obj
         raise ValueError("GALLERY_OBSERVATION")
     pool: list[dict[str, object]] = []
     seen: set[str] = set()
-    counts = {"airfield": 0, "sports-complex": 0, "harbor": 0}
     for record in records:
         if not isinstance(record, dict):
             raise ValueError("GALLERY_OBSERVATION")
@@ -514,12 +503,11 @@ def source_valid_pool(records: object, review_root: Path) -> tuple[dict[str, obj
             category = record["category"]
         except (GalleryError, KeyError, TypeError):
             raise ValueError("GALLERY_OBSERVATION") from None
-        if not isinstance(candidate_id, str) or candidate_id in seen or category not in counts:
+        if not isinstance(candidate_id, str) or candidate_id in seen or candidate_id != "harbor-port-hueneme" or category != "harbor":
             raise ValueError("GALLERY_OBSERVATION")
         seen.add(candidate_id)
-        counts[category] += 1
         pool.append(record)
-    if any(count < 2 or count > 3 for count in counts.values()):
+    if len(pool) != 1:
         raise ValueError("GALLERY_OBSERVATION")
     return tuple(pool)
 
@@ -650,12 +638,12 @@ def validate_candidate_record(record: dict[str, object], review_root: Path) -> N
         raise GalleryError("GALLERY_RECORD") from None
 
 
-def validate_approved_gallery(report: dict[str, object], review_root: Path) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+def validate_approved_gallery(report: dict[str, object], review_root: Path) -> tuple[dict[str, object], ...]:
     try:
         if set(report) != {"schemaVersion", "threshold", "records", "visualReview"} or report["schemaVersion"] != 1 or report["threshold"] != DEFAULT_CONFIDENCE:
             raise ValueError
         records, visual = report["records"], report["visualReview"]
-        if not isinstance(records, list) or not isinstance(visual, dict) or len(records) != 3:
+        if not isinstance(records, list) or not isinstance(visual, dict) or len(records) != 1:
             raise ValueError
         for record in records:
             validate_candidate_record(record, review_root)
@@ -663,10 +651,9 @@ def validate_approved_gallery(report: dict[str, object], review_root: Path) -> t
                 raise ValueError
         if set(visual) != {record["candidateId"] for record in records}:
             raise ValueError
-        by_category = {record["category"]: record for record in records}
-        if set(by_category) != {"airfield", "sports-complex", "harbor"}:
+        if records[0]["candidateId"] != "harbor-port-hueneme" or records[0]["category"] != "harbor":
             raise ValueError
-        return tuple(by_category[category] for category in ("airfield", "sports-complex", "harbor"))  # type: ignore[return-value]
+        return tuple(records)
     except (GalleryError, KeyError, TypeError, ValueError):
         raise GalleryError("GALLERY_RECORD") from None
 
@@ -699,15 +686,9 @@ def acquire_all(
         for recipe in CANDIDATE_RECIPES:
             try:
                 records.append(acquire_candidate(recipe, stage, transport))
-            except GalleryError as error:
-                if error.code == "GALLERY_SOURCE_REJECTED":
-                    continue
+            except GalleryError:
                 raise
-        counts = {
-            category: sum(record["category"] == category for record in records)
-            for category in ("airfield", "sports-complex", "harbor")
-        }
-        if any(count < 2 or count > 3 for count in counts.values()):
+        if len(records) != 1:
             raise GalleryError("GALLERY_RECORD")
         for record in records:
             name = record["image"]["reviewName"]  # type: ignore[index]
@@ -736,16 +717,12 @@ def approve(review_root: Path, observations: Path, pointer: Path) -> None:
         validate_observations(observed, pool, root)
     except (GalleryError, ValueError):
         raise GalleryError("GALLERY_RECORD") from None
-    observed_ids = {record["candidateId"] for record in pool}
-    choices: list[dict[str, object]] = []
-    for category in ("airfield", "sports-complex", "harbor"):
-        options = [record for record in pool if record.get("category") == category and record.get("candidateId") in observed_ids]
-        print(f"{category}: " + ", ".join(str(option["candidateId"]) for option in options))
-        selected = input("Approved candidate ID: ").strip()
-        matches = [option for option in options if option.get("candidateId") == selected]
-        if len(matches) != 1:
-            raise GalleryError("GALLERY_RECORD")
-        choices.append(matches[0])
+    choice = pool[0]
+    print("harbor: harbor-port-hueneme")
+    selected = input("Approved candidate ID: ").strip()
+    if selected != "harbor-port-hueneme":
+        raise GalleryError("GALLERY_RECORD")
+    choices = [choice]
     report = {"schemaVersion": 1, "threshold": DEFAULT_CONFIDENCE, "records": choices, "visualReview": {record["candidateId"]: "approved" for record in choices}}
     validate_approved_gallery(report, root)
     approved = _checked_child(root, "approved-gallery.json")
@@ -775,17 +752,13 @@ def verify_approved(review_root: Path) -> None:
         raise GalleryError("GALLERY_RECORD") from None
 
 
-_PUBLIC_SAMPLE_IDS = ("airfield", "sports-complex", "harbor")
+_PUBLIC_SAMPLE_IDS = ("harbor",)
 _REVIEWED_BOATS_SHA256 = "8c5ada657cf8110a9f8aaac954c1dd96cde0187315b581276c32b0d1863e756f"
 _REVIEWED_BOATS_BYTES = 194_872
 _PUBLIC_SAMPLE_TITLES = {
-    "airfield": "小型機場航拍範例",
-    "sports-complex": "運動場館航拍範例",
     "harbor": "低密度港區航拍範例",
 }
 _PUBLIC_SAMPLE_ALTS = {
-    "airfield": "小型機場的真實航拍原圖",
-    "sports-complex": "運動場館的真實航拍原圖",
     "harbor": "低密度港區的真實航拍原圖",
 }
 _TARGET_CLASS_IDS = _OBSERVATION_CLASS_FAMILIES
@@ -879,7 +852,7 @@ def _validate_public_jpeg(data: bytes, expected: dict[str, object]) -> None:
 def _atomic_replace_gallery(pages_root: Path, receipt_path: Path, staged: Path) -> None:
     samples = _checked_child(pages_root, "samples")
     samples.mkdir(exist_ok=True)
-    permitted = {"boats.jpg", *[f"{sample_id}.jpg" for sample_id in _PUBLIC_SAMPLE_IDS]}
+    permitted = {"boats.jpg", "airfield.jpg", "sports-complex.jpg", *[f"{sample_id}.jpg" for sample_id in _PUBLIC_SAMPLE_IDS]}
     existing = list(samples.iterdir())
     if any(path.name not in permitted or not path.is_file() or is_reparse_point(path) or path.stat().st_nlink > 1 for path in existing):
         raise GalleryError("GALLERY_SCOPE")
@@ -892,6 +865,7 @@ def _atomic_replace_gallery(pages_root: Path, receipt_path: Path, staged: Path) 
     previous = staged / "previous"; previous.mkdir()
     changes = [(staged / "samples" / f"{sample_id}.jpg", samples / f"{sample_id}.jpg") for sample_id in _PUBLIC_SAMPLE_IDS]
     changes.append((staged / "receipt.json", receipt_path))
+    changes.extend((None, samples / name) for name in ("airfield.jpg", "sports-complex.jpg") if (samples / name).exists())
     if boats.exists():
         changes.append((None, boats))
     backups: list[tuple[Path, Path]] = []
@@ -905,8 +879,9 @@ def _atomic_replace_gallery(pages_root: Path, receipt_path: Path, staged: Path) 
             if new is not None:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(new, target)
-        if boats.exists():
-            boats.unlink()
+        for _new, target in changes:
+            if _new is None and target.exists():
+                target.unlink()
     except OSError:
         for backup, target in backups:
             try:
@@ -919,7 +894,7 @@ def _atomic_replace_gallery(pages_root: Path, receipt_path: Path, staged: Path) 
 def publish_approved_gallery(
     report: dict[str, object], review_root: Path, pages_root: Path, receipt_path: Path
 ) -> dict[str, object]:
-    """Publish only three verified approved derivatives and their public-safe receipt."""
+    """Publish the one verified harbor derivative and its public-safe receipt."""
     review = _checked_root(review_root)
     pages = _checked_root(pages_root.parent, create=True) / Path(pages_root).name
     pages.mkdir(exist_ok=True)
@@ -973,7 +948,6 @@ def _demo_manifest(receipt: dict[str, object]) -> dict[str, object]:
         "schemaVersion": 2,
         "id": "ultralytics-yolo26n-obb-demo",
         "defaultConfidence": 0.25,
-        "defaultSampleId": "airfield",
         "samples": receipt["samples"],
         "classes": ["plane", "ship", "storage tank", "baseball diamond", "tennis court", "basketball court", "ground track field", "harbor", "bridge", "large vehicle", "small vehicle", "helicopter", "roundabout", "soccer ball field", "swimming pool"],
         "model": {"path": "models/yolo26n-obb-privacy-sanitized.onnx", "bytes": 10207127, "sha256": "a0a1a2dd357067e8c6c9f5ce7bb33487188423f9722e813be880da4f9badcd97", "mediaType": "application/onnx", "release": "v8.4.0", "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.onnx", "sourceSha256": "02f7c539600296d7389341280beb82da810b15dc09c54cf2bc70f7f610331b38", "license": "AGPL-3.0-only", "modificationStatus": "metadata-only"},
@@ -991,7 +965,7 @@ def _demo_assets_source(manifest: dict[str, object]) -> str:
     return f'''(function exposeDemoAssets(root) {{
   "use strict";
   const MAX_MODEL_BYTES = 15 * 1024 * 1024;
-  const SAMPLE_IDS = Object.freeze(["airfield", "sports-complex", "harbor"]);
+  const SAMPLE_IDS = Object.freeze(["harbor"]);
   function fail(code) {{ throw new Error(code); }}
   function exactValue(actual, expected) {{
     if (Array.isArray(expected)) return Array.isArray(actual) && actual.length === expected.length && expected.every((item, index) => exactValue(actual[index], item));
@@ -1008,7 +982,7 @@ def _demo_assets_source(manifest: dict[str, object]) -> str:
     let copy; try {{ if (!exactValue(value, EXPECTED)) fail("DEMO_MANIFEST"); copy = JSON.parse(JSON.stringify(value)); }} catch (_error) {{ fail("DEMO_MANIFEST"); }}
     return deepFreeze(copy);
   }}
-  function getSampleCatalog() {{ return EXPECTED.samples; }}
+  function getDemoSample() {{ return EXPECTED.samples[0]; }}
   function toHex(buffer) {{ return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join(""); }}
   async function fetchVerifiedModel(manifest, signal) {{
     if (!Object.isFrozen(manifest) || !Object.isFrozen(manifest.model)) fail("DEMO_MANIFEST");
@@ -1023,7 +997,7 @@ def _demo_assets_source(manifest: dict[str, object]) -> str:
     if (length !== admitted.model.bytes) fail("DEMO_MODEL_SIZE"); const bytes = new Uint8Array(length); let offset = 0; for (const chunk of chunks) {{ bytes.set(chunk, offset); offset += chunk.byteLength; }}
     let digest; try {{ digest = toHex(await crypto.subtle.digest("SHA-256", bytes)); }} catch (_error) {{ fail("DEMO_MODEL_DIGEST"); }} if (digest !== admitted.model.sha256) fail("DEMO_MODEL_DIGEST"); return bytes.buffer;
   }}
-  root.DemoAssets = Object.freeze({{validateManifest, fetchVerifiedModel, getSampleCatalog}});
+  root.DemoAssets = Object.freeze({{validateManifest, fetchVerifiedModel, getDemoSample}});
 }})(globalThis);
 '''
 

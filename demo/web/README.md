@@ -1,7 +1,7 @@
 # Aerial OBB Lab Browser Demo
 
 這是一個純 HTML／CSS／JavaScript 的 Browser-native OBB workbench。頁面開啟後會先顯示
-三張可明確切換的 public-domain NAIP 真實航拍原圖，預設為小型機場；按下「開始 Detect」才會 lazy-load
+固定的 public-domain NAIP 港區真實航拍原圖，沒有 selector 或自動 inference；按下「開始 Detect」才會 lazy-load
 固定版本 `onnxruntime-web@1.20.1` 的 JavaScript／WASM 與 repository 內的
 privacy-sanitized YOLO26n-OBB derivative，並在目前的 browser session 執行 inference。
 影像與模型不會上傳。
@@ -12,7 +12,7 @@ privacy-sanitized YOLO26n-OBB derivative，並在目前的 browser session 執�
 polygons、provenance 與依 confidence 排序的完整數值表格；filter 與畫面切換不會重新執行模型。
 
 BYOM 是預設收合的進階入口。使用者可自行選擇相容的 local YOLO26 OBB ONNX model 與影像；
-兩個檔案都只在 browser session 中處理，並與三張 NAIP 範例共用 preprocessing、inference、decode、
+兩個檔案都只在 browser session 中處理，並與固定港區範例共用 preprocessing、inference、decode、
 filter 與 rendering pipeline。選入無效的新 model 不會取代最後一個已驗證的 session。
 
 ## 執行
@@ -47,10 +47,10 @@ filter 與 rendering pipeline。選入無效的新 model 不會取代最後一�
 
 ## 來源與授權
 
-選擇三張 public-domain USGS/USDA NAIP 航拍原圖之一，再按 Detect 進行 genuine local inference；
+固定的 public-domain USGS/USDA NAIP 港區原圖會立即顯示，再按 Detect 進行 genuine local inference；
 原圖／結果切換與 confidence／class filter 都重用 cached output。範例為共用 0.25 threshold 下的
 視覺清楚 curated integration examples，不是 accuracy、evaluation 或 T4 latency 證據；guardrails 僅作
-結果 drift checks。來源、crop/resample/metadata removal、bytes 與 digest 見
+結果 drift checks，且不代表 ground truth、benchmark、representative dataset、model quality 或 USGS／USDA endorsement。來源、crop/resample/metadata removal、bytes 與 digest 見
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
 
 - Model 與素材 provenance：[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)

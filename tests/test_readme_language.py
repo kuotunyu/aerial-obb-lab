@@ -31,7 +31,7 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
         "demo/web/",
         "ONNX Runtime Web",
         "Browser-native",
-        "三張 public-domain NAIP 原圖之一",
+        "固定的 public-domain NAIP 港區原圖",
         "真正 inference",
         "privacy-sanitized AGPL derivative",
         "BYOM 是預設收合的進階入口",
@@ -44,7 +44,7 @@ def test_readme_language_structure_is_zh_tw_first() -> None:
     for token in (
         "demo/web/",
         "browser-native",
-        "one of the three public-domain NAIP originals",
+        "fixed public-domain NAIP harbor original",
         "genuine inference",
         "privacy-sanitized AGPL derivative",
         "BYOM remains a collapsed advanced path",
@@ -69,13 +69,16 @@ def test_public_readmes_do_not_invite_release_users_to_mutate_hf() -> None:
     assert "not part of this release gate" in english
 
 
-def test_release_checklist_matches_exact_real_demo_inventory() -> None:
+def test_release_checklist_matches_exact_single_harbor_inventory() -> None:
     checklist = (ROOT / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
 
     assert "artifact inventory is empty" not in checklist
     assert "one self-hosted OFL display font" in checklist
     assert "one exact privacy-sanitized AGPL demo" in checklist
     assert "no second/source model" in checklist
+    assert "demo/web/samples/harbor.jpg" in checklist
+    assert "demo/web/samples/airfield.jpg" not in checklist
+    assert "demo/web/samples/sports-complex.jpg" not in checklist
 
 
 def test_release_files_record_private_historical_space_verification() -> None:

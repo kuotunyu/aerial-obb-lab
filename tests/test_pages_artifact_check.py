@@ -30,14 +30,11 @@ def test_current_pages_tree_passes() -> None:
     assert verify_pages_tree(PAGES_TREE) == []
 
 
-def test_pages_tree_admits_exact_curated_gallery_inventory(tmp_path: Path) -> None:
+def test_pages_tree_admits_exact_single_harbor_inventory(tmp_path: Path) -> None:
     site = copied_pages_tree(tmp_path)
 
     assert verify_pages_tree(site) == []
-    assert tuple(sorted(path.name for path in (site / "samples").iterdir())) == (
-        "airfield.jpg", "harbor.jpg", "sports-complex.jpg"
-    )
-    assert not (site / "samples" / ("boats" + ".jpg")).exists()
+    assert tuple(sorted(path.name for path in (site / "samples").iterdir())) == ("harbor.jpg",)
 
 
 def test_pages_tree_admits_exact_real_demo_inventory(
@@ -46,9 +43,7 @@ def test_pages_tree_admits_exact_real_demo_inventory(
     site = copied_pages_tree(tmp_path)
 
     assert verify_pages_tree(site) == []
-    assert {path.name for path in (site / "samples").iterdir()} == {
-        "airfield.jpg", "sports-complex.jpg", "harbor.jpg"
-    }
+    assert {path.name for path in (site / "samples").iterdir()} == {"harbor.jpg"}
     assert (site / "models" / "yolo26n-obb-privacy-sanitized.onnx").is_file()
     assert (site / "demo-model.json").is_file()
     assert (site / "demo-assets.js").is_file()
@@ -142,8 +137,6 @@ def test_pages_tree_rejects_symlinks(tmp_path: Path) -> None:
         "fonts/IBMPlexSansCondensed-SemiBold.woff2",
         "fonts/IBM-Plex-OFL.txt",
         "README.md",
-        "samples/airfield.jpg",
-        "samples/sports-complex.jpg",
         "samples/harbor.jpg",
         "models/yolo26n-obb-privacy-sanitized.onnx",
         "demo-model.json",
@@ -286,8 +279,6 @@ def test_pages_tree_rejects_required_reference_mismatch(
             "reviewed font bytes differ",
         ),
         ("fonts/IBM-Plex-OFL.txt", "reviewed font license bytes differ"),
-        ("samples/airfield.jpg", "reviewed sample image bytes differ"),
-        ("samples/sports-complex.jpg", "reviewed sample image bytes differ"),
         ("samples/harbor.jpg", "reviewed sample image bytes differ"),
         (
             "models/yolo26n-obb-privacy-sanitized.onnx",

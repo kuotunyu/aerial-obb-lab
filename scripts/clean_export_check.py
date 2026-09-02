@@ -40,8 +40,6 @@ REQUIRED_MEMBERS = {
     "demo/web/index.html",
     "demo/web/models/yolo26n-obb-privacy-sanitized.onnx",
     "demo/web/obb.js",
-    "demo/web/samples/airfield.jpg",
-    "demo/web/samples/sports-complex.jpg",
     "demo/web/samples/harbor.jpg",
     "demo/web/style.css",
     "demo/web/third_party/ULTRALYTICS-AGPL-3.0.txt",
