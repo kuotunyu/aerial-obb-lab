@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import re
+import subprocess
+import sys
 import tomllib
+
+import pytest
+
+from scripts import browser_smoke
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,3 +153,60 @@ def test_ci_runs_only_the_browser_native_ui_smoke() -> None:
     assert "gradio" not in workflow.casefold()
     assert "--group ui-preview" not in workflow
     assert 'CUDA_VISIBLE_DEVICES: "-1"' in workflow
+
+
+ENCODED_TRANSFER_OK = "[OK] Encoded model transfer preserves decoded integrity"
+
+
+def _chromium_available() -> bool:
+    """True only when every browser component Playwright would launch is installed.
+
+    Uses the documented dry-run listing instead of starting the driver, so the probe
+    leaves no pending Playwright tasks behind in the test process.
+    """
+    try:
+        listing = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "--dry-run", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    locations = [match.strip() for match in re.findall(r"Install location:\s+(.+)", listing.stdout)]
+    return listing.returncode == 0 and bool(locations) and all(Path(location).is_dir() for location in locations)
+
+
+def test_browser_smoke_wires_the_encoded_model_transfer_scenario(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[str] = []
+    for name in dir(browser_smoke):
+        if name.startswith("run_") and callable(getattr(browser_smoke, name)):
+            monkeypatch.setattr(
+                browser_smoke, name, lambda *args, _name=name, **kwargs: calls.append(_name)
+            )
+
+    assert browser_smoke.main([]) == 0
+    assert "run_encoded_model_transfer" in calls
+    assert browser_smoke.main(["--scenario", "encoded-model-transfer"]) == 0
+    assert calls.count("run_encoded_model_transfer") == 2
+    assert capsys.readouterr().out.rstrip().endswith(ENCODED_TRANSFER_OK)
+
+
+def test_encoded_model_transfer_preserves_decoded_integrity_in_a_real_browser() -> None:
+    if not _chromium_available():
+        pytest.skip("headless Chromium for Playwright is not installed")
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "browser_smoke.py"), "--scenario", "encoded-model-transfer"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert ENCODED_TRANSFER_OK in result.stdout

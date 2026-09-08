@@ -142,7 +142,7 @@ REVIEWED_TEXT_DIGESTS = {
         "reviewed geometry bytes differ",
     ),
     "demo-assets.js": (
-        "e1dd5848507d793d34947200af099d6a84481028f404ed571e1eeb7d44c8d75e",
+        "e43d6f3ea14d3388270042f385310f848b9c610cd822ecec0f08d3d561f440f5",
         "reviewed demo asset loader bytes differ",
     ),
     "style.css": (
