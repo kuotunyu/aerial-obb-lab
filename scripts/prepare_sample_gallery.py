@@ -1002,8 +1002,7 @@ def _demo_assets_source(manifest: dict[str, object]) -> str:
     try {{ url = new URL(admitted.model.path, globalThis.location.href); expectedUrl = new URL(EXPECTED.model.path, globalThis.location.href); }} catch (_error) {{ fail("DEMO_MODEL_URL"); }}
     if (url.origin !== globalThis.location.origin || url.pathname !== expectedUrl.pathname || url.search || url.hash) fail("DEMO_MODEL_URL");
     let response; try {{ response = await fetch(url.href, {{cache:"force-cache", credentials:"same-origin", redirect:"error", signal: options?.signal ?? options}}); }} catch (_error) {{ fail("DEMO_MODEL_FETCH"); }}
-    if (!response.ok || !response.body) fail("DEMO_MODEL_FETCH"); const declaredLength = response.headers.get("content-length");
-    if (declaredLength !== null && (!/^\\d+$/.test(declaredLength) || Number(declaredLength) !== admitted.model.bytes)) fail("DEMO_MODEL_SIZE");
+    if (!response.ok || !response.body) fail("DEMO_MODEL_FETCH");
     const reader = response.body.getReader(); const chunks = []; let length = 0;
     try {{ while (true) {{ const {{done, value}} = await reader.read(); if (done) break; length += value.byteLength; if (length > MAX_MODEL_BYTES || length > admitted.model.bytes) {{ await reader.cancel(); fail("DEMO_MODEL_SIZE"); }} chunks.push(value); }} }} catch (error) {{ if (error?.message === "DEMO_MODEL_SIZE") throw error; fail("DEMO_MODEL_FETCH"); }}
     if (length !== admitted.model.bytes) fail("DEMO_MODEL_SIZE"); const bytes = new Uint8Array(length); let offset = 0; for (const chunk of chunks) {{ bytes.set(chunk, offset); offset += chunk.byteLength; }}

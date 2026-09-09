@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager, nullcontext
-from functools import partial
+from functools import lru_cache, partial
+import gzip
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
@@ -272,6 +273,43 @@ class QuietThreadingHTTPServer(ThreadingHTTPServer):
 @contextmanager
 def static_server() -> Iterator[str]:
     handler = partial(QuietHandler, directory=str(DEMO))
+    server = QuietThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@lru_cache(maxsize=1)
+def _encoded_demo_model() -> bytes:
+    """Gzip-code the committed demo model once for encoded transfer scenarios."""
+    return gzip.compress((DEMO / DEMO_MODEL_PATH.lstrip("/")).read_bytes(), compresslevel=6, mtime=0)
+
+
+class GzipModelHandler(QuietHandler):
+    """Serve the committed model as a real gzip-coded HTTP response; delegate every other path."""
+
+    def do_GET(self) -> None:
+        if urlparse(self.path).path != DEMO_MODEL_PATH:
+            super().do_GET()
+            return
+        encoded = _encoded_demo_model()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+
+@contextmanager
+def encoded_model_server() -> Iterator[str]:
+    """Serve demo/web where only the model arrives with HTTP content coding."""
+    handler = partial(GzipModelHandler, directory=str(DEMO))
     server = QuietThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -2353,6 +2391,68 @@ def run_stubbed_cache(
             browser.close()
 
 
+def run_encoded_model_transfer(
+    executable_path: Path | None = None,
+    base_url: str | None = None,
+) -> None:
+    """Detect must succeed when the same-origin model arrives gzip-coded.
+
+    GitHub Pages serves the ONNX model with ``Content-Encoding: gzip`` and a transfer
+    ``Content-Length`` smaller than the decoded artifact. Only a genuinely encoded HTTP
+    response proves the loader, so this scenario always serves the committed demo tree
+    through its own gzip-coding server and does not use ``base_url``.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        raise RuntimeError("Playwright is required; run the locked development environment") from exc
+
+    del base_url
+    manifest = json.loads((DEMO / DEMO_MANIFEST_PATH.lstrip("/")).read_text(encoding="utf-8"))
+    decoded_length = int(manifest["model"]["bytes"])
+    encoded_length = len(_encoded_demo_model())
+    if (DEMO / DEMO_MODEL_PATH.lstrip("/")).stat().st_size != decoded_length:
+        raise RuntimeError("committed model length does not match the manifest")
+    if encoded_length == decoded_length:
+        raise RuntimeError("encoded model transfer does not differ from the decoded manifest length")
+    with encoded_model_server() as served_url, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(**_launch_options(executable_path))
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 720})
+            requests: list[str] = []
+            messages: list[str] = []
+            page.add_init_script(SRI_STUB_SHIM)
+            _record_errors(page, requests, messages)
+            page.route(ORT_CDN_URL, lambda route: _fulfill_runtime(route, ORT_STUB))
+            page.goto(f"{served_url}/", wait_until="networkidle")
+            assert_real_demo_initial(page, requests, messages)
+            with page.expect_response(
+                lambda response: urlparse(response.url).path == DEMO_MODEL_PATH, timeout=120_000
+            ) as model_response:
+                page.locator("#demoDetectBtn").click()
+            observed = model_response.value.all_headers()
+            if observed.get("content-encoding") != "gzip" or observed.get("content-length") != str(encoded_length):
+                raise RuntimeError("model response was not observed as a gzip-coded transfer")
+            page.wait_for_function(
+                "['success', 'error'].includes(document.querySelector('#status').dataset.kind)",
+                timeout=120_000,
+            )
+            if _request_paths(requests).count(DEMO_MODEL_PATH) != 1:
+                raise RuntimeError("encoded transfer scenario did not fetch the model exactly once")
+            if page.locator("#status").get_attribute("data-kind") != "success":
+                raise RuntimeError("encoded model transfer reached the fixed failure recovery instead of a result")
+            if page.locator("#modeBadge").inner_text() != "LOCAL BROWSER INFERENCE":
+                raise RuntimeError("encoded model transfer did not report local browser inference")
+            if not re.fullmatch(r"\d+ ms", page.locator("#runtimeValue").inner_text()):
+                raise RuntimeError("encoded model transfer did not report a numeric runtime")
+            if page.evaluate("globalThis.__demoRunCount") != 1:
+                raise RuntimeError("encoded model transfer did not run inference exactly once")
+            if messages:
+                raise RuntimeError("encoded model transfer scenario emitted console or page errors")
+        finally:
+            browser.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable-path", type=Path)
@@ -2371,6 +2471,7 @@ def main(argv: list[str] | None = None) -> int:
             "stubbed-cache",
             "manifest-failure",
             "model-digest-failure",
+            "encoded-model-transfer",
             "runtime-failure",
             "session-failure",
             "run-failure",
@@ -2410,6 +2511,8 @@ def main(argv: list[str] | None = None) -> int:
             run_manifest_failure(args.executable_path, args.base_url)
         elif args.scenario == "model-digest-failure":
             run_model_digest_failure(args.executable_path, args.base_url)
+        elif args.scenario == "encoded-model-transfer":
+            run_encoded_model_transfer(args.executable_path, args.base_url)
         elif args.scenario == "runtime-failure":
             run_runtime_failure(args.executable_path, args.base_url)
         elif args.scenario == "session-failure":
@@ -2445,6 +2548,7 @@ def main(argv: list[str] | None = None) -> int:
             run_stubbed_cache(args.executable_path, args.base_url)
             run_manifest_failure(args.executable_path, args.base_url)
             run_model_digest_failure(args.executable_path, args.base_url)
+            run_encoded_model_transfer(args.executable_path, args.base_url)
             run_runtime_failure(args.executable_path, args.base_url)
             run_session_failure(args.executable_path, args.base_url)
             run_run_failure(args.executable_path, args.base_url)
@@ -2473,6 +2577,8 @@ def main(argv: list[str] | None = None) -> int:
         print("[OK] Real demo manifest failures are closed and recoverable")
     elif args.scenario == "model-digest-failure":
         print("[OK] Real demo model integrity failures are closed and recoverable")
+    elif args.scenario == "encoded-model-transfer":
+        print("[OK] Encoded model transfer preserves decoded integrity")
     elif args.scenario == "runtime-failure":
         print("[OK] Real demo runtime retry is pinned and recoverable")
     elif args.scenario == "session-failure":
