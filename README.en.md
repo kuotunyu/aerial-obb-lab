@@ -203,9 +203,13 @@ in [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
 
 ### 1. Local Development (CPU-only, no training or GPU required)
 
-Requirements: Python 3.11 and CPU. Do not copy `.venv` across machines.
+Requirements: Python 3.11, CPU, and `uv` and Node.js 22 installed and available on PATH (matching CI).
+`uv` creates and syncs the Python environment; Node.js runs the repository gate's JavaScript checks,
+pytest browser parity fixtures, and the clean-export gate. Do not copy `.venv` across machines.
 
 ```powershell
+uv --version
+node --version
 uv python install 3.11
 uv venv --python 3.11
 uv sync --frozen --no-install-project
