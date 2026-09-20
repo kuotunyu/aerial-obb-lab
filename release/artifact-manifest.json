@@ -83,8 +83,8 @@
     }
   ],
   "reviewed_public_artifacts": [
-    {"path": "README.md", "bytes": 15350, "sha256": "10daf6b2b7fe34aa97ffd1fd41b63db6a0d760418850a5367258a97d8c40ec8e", "digest_mode": "canonical-lf"},
-    {"path": "README.en.md", "bytes": 15447, "sha256": "811857ae0872cfd7964206f1c1bbfd2a68fdaca9ab1b11c1d4b020a0c94d22d8", "digest_mode": "canonical-lf"},
+    {"path": "README.md", "bytes": 15620, "sha256": "21ca54bec066cd08dc05b0da091821722b82deac1e16a3a6d18c3e5063809d2d", "digest_mode": "canonical-lf"},
+    {"path": "README.en.md", "bytes": 15703, "sha256": "563cac856eca257c0eaf3b24c1fe358c2b54e1d10747f9f75511f8228b38d933", "digest_mode": "canonical-lf"},
     {"path": "THIRD_PARTY_NOTICES.md", "bytes": 6275, "sha256": "744d0477a6e942d3e38070e6e9198b0854457f47d184806f965e712cfe140175", "digest_mode": "canonical-lf"},
     {"path": "RELEASE_CHECKLIST.md", "bytes": 6324, "sha256": "47383dbe91dbf5efdc9047c2f1c70aed2aa1b938e1aa28b1d0fbaca242ed4db1", "digest_mode": "canonical-lf"},
     {"path": "CHANGELOG.md", "bytes": 7421, "sha256": "d3d9296b6093a1c20e6f7e9fedba653a4672ed45d60a5c86aee0ed0b178379b4", "digest_mode": "canonical-lf"},
