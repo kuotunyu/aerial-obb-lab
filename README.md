@@ -195,9 +195,13 @@ PyTorch。ONNX 仍是 `demo/web/` 使用的 ONNX Runtime **Web** 模型交換格
 
 ### 1. 本機開發（CPU-only，不需訓練或 GPU）
 
-需求：Python 3.11、CPU。不要跨電腦複製 `.venv`。
+需求：Python 3.11、CPU、已安裝且可從命令列使用的 `uv` 與 Node.js 22（與 CI 一致）。
+`uv` 用於建立及同步 Python 環境；Node.js 用於 repository gate 的 JavaScript 檢查、
+pytest 的 browser parity fixtures，以及 clean-export gate。不要跨電腦複製 `.venv`。
 
 ```powershell
+uv --version
+node --version
 uv python install 3.11
 uv venv --python 3.11
 uv sync --frozen --no-install-project
